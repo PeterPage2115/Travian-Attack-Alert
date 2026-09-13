@@ -70,3 +70,40 @@ inventing fixes is explicitly out of scope for this task.
   compared before/after.
 - `script.txt` was not edited, so no `npm run backup` was required (backup is
   mandated BEFORE any `script.txt` edit; there was none).
+
+## Todo 14 — dead-path cleanup (2026-09-13, branch `release/public-1.0.0`)
+
+Backup before edit: `npm run backup` → `f1fd0124f975fbbaa75dc39468dea00646276e80e481509bae3233a21347cc4d`
+(matches the inherited tree/dist hash — pre-edit tree was byte-identical).
+
+### Unreachability proof (FIXED)
+
+`extractMembersFromTable` (pre-edit `script.txt:5758-5804`): the live path ends
+with the UNCONDITIONAL early return at pre-edit line 5764 —
+
+`return Object.entries(snapshot.membersById).map(([id, member]) => ({`
+
+— preceded by the guards `typeof document === "undefined" … return []` (5759)
+and `snapshot.status !== "authoritative" return []` (5763). Everything after
+line 5764 inside the function (pre-edit lines 5769-5803: `LINK_SELECTOR`,
+`candidates` largest-profile-link table pick, `byId` loop,
+`return [...byId.values()]`) is unreachable by construction.
+Caller check: `grep extractMembersFromTable\(` over the repo finds only the
+definition itself — zero call sites (line 10196 is a bare export-list name, not
+a call); no test references it; `pure-module-parity` covers only
+constants/text/route. DESIGN §"no largest-profile-link fallback" and README
+already document the absence, so no prose contradicted the deletion.
+
+| candidate | area (pre-edit lines) | verdict + evidence |
+|---|---|---|
+| Largest-profile-link fallback in `extractMembersFromTable` | `script.txt:5769-5803` | FIXED — deleted 35 lines; proof above; `node -e new Function(...)` syntax OK, file 10506 → 10471 lines |
+| `findPlayerInRow` `fallbackLink` | `script.txt:3881-3888` | DEFERRED (kept) — reachable live code in a different, called row parser; behavior-bearing, not the table fallback |
+| `tools/*.cjs` `FALLBACK_VERSION` | `tools/backup.cjs:9`, `tools/build.cjs:17`, `tools/rollback.cjs:9` | NO ACTION — already `'1.0.0'` since Todo 4 commit `3fc31c0`; enforced by `tools/check-versions.cjs:17` (`npm run check:versions` PASS). Nothing deferred, nothing to change. |
+| `AGENTS.md` drift (`~9959 linii`, "`src/` to shimy") | `AGENTS.md:3,39` | FIXED — line count is now derived (`wc -l script.txt`, no hardcoded number); `src/` described as mixed independent-implementation + `legacy-bridge` contract selectors; all six sections and every rule intact; test-count claim was already dynamic ("caly pakiet … zero fail"), left untouched |
+
+Mutation control: restored the deleted fallback into a TEMP copy only
+(`/tmp/opencode/taa-mutant-script.txt`, never the repo file); the guard
+(`grep -c LINK_SELECTOR` must be 0 past the early return, i.e. no dead
+fallback present) FAILS on the mutant and passes on the cleaned tree, while
+the behavior matrices pass identically on both — proving the cleanup is safe
+and guarded. Temp copy deleted afterwards.

@@ -1,6 +1,6 @@
 # AGENTS.md - zasady projektu TravianAttackAlert
 
-Userscript Tampermonkey, monolit `script.txt` (~9959 linii). Testy offline `node:test`, zero zaleznosci runtime w przegladarce.
+Userscript Tampermonkey, monolit `script.txt` (dokladna liczba linii: `wc -l script.txt`). Testy offline `node:test`, zero zaleznosci runtime w przegladarce.
 
 ## 1. Wersjonowanie
 
@@ -36,5 +36,5 @@ Userscript Tampermonkey, monolit `script.txt` (~9959 linii). Testy offline `node
 ## 6. Architektura
 
 - `script.txt` to checked-in source of truth. `npm run build` tylko odswieza manifest i hashe metadanych, nie generuje dystrybucji.
-- `src/` to shimy, runtime autorytetem jest `script.txt` (release ID `taa-1.0.0`).
+- `src/` to moduly domenowe: czesc (`constants`/`text`/`route`) ma niezalezne implementacje weryfikowane testem `pure-module-parity`, reszta to selektory kontraktu przez `legacy-bridge`; runtime autorytetem jest `script.txt` (release ID `taa-1.0.0`).
 - Zakaz nowych zaleznosci runtime bez pytania. Dev: esbuild, playwright, typescript tylko dla narzedzi/testow.

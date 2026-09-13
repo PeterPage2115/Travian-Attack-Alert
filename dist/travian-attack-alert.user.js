@@ -5766,41 +5766,6 @@ const RELEASE_ID = "taa-1.0.0";
       name: member.name,
       url: member.url
     }));
-    const LINK_SELECTOR = 'a[href*="/profile/"], a[href*="/player/"], a[href*="spieler.php"], a[href*="uid="]';
-    const candidates = [...document.querySelectorAll("table")].filter((t) => t.querySelector(LINK_SELECTOR)).map((t) => ({ table: t, links: t.querySelectorAll(LINK_SELECTOR).length })).sort((a, b) => b.links - a.links);
-    const table = candidates.length > 0 ? candidates[0].table : null;
-    if (!table) {
-      return [];
-    }
-    const byId = /* @__PURE__ */ new Map();
-    for (const row of table.querySelectorAll("tr")) {
-      const link = [...row.querySelectorAll("a")].find((candidate2) => {
-        const href2 = candidate2.getAttribute("href") || "";
-        const text = cleanText(candidate2.textContent);
-        if (!text || /^\d+[.]?$/.test(text)) {
-          return false;
-        }
-        return (href2.includes("/profile/") || href2.includes("/player/") || href2.includes("spieler.php") || href2.includes("uid=")) && !href2.includes("/alliance/");
-      });
-      if (!link) {
-        continue;
-      }
-      const href = link.getAttribute("href") || "";
-      const id = extractPlayerId(href);
-      const name = cleanText(link.textContent);
-      if (id === null || !name) {
-        continue;
-      }
-      if (byId.has(id)) {
-        continue;
-      }
-      byId.set(id, {
-        id,
-        name,
-        url: new URL(href, location.origin).href
-      });
-    }
-    return [...byId.values()];
   }
   function computeUnmappedPlayers(members, mappings, muted, hostname) {
     if (!Array.isArray(members)) {
