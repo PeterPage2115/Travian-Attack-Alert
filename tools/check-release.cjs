@@ -5,8 +5,8 @@
  * Offline release quality gate runner (plan Todo 6).
  *
  * Runs every offline gate in order:
- *   syntax-script -> syntax-dist -> unit -> tools-tests -> build ->
- *   versions -> artifact -> types -> quality -> static-format -> e2e
+ *   syntax-script -> syntax-dist -> unit -> tools-tests -> artifact-matrix ->
+ *   build -> versions -> artifact -> types -> quality -> static-format -> e2e
  *
  * Each gate is captured as { name, cmd, exitCode, verdict, reason } where
  * verdict is PASS | FAIL | NOT_EXECUTED. The summary is written to
@@ -95,6 +95,20 @@ function toolsTestFiles() {
     .map((f) => path.join('test', 'tools', f));
 }
 
+function artifactTestFiles() {
+  const dir = path.join(ROOT, 'test', 'artifact');
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((f) => f.endsWith('.test.cjs'))
+    .sort()
+    .map((f) => path.join('test', 'artifact', f));
+}
+
 function e2eSpecFiles() {
   const dir = path.join(ROOT, 'test', 'e2e');
   return fs.readdirSync(dir)
@@ -117,6 +131,29 @@ function chromiumBinaryPresent() {
     if (entries.some((e) => e.startsWith('chromium-') && !e.includes('headless_shell'))) return true;
   }
   return false;
+}
+
+function e2EBlockedByOccupiedPort(perSpec) {
+  // Narrow environment-block classifier: every per-spec JSON report must show
+  // ZERO executed tests and a webServer port-bind conflict. Any executed test
+  // (pass or fail) or any other error keeps the FAIL verdict. This never
+  // masks a real spec failure; it only names total non-execution honestly.
+  if (!Array.isArray(perSpec) || perSpec.length === 0) return null;
+  for (const entry of perSpec) {
+    let report = null;
+    try {
+      report = JSON.parse(fs.readFileSync(path.join(ROOT, entry.report), 'utf8'));
+    } catch {
+      return null;
+    }
+    const stats = report.stats || {};
+    const executed = (stats.expected || 0) + (stats.unexpected || 0) + (stats.flaky || 0) + (stats.skipped || 0);
+    const suites = Array.isArray(report.suites) ? report.suites.length : -1;
+    const messages = [...(report.errors || []), ...(report.fatalErrors || [])].map((e) => String((e && e.message) || ''));
+    const bindConflict = messages.some((m) => /already used/.test(m) && /127\.0\.0\.1:8899/.test(m));
+    if (executed !== 0 || suites !== 0 || !bindConflict) return null;
+  }
+  return 'NOT EXECUTED (port 127.0.0.1:8899 is held by a foreign server in this environment, so the Playwright webServer could not bind; zero suites ran in every spec — rerun where 8899 is free)';
 }
 
 function runE2EGate() {
@@ -150,14 +187,37 @@ function runE2EGate() {
       outputTail: tail(result.stderr || ''),
     });
   }
+  if (worst === 0) {
+    return {
+      name,
+      cmd: 'npx playwright test <each test/e2e/*.spec.ts> --config test/e2e/playwright.config.ts --reporter=json > test-results/release-1.0.0/e2e-report-<spec>.spec.json',
+      exitCode: worst,
+      verdict: 'PASS',
+      reason: `all ${perSpec.length} specs passed; per-spec JSON reports written (never the shared test-results/e2e-runtime.json)`,
+      durationMs: perSpec.reduce((sum, s) => sum + s.durationMs, 0),
+      outputTail: '',
+      specs: perSpec,
+    };
+  }
+  const blocked = e2EBlockedByOccupiedPort(perSpec);
+  if (blocked) {
+    return {
+      name,
+      cmd: 'npx playwright test <each test/e2e/*.spec.ts> --config test/e2e/playwright.config.ts --reporter=json > test-results/release-1.0.0/e2e-report-<spec>.spec.json',
+      exitCode: null,
+      verdict: 'NOT_EXECUTED',
+      reason: blocked,
+      durationMs: perSpec.reduce((sum, s) => sum + s.durationMs, 0),
+      outputTail: '',
+      specs: perSpec,
+    };
+  }
   return {
     name,
     cmd: 'npx playwright test <each test/e2e/*.spec.ts> --config test/e2e/playwright.config.ts --reporter=json > test-results/release-1.0.0/e2e-report-<spec>.spec.json',
     exitCode: worst,
-    verdict: worst === 0 ? 'PASS' : 'FAIL',
-    reason: worst === 0
-      ? `all ${perSpec.length} specs passed; per-spec JSON reports written (never the shared test-results/e2e-runtime.json)`
-      : 'at least one spec failed; see per-spec reports',
+    verdict: 'FAIL',
+    reason: 'at least one spec failed; see per-spec reports',
     durationMs: perSpec.reduce((sum, s) => sum + s.durationMs, 0),
     outputTail: '',
     specs: perSpec,
@@ -170,6 +230,7 @@ function main() {
   gates.push(runGate('syntax-dist', [process.execPath, '-e', "new Function(require('fs').readFileSync('dist/travian-attack-alert.user.js','utf8'))"], 'dist artifact parses'));
   gates.push(runGate('unit', ['npm', 'test'], 'core + parity suites green'));
   gates.push(runGate('tools-tests', [process.execPath, '--test', ...toolsTestFiles()], 'tools suites green'));
+  gates.push(runGate('artifact-matrix', [process.execPath, '--test', ...artifactTestFiles()], 'detector matrix suites green'));
   gates.push(runGate('build', ['npm', 'run', 'build'], 'deterministic dist rebuild'));
   gates.push(runGate('versions', ['npm', 'run', 'check:versions'], 'version/identity contract holds'));
   gates.push(runGate('artifact', ['npm', 'run', 'check:artifact'], 'artifact checks green'));
