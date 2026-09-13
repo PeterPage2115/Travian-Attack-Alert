@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Discord alert preview</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: system-ui, sans-serif;
+            background: #101923;
+            color: #edf3f7;
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { margin: 0; min-width: 0; background: #101923; }
+        main { width: min(100%, 760px); margin: 0 auto; padding: 16px; }
+        h1 { margin: 0 0 16px; font-size: 20px; }
+        #status { color: #b7c6d2; font-size: 13px; margin-bottom: 12px; }
+        .cards { display: grid; gap: 12px; min-width: 0; }
+        .card {
+            min-width: 0;
+            padding: 14px;
+            border: 1px solid #40536a;
+            border-left: 4px solid #d7a23a;
+            border-radius: 8px;
+            background: #182633;
+            box-shadow: 0 3px 10px #0004;
+        }
+        .card-title, .player-link { color: #ffe8a6; }
+        .card-title {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 17px;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+        .description {
+            min-width: 0;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+        .description-heading { margin-bottom: 6px; }
+        .player-row {
+            min-width: 0;
+            margin: 5px 0;
+            overflow-wrap: anywhere;
+            white-space: normal;
+        }
+        .player-link {
+            display: inline-block;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            white-space: normal;
+        }
+        .fields {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 14px;
+            min-width: 0;
+        }
+        .field {
+            min-width: 0;
+            padding: 8px;
+            border: 1px solid #40536a;
+            border-radius: 5px;
+            overflow-wrap: anywhere;
+        }
+        .field-name { color: #b7c6d2; font-size: 12px; font-weight: 700; }
+        .field-value { margin-top: 3px; overflow-wrap: anywhere; }
+        .metadata {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            margin-top: 14px;
+            color: #b7c6d2;
+            font-size: 12px;
+        }
+        @media (max-width: 399px) {
+            .fields { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Discord alert preview</h1>
+    <div id="status" aria-live="polite">Loading payload…</div>
+    <section id="cards" class="cards" aria-label="Payload embeds"></section>
+</main>
+<script>
+(() => {
+    const query = new URLSearchParams(window.location.search);
+    const caseName = query.get('case');
+    const status = document.getElementById('status');
+    const cards = document.getElementById('cards');
+    const renderedSources = [];
+    let currentPayloads = [];
+
+    function source(element, kind, value) {
+        element.dataset.sourceKind = kind;
+        element.dataset.source = value;
+        renderedSources.push({ kind, value });
+    }
+
+    function renderInline(parent, value) {
+        const pattern = /(\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*)/g;
+        let cursor = 0;
+        let match;
+        while ((match = pattern.exec(value)) !== null) {
+            if (match.index > cursor) parent.append(document.createTextNode(value.slice(cursor, match.index)));
+            if (match[1][0] === '[') {
+                const link = document.createElement('a');
+                link.className = 'player-link';
+                link.href = match[3];
+                link.textContent = match[2];
+                parent.append(link);
+            } else {
+                const strong = document.createElement('strong');
+                strong.textContent = match[4];
+                parent.append(strong);
+            }
+            cursor = match.index + match[0].length;
+        }
+        if (cursor < value.length) parent.append(document.createTextNode(value.slice(cursor)));
+    }
+
+    function renderDescription(parent, value) {
+        const lines = value.split('\n');
+        lines.forEach((line, index) => {
+            if (index > 0) parent.append(document.createElement('br'));
+            const lineElement = document.createElement('div');
+            if (index === 0 && line === '**Players**') {
+                lineElement.className = 'description-heading';
+            } else {
+                lineElement.className = 'player-row';
+                lineElement.dataset.rowIndex = String(index - 1);
+            }
+            renderInline(lineElement, line);
+            parent.append(lineElement);
+        });
+    }
+
+    function renderEmbed(embed, requestIndex, embedIndex) {
+        const card = document.createElement('article');
+        card.className = 'card';
+        card.dataset.case = caseName;
+        card.dataset.requestIndex = String(requestIndex);
+        card.dataset.embedIndex = String(embedIndex);
+
+        if (typeof embed.title === 'string') {
+            const title = document.createElement('a');
+            title.className = 'card-title';
+            title.href = embed.url;
+            title.textContent = embed.title;
+            source(title, 'title', embed.title);
+            card.append(title);
+        }
+
+        const description = document.createElement('div');
+        description.className = 'description';
+        source(description, 'description', embed.description);
+        renderDescription(description, embed.description);
+        card.append(description);
+
+        if (Array.isArray(embed.fields)) {
+            const fields = document.createElement('div');
+            fields.className = 'fields';
+            embed.fields.forEach(field => {
+                const fieldElement = document.createElement('section');
+                fieldElement.className = 'field';
+                const name = document.createElement('div');
+                name.className = 'field-name';
+                name.textContent = field.name;
+                source(name, 'field-name', field.name);
+                const value = document.createElement('div');
+                value.className = 'field-value';
+                renderInline(value, field.value);
+                source(value, 'field-value', field.value);
+                fieldElement.append(name, value);
+                fields.append(fieldElement);
+            });
+            card.append(fields);
+        }
+
+        if (embed.footer || embed.timestamp) {
+            const metadata = document.createElement('footer');
+            metadata.className = 'metadata';
+            if (embed.footer && typeof embed.footer.text === 'string') {
+                const footer = document.createElement('span');
+                footer.textContent = embed.footer.text;
+                source(footer, 'footer', embed.footer.text);
+                metadata.append(footer);
+            }
+            if (typeof embed.timestamp === 'string') {
+                const timestamp = document.createElement('time');
+                timestamp.textContent = embed.timestamp;
+                source(timestamp, 'timestamp', embed.timestamp);
+                metadata.append(timestamp);
+            }
+            card.append(metadata);
+        }
+        cards.append(card);
+    }
+
+    function fits(selector) {
+        return [...document.querySelectorAll(selector)].every(element => element.scrollWidth <= element.clientWidth);
+    }
+
+    function buildResult(payloads) {
+        const expectedSources = [];
+        payloads.forEach(request => request.embeds.forEach(embed => {
+            if (typeof embed.title === 'string') expectedSources.push({ kind: 'title', value: embed.title });
+            expectedSources.push({ kind: 'description', value: embed.description });
+            (embed.fields || []).forEach(field => {
+                expectedSources.push({ kind: 'field-name', value: field.name });
+                expectedSources.push({ kind: 'field-value', value: field.value });
+            });
+            if (embed.footer && typeof embed.footer.text === 'string') expectedSources.push({ kind: 'footer', value: embed.footer.text });
+            if (typeof embed.timestamp === 'string') expectedSources.push({ kind: 'timestamp', value: embed.timestamp });
+        }));
+        const result = {
+            caseName,
+            width: window.innerWidth,
+            requestCount: payloads.length,
+            embedCount: payloads.reduce((count, request) => count + request.embeds.length, 0),
+            noDocumentOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+            rowsFit: fits('.player-row'),
+            linksFit: fits('a'),
+            fieldsFit: fits('.field'),
+            noTextOverflow: fits('.player-row') && fits('a') && fits('.field'),
+            fieldMode: window.innerWidth < 400 ? 'stacked' : 'three-column',
+            textMatches: JSON.stringify(renderedSources) === JSON.stringify(expectedSources),
+            textMismatch: JSON.stringify(renderedSources) !== JSON.stringify(expectedSources)
+        };
+        result.pass = result.noDocumentOverflow && result.noTextOverflow && !result.textMismatch;
+        window.__TAA_PREVIEW_RESULT__ = result;
+        status.textContent = `${caseName} · ${result.requestCount} request(s) · ${result.embedCount} embed(s)`;
+        return result;
+    }
+
+    window.__TAA_PREVIEW_RECHECK__ = () => buildResult(currentPayloads);
+
+    fetch(`/discord-preview-payloads?case=${encodeURIComponent(caseName || '')}`)
+        .then(response => response.ok ? response.json() : Promise.reject(new Error('preview payload unavailable')))
+        .then(data => {
+            currentPayloads = data.payloads;
+            data.payloads.forEach((request, requestIndex) => request.embeds.forEach((embed, embedIndex) => renderEmbed(embed, requestIndex, embedIndex)));
+            buildResult(data.payloads);
+        })
+        .catch(error => {
+            status.textContent = error.message;
+            window.__TAA_PREVIEW_RESULT__ = null;
+        });
+})();
+</script>
+</body>
+</html>

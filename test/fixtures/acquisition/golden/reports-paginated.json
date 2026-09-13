@@ -1,0 +1,10 @@
+{
+  "routeRole": "non-authoritative",
+  "tableCount": 0,
+  "rowCount": 0,
+  "uniqueRowCount": 0,
+  "iconCount": 0,
+  "attackSum": 0,
+  "raidSum": 0,
+  "rejectionReason": "reports-route"
+}

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Attack panel — 6.0.0 loopback</title>
+  <style>
+    body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+    main { padding: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    td { padding: 8px; border: 1px solid #40536a; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Alliance</h1>
+    <table aria-label="Alliance members">
+      <thead><tr><th>Player</th><th>Attacks</th></tr></thead>
+      <tbody>
+        <tr><td><a href="/profile/101">Lenny Barre</a></td><td><img class="attack" alt="1 attack" title="1 attack"></td></tr>
+        <tr><td><a href="/profile/102">Quinnos</a></td><td><img class="attack" alt="1 raid" title="1 raid"></td></tr>
+        <tr><td><a href="/profile/365">Player 365</a></td><td><img class="attack" alt="2 attacks" title="2 attacks"></td></tr>
+      </tbody>
+    </table>
+    <p id="panel-state-marker" data-panel-state="overview" hidden>overview</p>
+  </main>
+  <script>
+    window.__TAA_TEST_ALLOW_PANEL__ = true;
+    try {
+      const params = new URLSearchParams(location.search);
+      const state = params.get('panelState') || 'overview';
+      const marker = document.getElementById('panel-state-marker');
+      if (marker) { marker.textContent = state; marker.dataset.panelState = state; }
+      window.__TAA_TEST_PANEL_STATE__ = state;
+      if (state === 'failed' || state === 'uncertain' || state === 'pending' || state === 'long') {
+        const host = location.hostname;
+        const envelope = {
+          schemaVersion: 1,
+          generation: '6.0.0',
+          pending: state === 'pending' ? [{ eventId: 'pending-1', observedAtMs: Date.now() }] : [],
+          failed: state === 'failed' ? [{ eventId: 'failed-1', observedAtMs: Date.now() - 60000, reason: 'http' }] : [],
+          uncertain: state === 'uncertain' ? [{ eventId: 'uncertain-1', observedAtMs: Date.now() - 30000 }] : [],
+          inFlight: [],
+          metrics: { lastAuthoritativeScanAtMs: Date.now() }
+        };
+        try { localStorage.setItem('travianAlliancePendingBatch_v1:' + host, JSON.stringify(envelope)); } catch {}
+        if (state === 'long') {
+          const longId = 'x'.repeat(80);
+          try { localStorage.setItem('travianAllianceMappings:' + host, JSON.stringify({ [host]: { [longId]: ['123456789012345678'] } })); } catch {}
+        }
+      }
+    } catch {}
+  </script>
+  <script>
+    try { Object.defineProperty(document.fonts, 'ready', { configurable: true, value: Promise.resolve(document.fonts) }); } catch {}
+    window.__TAA_GM_VALUES__ = Object.create(null);
+    window.GM_registerMenuCommand = () => {};
+    window.GM_getValue = (key, fallback) => Object.prototype.hasOwnProperty.call(window.__TAA_GM_VALUES__, key) ? window.__TAA_GM_VALUES__[key] : fallback;
+    window.GM_setValue = (key, value) => { window.__TAA_GM_VALUES__[key] = value; };
+    window.GM_deleteValue = (key) => { delete window.__TAA_GM_VALUES__[key]; };
+    window.GM_xmlhttpRequest = (options) => setTimeout(() => options.onload?.({ status: 200, responseText: JSON.stringify({ id: 'fixture-message-id' }) }), 0);
+  </script>
+  <script src="/script.txt"></script>
+</body>
+</html>

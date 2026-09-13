@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Late hydrated alliance table</title></head>
+<body>
+  <main><h1>Alliance profile</h1><div id="fixture-root"></div></main>
+  <script>
+    setTimeout(() => {
+      document.getElementById('fixture-root').innerHTML = `
+        <table id="member-table" aria-label="Alliance members">
+          <tbody><tr>
+            <td><a href="/profile/202">Late Member</a></td>
+            <td><img class="attack" alt="1 attack"></td>
+          </tr></tbody>
+        </table>`;
+    }, 1500);
+  </script>
+</body>
+</html>

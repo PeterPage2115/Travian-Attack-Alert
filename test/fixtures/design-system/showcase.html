@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alert monitor primitive showcase</title>
+  <link rel="stylesheet" href="showcase.css">
+</head>
+<body>
+  <main class="showcase">
+    <section class="taa-overlay-root" id="taa-panel-overlay" aria-label="Panel overlay">
+    <section class="dialog-shell" data-primitive="dialog-shell" role="dialog" aria-modal="true" aria-labelledby="showcase-title">
+      <header class="shell-header">
+        <div class="intro"><span class="eyebrow">PRIMITIVE SHOWCASE · TODO 1</span><h1 id="showcase-title">Alliance alert monitor</h1><p class="muted">Static contract for the operations-console panel.</p></div>
+        <button class="button" type="button" data-state="default">Close</button>
+      </header>
+      <section class="status-strip" aria-labelledby="health-title">
+        <h2 id="health-title" class="sr-only">Health states</h2>
+        <div class="status" data-tone="healthy"><strong>Healthy</strong><span class="metric">Observed 23:03:12</span></div>
+        <div class="status" data-tone="warning"><strong>Warning</strong><span>Queue age 2 minutes</span></div>
+        <div class="status" data-tone="error"><strong>Error</strong><span>Storage readback failed</span></div>
+        <div class="status" data-tone="standby"><strong>Standby</strong><span>Follower; no writes</span></div>
+      </section>
+      <nav aria-label="Monitor views"><div class="tabs" role="tablist" aria-label="Monitor views">
+        <button class="tab" role="tab" aria-selected="true" aria-controls="overview-panel" id="overview-tab" type="button">Overview</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="players-panel" id="players-tab" type="button">Players</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="alerts-panel" id="alerts-tab" type="button">Alerts</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="diagnostics-panel" id="diagnostics-tab" type="button">Diagnostics</button>
+        <button class="tab" role="tab" aria-selected="false" aria-disabled="true" disabled type="button">Locked</button>
+      </div></nav>
+       <section class="tabpanel" role="tabpanel" tabindex="0" id="overview-panel" aria-labelledby="overview-tab">
+        <div class="primitive"><h2>Button variants and states</h2><div class="actions">
+          <button class="button" type="button" data-state="default">Default</button><button class="button" data-variant="primary" type="button" data-state="hover">Primary hover</button><button class="button" data-variant="olive" type="button" data-state="active">Olive active</button><button class="button" data-variant="danger" type="button" data-state="focus">Remove mapping</button><button class="button" type="button" aria-busy="true" data-state="loading">Saving…</button><button class="button" type="button" disabled data-state="disabled">Disabled</button>
+        </div></div>
+        <div class="primitive"><h2>Labelled fields and inline feedback</h2><div class="two-col">
+          <div class="field"><label class="label" for="player-id">Profile ID</label><input class="input" id="player-id" name="player-id" value="385" aria-describedby="player-hint"><small class="hint" id="player-hint">Stable ID; display names may change.</small></div>
+          <div class="field"><label class="label" for="invalid-id">Discord user IDs</label><input class="input" id="invalid-id" name="invalid-id" value="bad value" aria-invalid="true" aria-describedby="invalid-hint"><small class="feedback" id="invalid-hint" role="alert">Enter numeric IDs separated by commas.</small></div>
+        </div><div class="stack"><p class="feedback" data-tone="loading" role="status" aria-live="polite">Loading verified persistence…</p><p class="feedback" role="status" aria-live="polite">Saved after readback.</p><p class="feedback" data-tone="error" role="alert">Could not save. Your values remain.</p><p class="feedback" data-tone="standby" role="status">Standby: another tab owns the monitor.</p></div></div>
+         <div class="primitive" data-primitive="inline-checkbox-filter"><h2>Inline filters</h2><div class="filter-group" role="group" aria-label="Player state filters"><label><input type="checkbox" id="filter-mapped"> Mapped</label><label><input type="checkbox" id="filter-unmapped"> Unmapped</label><label><input type="checkbox" id="filter-muted"> Muted</label><label><input type="checkbox" id="filter-orphaned"> Orphaned</label></div></div>
+         <div class="primitive" data-primitive="status-count-strip"><h2>Player status counts</h2><dl class="count-strip"><div><dt>Monitored</dt><dd>60</dd></div><div><dt>Mapped</dt><dd>42</dd></div><div><dt>Unmapped</dt><dd>12</dd></div><div><dt>Muted</dt><dd>4</dd></div><div><dt>Orphaned</dt><dd>2</dd></div></dl></div>
+         <div class="primitive" data-primitive="compact-player-row"><h2>Compact player rows</h2><div class="field"><label class="label" for="player-search">Search players</label><input class="input" id="player-search" type="search" placeholder="Name or profile ID"></div><ul class="list" aria-label="Players"><li class="list-row"><article class="row-copy"><h3>sandlа</h3><span class="muted mono">profile/385 · Mapped · 2 recipients</span></article><button class="button" data-variant="olive" type="button">Edit mapped player</button></li><li class="list-row"><article class="row-copy"><h3>Unmapped player</h3><span class="muted mono">profile/402 · Unmapped</span></article><button class="button" type="button">Map player</button></li><li class="list-row"><article class="row-copy"><h3>Muted player</h3><span class="muted mono">profile/403 · Muted</span></article><button class="button" type="button">Unmute player</button></li><li class="list-row"><article class="row-copy"><h3>Orphaned mapping</h3><span class="muted mono">profile/404 · Orphaned</span></article><button class="button" type="button">Edit orphaned mapping</button></li></ul></div>
+         <div class="primitive" data-primitive="pagination-control"><h2>Pagination</h2><p id="pagination-status" role="status" aria-live="polite">Showing 1–20 of 60 players · Page 1 of 3</p><div class="actions" aria-label="Player pagination"><button class="button" type="button" disabled>Previous page</button><span class="mono" aria-current="page">Page 1</span><button class="button" type="button">Next page</button></div></div>
+         <div class="primitive" data-primitive="inline-editor-confirmation"><h2>Inline editor and confirmation</h2><div class="field"><label class="label" for="recipient-editor">Discord recipients</label><input class="input" id="recipient-editor" name="recipient-editor" value="123456789012345678, 234567890123456789" aria-describedby="recipient-hint"><small class="hint" id="recipient-hint">Comma-separated IDs; values wrap safely.</small></div><div class="actions"><button class="button" data-variant="primary" type="button">Save recipients</button><button class="button" type="button">Cancel edit</button></div></div>
+       </section>
+      <section class="stack" aria-labelledby="states-title"><h2 id="states-title">Banners and confirmation</h2>
+        <aside class="banner" data-tone="empty" role="status"><strong>Empty</strong><span>No failed deliveries need attention.</span></aside>
+        <aside class="banner" data-tone="loading" role="status" aria-busy="true"><strong>Loading</strong><span>Reading diagnostics from verified storage…</span></aside>
+        <aside class="banner" data-tone="error" role="alert"><strong>Error</strong><span>History is unavailable. Retry without leaving this view.</span></aside>
+        <aside class="banner" data-tone="standby" role="status"><strong>Standby</strong><span>Follower mode is active; configuration writes are disabled.</span></aside>
+        <fieldset><legend>Remove mapping?</legend><p>This action removes the recipient mapping for profile 402.</p><div class="actions" role="group" aria-label="Remove mapping confirmation"><button class="button" type="button">Cancel</button><button class="button" data-variant="danger" type="button">Confirm removal</button><button class="button" data-variant="danger" type="button" aria-busy="true">Confirming…</button></div></fieldset>
+       </section>
+     </section>
+     </section>
+     <section class="primitive launcher-contract" data-primitive="launcher-states" aria-labelledby="launcher-states-title"><h2 id="launcher-states-title">Launcher states</h2><p><span class="state-chip">Default</span> <span class="state-chip" data-state="hover">Hover</span> <span class="state-chip" data-state="focus">Focus</span> <span class="state-chip" data-state="fallback">Hostile-host fallback</span></p></section>
+     <section class="primitive" data-primitive="alert-hierarchy" aria-labelledby="alert-hierarchy-title"><h2 id="alert-hierarchy-title">Alert hierarchy</h2><p><strong>Attack wave · +2 attacks · 4 players</strong></p><p class="muted">High · Player name · <strong>+1 attack</strong> · now 2 attacks / 1 raid</p><p class="muted">Active now: 8 attacks / 3 raids · Priority: High · Observed: 23:03:12</p><p class="muted">World footer: cw.x2.international.travian.com · no village, coordinate, arrival, troop, or reinforcement data</p></section>
+     <button class="taa-launcher-root" id="taa-open-panel" type="button" aria-label="Open alert monitor panel">Open monitor</button>
+  </main>
+  <script>
+    document.querySelectorAll('[role="tab"]').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        if (tab.disabled) return;
+        document.querySelectorAll('[role="tab"]').forEach(function (item) { item.setAttribute('aria-selected', item === tab ? 'true' : 'false'); });
+      });
+    });
+  </script>
+</body>
+</html>

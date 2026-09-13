@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "fixture": "canonical-attack-evidence",
+  "hashes": {
+    "test/fixtures/discord/canonical.cjs": "157b0a2f30a3f8ffdf32541b68675328ae3ce9fc8534166ef87935e0abc5e700",
+    "test/fixtures/discord/verify-attack-evidence.cjs": "9f649d7a1a31103212bc0ee8d143f462dc496f2854cfd18c21467e0801bfaa40"
+  },
+  "sourceEvidence": {
+    "fanoutAndLimits": "test/fixtures/discord/verify-attack-evidence.cjs",
+    "loopbackAndCommandAssertions": "test/fixtures/discord/verify-attack-evidence.cjs",
+    "testImport": "test/script.test.cjs:24"
+  }
+}

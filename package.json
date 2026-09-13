@@ -1,0 +1,28 @@
+{
+  "name": "travian-attack-alert",
+  "version": "6.2.1",
+  "private": true,
+  "description": "Testy node:test dla Travian - Alliance Attacks to Discord (script.txt). Bez zewnętrznych zależności.",
+  "scripts": {
+    "test": "node --test test/script.test.cjs test/pure-module-parity.test.cjs",
+    "build": "node tools/build.cjs",
+    "backup": "node tools/backup.cjs",
+    "rollback": "node tools/rollback.cjs",
+    "check:versions": "node tools/check-versions.cjs",
+    "check:artifact": "node tools/check-artifact.cjs",
+    "check:types": "tsc --noEmit",
+    "quality": "node tools/quality.cjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.0",
+    "@playwright/test": "1.48.0",
+    "@types/node": "22.15.30",
+    "esbuild": "0.25.9",
+    "playwright": "1.48.0",
+    "typescript": "5.9.2"
+  },
+  "packageManager": "npm@10.9.3",
+  "engines": {
+    "node": ">=18"
+  }
+}

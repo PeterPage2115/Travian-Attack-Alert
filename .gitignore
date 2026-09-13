@@ -1,0 +1,38 @@
+# Zależności
+node_modules/
+
+# Logi
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Artefakty testów i narzędzi
+coverage/
+.tmp/
+test-results/
+.playwright-mcp/
+.omo/
+.dane/
+.codegraph/
+backups/
+*.tsbuildinfo
+
+# System / edytory
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Środowiska lokalne
+.env
+.env.*
+!.env.example
+
+# UWAGA: NIGDY nie wersjonuj sekretów!
+# Webhook URL Discorda jest sekretem — nie zapisuj go w plikach źródłowych
+# ani w żadnym pliku wersjonowanym (w tym .env). Sekret konfiguruje się
+# wyłącznie przez menu Tampermonkey (GM_setValue), nigdy przez kod.
