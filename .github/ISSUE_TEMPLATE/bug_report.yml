@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a problem with Travian Attack Alert 1.0.0 (release candidate)
+body:
+  - type: markdown
+    attributes:
+      value: |
+        <!-- NEVER paste webhook URLs, tokens, cookies, passwords, raw HTML, or full settings files. Attach only the redacted incident bundle from the Diagnostics tab (Export incident bundle). Reports containing secrets will be asked to redact, not processed as-is. -->
+        Thank you for reporting. Fill in every field with synthetic or redacted data only.
+  - type: input
+    id: script-version
+    attributes:
+      label: Script version and release ID
+      description: From the installed script header or Overview tab
+      placeholder: "1.0.0 / taa-1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser + userscript manager + versions
+      description: Exact browser, manager, and OS versions
+      placeholder: "Chrome 131 + Tampermonkey 5.3 + Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Numbered steps on fixture or redacted data only
+      placeholder: "1. Open canonical page 2. ... 3. Observe ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead, with visible labels quoted verbatim
+    validations:
+      required: true
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Redacted incident bundle note
+      description: Confirm you attached the Diagnostics-tab bundle and that it contains no secrets
+      placeholder: "Attached incident bundle, verified it holds no webhook, token, cookie, or raw DOM."
+    validations:
+      required: true
+  - type: dropdown
+    id: install-state
+    attributes:
+      label: Installation state
+      options:
+        - Single active installation
+        - More than one installation (may double-send)
+        - Unsure
+    validations:
+      required: true
