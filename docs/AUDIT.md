@@ -41,7 +41,7 @@ inventing fixes is explicitly out of scope for this task.
 | L-02 Sampling gaps: arrivals that appear and disappear between two accepted snapshots cannot be inferred | DESIGN §9; `script.txt` 60–120 s reload lifecycle | by design, quoted in DESIGN §9 | LIMITATION, no fix |
 | L-03 At-least-once delivery may duplicate after a lost acknowledgement | DESIGN §9; dispatch/transport queue stages | by design, covered by Todos 10+ delivery matrix, not this task | LIMITATION, no fix |
 | L-04 First-scan-with-preexisting-counts onboarding semantics (clean install, no historical flood) | `script.txt:runAttackLifecycleForDocument:7185-7274` | owned by Todo 9 e2e (`clean-install.spec.ts`); this matrix deliberately uses all-zero establishment scans to avoid trespassing that task's scenarios | DEFERRED to Todo 9, no fix here |
-| L-05 Uncertain settlement stays manual (`uncertain` never auto-retries to success) | DESIGN §9 | owned by Todo 10 transport/recovery matrix | DEFERRED to Todo 10, no fix here |
+| L-05 Uncertain settlement stays manual (`uncertain` never auto-retries to success) | DESIGN §9; `script.txt:classifyDiscordResponse:2804`, `sendDiscordPayloadWithRetry:2866`, `settleMonitorTransport:7668` | Todo 10 delivery matrix, all green on unchanged code: artifact test "(e) ID-less and non-JSON 200" (exactly 1 wire request, `attempts:1`, `uncertain`, `malformed-json-200` parked, `failed` empty) + queue test "(d)/(e)" (`failed` vs `uncertain` retention) + e2e `discord-delivery.spec.ts` (3/3: retry-then-ack, restart-lineage, no-ping) | PROVEN-CORRECT (Todo 10): no auto-retry from `uncertain`; manual `Retry uncertain` / `Mark delivered` menu path unchanged. No fix. |
 
 ## Verification
 
