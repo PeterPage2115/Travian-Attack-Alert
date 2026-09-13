@@ -6,7 +6,15 @@
   },
   "artifact": {
     "path": "script.txt",
-    "sha256": "04c8c990e8ccc542ddeb6bcb38f91b173bc2986008b64efff38418b08dbdfc63"
+    "sha256": "78f866656bc597e6d3ca7ab4fd24155359f3b80d064ab22a04eb0a5116c44084",
+    "source": {
+      "path": "script.txt",
+      "sha256": "78f866656bc597e6d3ca7ab4fd24155359f3b80d064ab22a04eb0a5116c44084"
+    },
+    "dist": {
+      "path": "dist/travian-attack-alert.user.js",
+      "sha256": "78f866656bc597e6d3ca7ab4fd24155359f3b80d064ab22a04eb0a5116c44084"
+    }
   },
   "toolchain": {
     "esbuild": "0.25.9",
