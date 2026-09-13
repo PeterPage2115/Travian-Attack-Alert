@@ -97,8 +97,57 @@ declared supported. Violentmonkey stays candidate/not-supported.
 pilotReady:false — mandatory Chrome + Tampermonkey PASS is missing, so the
 pilot gate is not met by this matrix (Todo 20 consumes this line).
 
-### PENDING (Todo 19): reproducibility seal + final full-gate rerun
+### SEAL (Todo 19): reproducibility + final full-gate rerun — 2026-09-13, verdict BLOCKED
 
-Two builds in clean checkouts of the release commit with identical
-SHA-256, plus a full `npm run check:release -- --offline` PASS on the
-final artifact, with exit codes, test counts, and environment recorded.
+Release commit `b8b41a5` (`test(managers): record real userscript compatibility matrix`).
+
+**Reproducibility: PASS.** Two clean checkouts of exactly `b8b41a5` outside the
+repo (`/tmp/taa-repro-A`, `/tmp/taa-repro-B`, detached HEAD, fresh `npm ci` +
+`npm run build` in each) produce byte-identical
+`dist/travian-attack-alert.user.js`: `cmp` A=B and A=main-tree identical;
+SHA-256 `a34272340e92c1b5159244345a8ef2da98c6bd297e13d8547ed11838622f3ce7`
+in A, B, and the main tree; sidecars and `metadata.json` artifact/dist hashes
+identical (`taa-1.0.0` / `1.0.0`); all three trees `git status` clean after
+rebuild. Evidence (gitignored):
+`test-results/release-1.0.0/reproducibility.json`
+(`{shaA, shaB, shaMain, match:true, commit}`, node `v22.22.0`, npm `10.9.4`).
+Both worktrees removed afterwards and verified (`git worktree list`, `/tmp`
+dirs gone).
+
+**Final full offline gate on the final tree: FAIL (9/12 PASS) — seal BLOCKED,
+no fix applied.** `npm run check:release -- --offline` exit 1; evidence
+`test-results/release-1.0.0/offline-summary.json` (mode `offline`).
+Per-gate: PASS syntax-script, syntax-dist, tools-tests, artifact-matrix, build,
+artifact, types, quality, e2e; FAIL unit, versions, static-format.
+e2e EXECUTED honestly on this run: all 11 specs green (attack-panel 96,
+clean-install 36, discord-delivery 18, manual-fetch-timing 6, dual-tab-lease 24,
+browser-qa 12, live-member-scan 54, migration-6x 18, onboarding-states 36,
+readiness-late 18, route-lease 18 — 336 expected, 0 unexpected, 0 flaky).
+An earlier run inside this task reported e2e NOT_EXECUTED because port
+127.0.0.1:8899 was held by stale orphan fixture servers (PIDs 26865 from this
+task's own timed-out invocation, plus pre-existing PIDs 3031/3032 holding
+8898/8899); the orphans were killed, the ports verified free, and the gate
+rerun from scratch — the NOT_EXECUTED verdict is superseded by executed
+evidence, not copied.
+
+**Named blocker (Todo 19 seals or blocks, never redesigns — no drive-by fix):**
+the `9d19a67` `docs(readme): publish English-first operator guide` rewrite
+removed the machine-checked README contracts the checked-in gates assert on:
+unit 355/358 with tests 9 (`Tampermonkey **1.0.0` claim missing), 129 and 131
+(README example bytes / guidance strings) failing; `check:versions` FAIL
+(README version and release-ID claims missing); static-format audit FAIL
+(zero `discord-alert-example` markers in README, `actual:null`).
+Reproducibility, artifact identity (`@version 1.0.0`, `Travian Attack Alert` /
+`travian-attack-alert-public`, single neutral `https://*.travian.com/alliance*`
+match, `@noframes`, no update/download URLs), the tracked-tree secret sweep
+(only `FAKE_*` synthetic placeholders in tests — no private keys, no AKIA, no
+real webhook URLs), and the non-loopback request-target scan (`src/` has zero
+hardcoded `https://` targets; surviving fixture hits are the synthetic
+`cw.x2.international.travian.com` host, `real.example` rejection bait, and
+split-string validator fragments — all test-only, no real requests) are all
+clean. Unblock path for a follow-up: reconcile the README wording with the
+asserted contracts (or the contracts with the intended README) and rerun the
+gate to green.
+
+Final per AGENTS.md: `npm run build && npm run check:artifact && npm run backup`
+all green, same SHA `a3427234…`; `git status --short` clean after the runs.
