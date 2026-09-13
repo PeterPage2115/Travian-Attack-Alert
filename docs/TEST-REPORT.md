@@ -42,14 +42,60 @@ final commit).
 
 ## Planned, not executed
 
-### PENDING (Todo 18): real-manager matrix
+### EXECUTED (Todo 18): real-manager matrix — 2026-09-13, all NOT_EXECUTED
 
-No browser/manager combination is declared supported yet. Mandatory
-target: desktop Chrome stable + Tampermonkey stable. Candidates:
-Firefox + Tampermonkey, Chrome/Firefox + Violentmonkey. Each needs:
-local-file install, identity/version check, injection on an allowed
-host, GM storage, menu commands, Web Locks, loopback Discord send,
-and local-only update/downgrade behavior, with exact versions recorded.
+Install target was the exact committed bytes
+`dist/travian-attack-alert.user.js`
+(SHA-256 `a34272340e92c1b5159244345a8ef2da98c6bd297e13d8547ed11838622f3ce7`,
+verified `sha256sum -c dist/travian-attack-alert.user.js.sha256` → OK before
+any attempt; identity `Travian Attack Alert` / `travian-attack-alert-public` /
+`1.0.0`). No manager could be installed under automation, so every
+downstream step (identity/version in manager UI, injection, GM storage,
+menu commands, Web Locks, loopback Discord send, update/downgrade) is
+NOT_EXECUTED for every combo. Nothing below converts this into a PASS.
+
+| Combo | Versions found | Verdict | Evidence dir (gitignored) |
+|---|---|---|---|
+| Chrome + Tampermonkey (mandatory) | Chrome `151.0.7922.108` (system); TM version n/a (not installed) | NOT_EXECUTED | `test-results/release-1.0.0/manager-matrix/chrome-tm/` |
+| Firefox + Tampermonkey | Firefox `153.0` (Playwright-bundled build; no system binary); TM n/a | NOT_EXECUTED | `test-results/release-1.0.0/manager-matrix/firefox-tm/` |
+| Chrome + Violentmonkey | Chrome `151.0.7922.108`; VM n/a | NOT_EXECUTED | `test-results/release-1.0.0/manager-matrix/chrome-vm/` |
+| Firefox + Violentmonkey | Firefox `153.0` (Playwright-bundled); VM n/a | NOT_EXECUTED | `test-results/release-1.0.0/manager-matrix/firefox-vm/` |
+
+Per-combo blockers (each proven by the logged probe output, never a bare
+claim; all profiles fresh `--user-data-dir`/ephemeral, deleted afterwards,
+no credentials entered, no sync, loopback-only):
+
+- Chrome + Tampermonkey: 4 attempts. CWS reachable (`TM-CWS 200`); consent
+  gate passed; `Add to Chrome` clicked (headless + headed on `DISPLAY=:0`).
+  Install stalls: button area becomes a spinner, no native WebStore
+  confirmation dialog is surfaced to DOM automation, and no OS-level input
+  tool exists (`xdotool` absent) to drive it. Tampermonkey is proprietary —
+  CWS-or-nothing, no unpacked fallback attempted by policy.
+  Logs `attempt.log`–`attempt4.log`, screenshots `store-page2.png`,
+  `after-install-click2.png`, `headed-after-click.png`.
+- Chrome + Violentmonkey: 3 attempts. Direct detail URL with a wrong
+  trailing id redirected to store home (curl `-L` + attempt log prove it);
+  the correct listing
+  (`/detail/violentmonkey/jinjaccalgkegednnccohejagnlnfdag`) was found via
+  store search and `Add to Chrome` clicked — same spinner stall as TM.
+  Unpacked path (public repo reachable: `git ls-remote .../violentmonkey`
+  OK) recorded as follow-up, not executed here.
+- Firefox + Tampermonkey: 3 attempts. AMO page loads (`200`, Playwright
+  Firefox `153.0`); clicking `Add to Firefox` redirects to
+  `accounts.firefox.com/authorization` — install requires a Firefox Account
+  login, which is out of scope (no credentials). One attempt additionally
+  hit an intermittent AMO anti-bot CAPTCHA (screenshot `tm-after-click.png`;
+  clean retry `retry-landing.png` proves intermittence, not persistence).
+  `about:addons` is not navigable under automation (timeout, logged).
+- Firefox + Violentmonkey: 2 attempts. Same `accounts.firefox.com`
+  login-wall redirect after clicking `Add to Firefox` (logged URL embeds
+  the `/addon/violentmonkey/` return path).
+
+Supported set: EMPTY — no combination reached full PASS, so nothing is
+declared supported. Violentmonkey stays candidate/not-supported.
+
+pilotReady:false — mandatory Chrome + Tampermonkey PASS is missing, so the
+pilot gate is not met by this matrix (Todo 20 consumes this line).
 
 ### PENDING (Todo 19): reproducibility seal + final full-gate rerun
 
