@@ -5,6 +5,10 @@
   "description": "Testy node:test dla Travian - Alliance Attacks to Discord (script.txt). Bez zewnętrznych zależności.",
   "scripts": {
     "test": "node --test test/script.test.cjs test/pure-module-parity.test.cjs",
+    "test:tools": "node --test test/tools/backup-rollback.test.cjs test/tools/readme-runtime-contract.test.cjs",
+    "test:e2e": "node tools/run-e2e.cjs",
+    "test:artifact": "node -e \"new Function(require('fs').readFileSync('script.txt','utf8'))\" && node -e \"new Function(require('fs').readFileSync('dist/travian-attack-alert.user.js','utf8'))\" && npm run check:artifact && sha256sum -c dist/travian-attack-alert.user.js.sha256",
+    "check:release": "node tools/check-release.cjs",
     "build": "node tools/build.cjs",
     "backup": "node tools/backup.cjs",
     "rollback": "node tools/rollback.cjs",

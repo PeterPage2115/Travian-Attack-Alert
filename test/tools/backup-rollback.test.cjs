@@ -24,8 +24,14 @@ function fixture() {
     for (const file of TOOL_FILES) fs.copyFileSync(path.join(ROOT, 'tools', file), path.join(project, 'tools', file));
     fs.copyFileSync(path.join(ROOT, 'package.json'), path.join(project, 'package.json'));
     fs.writeFileSync(path.join(project, 'script.txt'), '// ==UserScript==\n// ==/UserScript==\n// fixture artifact\n');
-    fs.writeFileSync(path.join(project, 'metadata.json'), JSON.stringify({ schemaVersion: 1, release: { version: VERSION, releaseId: RELEASE_ID }, artifact: { path: 'script.txt', sha256: hash(path.join(project, 'script.txt')) } }) + '\n');
+    const scriptHash = hash(path.join(project, 'script.txt'));
+    fs.writeFileSync(path.join(project, 'metadata.json'), JSON.stringify({ schemaVersion: 1, release: { version: VERSION, releaseId: RELEASE_ID }, artifact: { path: 'script.txt', sha256: scriptHash, source: { path: 'script.txt', sha256: scriptHash }, dist: { path: 'dist/travian-attack-alert.user.js', sha256: scriptHash } } }) + '\n');
     fs.writeFileSync(path.join(project, 'module-manifest.json'), JSON.stringify({ schemaVersion: 1, release: { version: VERSION, releaseId: RELEASE_ID }, modules: [] }) + '\n');
+    // Todo 5 made check-artifact verify the deterministic dist packaging, so the
+    // fixture mirrors a built project: byte-identical dist copy plus sidecar.
+    fs.mkdirSync(path.join(project, 'dist'), { recursive: true });
+    fs.copyFileSync(path.join(project, 'script.txt'), path.join(project, 'dist', 'travian-attack-alert.user.js'));
+    fs.writeFileSync(path.join(project, 'dist', 'travian-attack-alert.user.js.sha256'), `${scriptHash}  dist/travian-attack-alert.user.js\n`);
     return project;
 }
 function liveHashes(project) { return ['script.txt', 'metadata.json', 'module-manifest.json'].map((file) => hash(path.join(project, file))); }

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { installArtifactRuntime, WEBHOOK } from './runtime-bootstrap';
 
-test('real artifact retries 429 once and uses empty continuation mentions', async ({ page }) => {
+test('manual-fetch round-trip timing is 900-1300ms (NOT artifact dispatch; real dispatch proof is Todo 10 scope)', async ({ page }) => {
   await installArtifactRuntime(page, { webhook: true });
   await page.evaluate((url) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
   await page.evaluate(() => new Promise<void>(resolve => {
@@ -20,8 +20,8 @@ test('real artifact retries 429 once and uses empty continuation mentions', asyn
   expect(log.discordRequests[1].endedAt - log.discordRequests[0].startedAt).toBeGreaterThanOrEqual(900);
   expect(log.discordRequests[1].endedAt - log.discordRequests[0].startedAt).toBeLessThanOrEqual(1300);
   expect(await page.evaluate(() => window.__TAA_REQUESTS__?.every(url => url.startsWith(location.origin)))).toBeTruthy();
-  fs.mkdirSync('test-results', { recursive: true });
-  const evidencePath = path.join('test-results', 'e2e-runtime.json');
+  fs.mkdirSync(path.join('test-results', 'release-1.0.0'), { recursive: true });
+  const evidencePath = path.join('test-results', 'release-1.0.0', 'e2e-evidence-discord-manual-fetch-timing.json');
   const existing = fs.existsSync(evidencePath) ? JSON.parse(fs.readFileSync(evidencePath, 'utf8')) : {};
   fs.writeFileSync(evidencePath, `${JSON.stringify({ ...existing, fixtureRequestLog: log.discordRequests, cleanup: { openRequests: log.openRequests, serverManagedByPlaywright: true } }, null, 2)}\n`);
 });

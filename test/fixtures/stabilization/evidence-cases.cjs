@@ -37,8 +37,8 @@ const tasks = Object.freeze({
         failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Todo 6 injective|Todo 6 delivery accounting|Todo 6 old envelopes', TEST], artifacts: ['script.txt', 'test/script.test.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-6-manifest.json'] }
     },
     7: {
-        happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-7.cjs'], artifacts: ['script.txt', 'test/script.test.cjs', 'test/e2e/discord-partition-retry.spec.ts'] },
-        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Task 7 rejection', TEST], artifacts: ['script.txt', 'test/script.test.cjs', 'test/e2e/discord-partition-retry.spec.ts'] }
+        happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-7.cjs'], artifacts: ['script.txt', 'test/script.test.cjs', 'test/e2e/discord-manual-fetch-timing.spec.ts'] },
+        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Task 7 rejection', TEST], artifacts: ['script.txt', 'test/script.test.cjs', 'test/e2e/discord-manual-fetch-timing.spec.ts'] }
     },
     8: {
         happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-8.cjs'], artifacts: ['script.txt', 'test/script.test.cjs', 'test/fixtures/stabilization/task-8.cjs'] },
