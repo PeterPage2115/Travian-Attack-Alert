@@ -90,7 +90,7 @@ function handleMemberRoute(request, response) {
 }
 
 // HTTP harness GET /alliance?panelState=... on PORT=8899 with __TAA_TEST_ALLOW_PANEL__ bypass
-const server = http.createServer((request, response) => {
+function handleRequest(request, response) {
   const rawUrl = String(request.url || '/');
   const parsed = new URL(rawUrl, `http://127.0.0.1:${PORT}`);
   const pathname = parsed.pathname;
@@ -122,6 +122,13 @@ const server = http.createServer((request, response) => {
 
   if (pathname === '/script.txt') {
     sendFile(response, path.join(ROOT, 'script.txt'), 'text/plain; charset=utf-8');
+    return;
+  }
+
+  // Todo 9 clean-install harness support: serve the final distributed bytes
+  // (NOT script.txt) so e2e executes the exact release artifact.
+  if (pathname === '/dist/travian-attack-alert.user.js') {
+    sendFile(response, path.join(ROOT, 'dist', 'travian-attack-alert.user.js'), 'text/plain; charset=utf-8');
     return;
   }
 
@@ -163,7 +170,9 @@ const server = http.createServer((request, response) => {
 
   response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
   response.end('not found');
-});
+}
+
+const server = http.createServer(handleRequest);
 
 server.on('connection', (socket) => {
   sockets.add(socket);
@@ -174,9 +183,51 @@ server.listen(PORT, '127.0.0.1', () => {
   process.stdout.write(`panel-fixture:${PORT}\n`);
 });
 
+// Todo 9 clean-install harness support: the product's Discord payload builder
+// (safeAllianceUrl) only trusts https page origins, so artifact dispatch cannot
+// be proven over the plain-http fixture. Serve the SAME handler over TLS on
+// 127.0.0.1:8898 with an ephemeral self-signed loopback cert generated at
+// startup into os.tmpdir (never committed, never reused across runs). If cert
+// generation fails, https stays unavailable and http behavior is unchanged.
+const HTTPS_PORT = Number(process.env.HTTPS_PORT || 8898);
+let httpsServer = null;
+try {
+  const { spawnSync } = require('node:child_process');
+  const os = require('node:os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-https-'));
+  const keyPath = path.join(tmp, 'key.pem');
+  const certPath = path.join(tmp, 'cert.pem');
+  const generated = spawnSync('openssl', [
+    'req', '-x509', '-newkey', 'rsa:2048',
+    '-keyout', keyPath, '-out', certPath,
+    '-days', '2', '-nodes', '-subj', '/CN=127.0.0.1',
+    '-addext', 'subjectAltName=IP:127.0.0.1',
+  ], { encoding: 'utf8' });
+  if (generated.status === 0 && fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    httpsServer = require('node:https').createServer(
+      { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) },
+      handleRequest,
+    );
+    httpsServer.on('connection', (socket) => {
+      sockets.add(socket);
+      socket.once('close', () => sockets.delete(socket));
+    });
+    httpsServer.listen(HTTPS_PORT, '127.0.0.1', () => {
+      process.stdout.write(`panel-fixture-https:${HTTPS_PORT}\n`);
+    });
+  } else {
+    process.stderr.write('panel-fixture: https disabled (openssl cert generation failed)\n');
+  }
+} catch (error) {
+  process.stderr.write(`panel-fixture: https disabled (${error && error.message ? error.message : error})\n`);
+}
+
 function shutdown() {
   for (const socket of sockets) socket.destroy();
-  server.close(() => process.exit(0));
+  server.close(() => {
+    if (httpsServer) httpsServer.close(() => process.exit(0));
+    else process.exit(0);
+  });
 }
 
 process.once('SIGTERM', shutdown);

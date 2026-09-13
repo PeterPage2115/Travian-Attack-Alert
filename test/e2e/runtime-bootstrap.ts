@@ -22,6 +22,9 @@ export type RuntimeScenario = {
   readonly webhook?: boolean;
   readonly lateTable?: boolean;
   readonly continuousMutation?: boolean;
+  // Todo 9 clean-install support: which artifact bytes to execute.
+  // Defaults to '/script.txt' so every pre-existing spec is untouched.
+  readonly artifactPath?: string;
 };
 
 export type ArtifactRuntime = {
@@ -29,6 +32,33 @@ export type ArtifactRuntime = {
   readonly fixtureOrigin: string;
   readonly discordOrigin: string;
 };
+
+/**
+ * Todo 9 clean-install support (opt-in; every pre-existing spec is untouched).
+ *
+ * The panel fixture page (attack-panel.html) installs its own inline
+ * GM_xmlhttpRequest stub that fake-acknowledges (200 + fixture id) WITHOUT
+ * touching the network — page scripts run after addInitScript, so the inline
+ * stub wins over the loopback-rewriting stub above. Specs that must observe
+ * REAL artifact dispatch on the loopback /discord-webhook sink call this
+ * AFTER each navigation (it re-installs the loopback transport over whatever
+ * the page installed). GM value stores are left alone.
+ */
+export async function installLoopbackTransport(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const fixture = location.origin;
+    const requests: string[] = window.__TAA_REQUESTS__ ?? [];
+    window.__TAA_REQUESTS__ = requests;
+    const chainedFetch = window.fetch.bind(window);
+    window.GM_xmlhttpRequest = (options: { readonly method: string; readonly url: string; readonly data?: string; readonly onload?: (response: { readonly status: number; readonly responseText: string }) => void; readonly onerror?: (error: unknown) => void }) => {
+      const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook` : options.url;
+      requests.push(target);
+      chainedFetch(target, { method: options.method, body: options.data, headers: { 'Content-Type': 'application/json' } })
+        .then(async (response) => options.onload?.({ status: response.status, responseText: await response.text() }))
+        .catch((error) => options.onerror?.(error));
+    };
+  });
+}
 
 const WEBHOOK = 'https://discord.com/api/webhooks/123456789/fake-fixture-token';
 
@@ -87,7 +117,7 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
   if (scenario.lateTable || scenario.continuousMutation) {
     await page.evaluate(() => document.querySelector('table.allianceMembers')?.remove());
   }
-  const artifact = await page.evaluate(async () => await (await fetch('/script.txt')).text());
+  const artifact = await page.evaluate(async (artifactPath: string) => await (await fetch(artifactPath)).text(), scenario.artifactPath || '/script.txt');
   await page.addScriptTag({ content: artifact });
   if (scenario.lateTable) {
     await page.evaluate(() => {
