@@ -3262,6 +3262,46 @@ const RELEASE_ID = "taa-1.0.0";
       firstConservationMismatch
     };
   }
+  // Todo 13 onboarding: one pure source for the Overview "Setup and operational
+  // state" lines. Formatting only — every value is passed in from the existing
+  // reconciliation/envelope/diagnostics models, no new data plumbing.
+  function buildOperationalStateLines(input = {}) {
+    const source = input && typeof input === "object" ? input : {};
+    const readOnly = source.readOnly === true;
+    const routeRole = typeof source.routeRole === "string" && source.routeRole ? source.routeRole : "unknown";
+    const storageOutcome = typeof source.storageOutcome === "string" && source.storageOutcome ? source.storageOutcome : "Unavailable";
+    const leaseGeneration = Number.isInteger(source.leaseGeneration) ? source.leaseGeneration : null;
+    const monitorGeneration = Number.isInteger(source.monitorGeneration) ? source.monitorGeneration : null;
+    const scanLabel = typeof source.scanLabel === "string" && source.scanLabel ? source.scanLabel : "not recorded";
+    const scanReason = typeof source.scanReason === "string" && source.scanReason ? source.scanReason : "not recorded";
+    const scanOutcome = typeof source.scanOutcome === "string" && source.scanOutcome ? source.scanOutcome : "unknown";
+    const baselinePlayers = Number.isInteger(source.baselinePlayers) && source.baselinePlayers >= 0 ? source.baselinePlayers : null;
+    const hasObservation = source.hasObservation === true;
+    const webhookConfigured = source.webhookConfigured === true;
+    const failed = Number.isInteger(source.failed) && source.failed >= 0 ? source.failed : 0;
+    const uncertain = Number.isInteger(source.uncertain) && source.uncertain >= 0 ? source.uncertain : 0;
+    const leaseValue = leaseGeneration === null && monitorGeneration === null
+      ? "no lease held (standby)"
+      : "lease generation " + (leaseGeneration === null ? "—" : leaseGeneration) + " · monitor generation " + (monitorGeneration === null ? "—" : monitorGeneration);
+    const baselineValue = !hasObservation || baselinePlayers === null
+      ? "not established — the first accepted scan commits it silently (no historical flood)"
+      : "established — " + baselinePlayers + (baselinePlayers === 1 ? " player" : " players");
+    const deliveryValue = !webhookConfigured
+      ? "webhook missing — configuration required; queue preserved"
+      : failed > 0 || uncertain > 0
+        ? "webhook configured — " + failed + " failed / " + uncertain + " uncertain; recover from the Tampermonkey menu"
+        : "webhook configured — 0 failed / 0 uncertain";
+    return [
+      { label: "Runtime", value: readOnly ? "standby (read-only)" : "leader (active)", id: "taa-operational-runtime-value" },
+      { label: "Route", value: routeRole, id: "taa-operational-route-value" },
+      { label: "Session", value: "storage " + storageOutcome, id: "taa-operational-session-value" },
+      { label: "Lease", value: leaseValue, id: "taa-operational-lease-value" },
+      { label: "Scan", value: scanLabel, id: "taa-operational-scan-value" },
+      { label: "Scan detail", value: "reason " + scanReason + " · outcome " + scanOutcome, id: "taa-operational-scan-detail-value" },
+      { label: "Baseline", value: baselineValue, id: "taa-operational-baseline-value" },
+      { label: "Delivery", value: deliveryValue, id: "taa-operational-delivery-value" }
+    ];
+  }
   function buildIncidentBundle(input = {}) {
     const model = buildCountReconciliationPanelModel(input);
     const diagnostics = input.diagnostics && typeof input.diagnostics === "object" ? input.diagnostics : {};
@@ -8840,6 +8880,30 @@ ${entry.line}`;
          append(grid, makeMetric("Freshness", describeFreshnessState(observedAtMs, Date.now()), "taa-freshness-value"));
          append(grid, makeMetric("Scan result", reconciliation.scanLabel, "taa-overview-scan-result-value"));
         append(section, grid);
+        const operationalSection = makeSection("taa-operational-state", "Setup and operational state");
+        if (reconciliation.routeRole !== "canonical-member") {
+          append(operationalSection, makeStatusBanner("Noncanonical page", "This page shows inert guidance only — it never scans, writes, sends, or reloads. Open the canonical members route (/alliance/profile/members) to monitor. If Travian shows a login page instead, log in first; the monitor never scans a login page and never mutates state there.", "warning"));
+        }
+        const baselineByPlayerId = envelope && envelope.baselineByPlayerId && typeof envelope.baselineByPlayerId === "object" ? envelope.baselineByPlayerId : null;
+        const operationalGrid = create("div");
+        operationalGrid.className = "taa-stats";
+        for (const line of buildOperationalStateLines({
+          readOnly,
+          routeRole: reconciliation.routeRole,
+          storageOutcome: state && state.outcome ? state.outcome : "Unavailable",
+          leaseGeneration: reconciliation.leaseGeneration,
+          monitorGeneration: reconciliation.monitorGeneration,
+          scanLabel: reconciliation.scanLabel,
+          scanReason: reconciliation.scanReason,
+          scanOutcome: reconciliation.scanOutcome,
+          baselinePlayers: baselineByPlayerId ? Object.keys(baselineByPlayerId).length : null,
+          hasObservation: Boolean(runtimeDiag.observedAtMs || metrics.lastAuthoritativeScanAtMs),
+          webhookConfigured: loadWebhookUrl() !== null,
+          failed: failed.length,
+          uncertain: uncertain.length
+        })) append(operationalGrid, makeMetric(line.label, line.value, line.id));
+        append(operationalSection, operationalGrid);
+        append(section, operationalSection);
         append(panelView, section);
       } else if (adminTab === "players") {
         const section = makeSection("taa-players", "Players and mappings");
@@ -9085,6 +9149,7 @@ ${entry.line}`;
         setDraftFields(adminDraft);
       } else if (adminTab === "alerts") {
         const section = makeSection("taa-alerts", "Alerts and delivery");
+        append(section, makeStatusBanner("Setup order", "1. Open the canonical members route. 2. Set the Discord webhook via the Tampermonkey menu. 3. Send the TEST alert below. 4. Confirm an accepted scan in Overview. If Travian shows a login page, log in first — the monitor never scans a login page and never mutates state there.", "info"));
         const settings = loadSettings(hostname);
         const form = makeForm("taa-form");
         const attack = makeInput("taa-alert-attack", settings.attackThreshold, "number");
@@ -9171,18 +9236,32 @@ ${entry.line}`;
         append(section, leaveSection);
         const action = create("div");
         action.className = "taa-actions";
-        append(action, makeButton("Send test alert", "taa-alert-test", async () => {
+        append(action, makeButton("Send TEST alert to Discord", "taa-alert-test", async () => {
           if (!mutationAllowed()) return setFeedback("Standby is read-only.", true);
-          await Promise.resolve(sendDiscordBatch([{ name: "Panel test", url: location.href, attackCount: 1, raidCount: 0, addedAttackCount: 1, addedRaidCount: 0, eventType: "attack" }]));
-          setFeedback("Test transport settled.", false);
+          if (loadWebhookUrl() === null) return setFeedback("Discord TEST not sent — webhook is not configured. Set it via the Tampermonkey menu. Pending queue preserved.", true);
+          let outcome = null;
+          try {
+            outcome = await new Promise((resolve) => {
+              sendDiscordBatch([{ name: "[TEST] Panel test", url: location.href, attackCount: 1, raidCount: 0, addedAttackCount: 1, addedRaidCount: 0, eventType: "attack", description: "TEST — synthetic panel check; does not affect the attack baseline." }], resolve);
+            });
+          } catch (error) {
+            return setFeedback("Discord TEST could not be built on this page — open the canonical members route and retry.", true);
+          }
+          if (!outcome) return setFeedback("Discord TEST did not settle — retry from the Tampermonkey menu.", true);
+          if (outcome.errorClass === "configuration") return setFeedback("Discord TEST not sent — webhook is not configured. Set it via the Tampermonkey menu. Pending queue preserved.", true);
+          if (outcome.errorClass === "leader-lost") return setFeedback("Standby is read-only.", true);
+          if (outcome.delivery && outcome.delivery.kind === "acknowledged") return setFeedback("Discord TEST succeeded — transport works. This does not mean the monitor scan works.", false);
+          return setFeedback("Discord TEST delivery issue — no acknowledgement. Failed/uncertain recovery stays in the Tampermonkey menu.", true);
         }));
         append(section, action);
+        append(section, makeSpan("Synthetic TEST — marked TEST in the delivered message; it never modifies the attack baseline and never proves the detector works.", "taa-stat"));
          append(section, makeStatusBanner("Failed / uncertain delivery", failed.length + " failed, " + uncertain.length + " uncertain. Recovery actions are available in the Tampermonkey menu.", failed.length || uncertain.length ? "warning" : "success"));
         append(panelView, section);
         const draft = restoreDraft();
         if (draft) setDraftFields(draft);
       } else {
          const section = makeSection("taa-diagnostics-view", "Diagnostics and incident bundle");
+        append(section, makeStatusBanner("Recovery starts here", "1. Export the incident bundle FIRST, before touching anything. 2. Read the first rejected/error trace below. 3. Retry or settle from the Tampermonkey menu. The bundle is bounded (512 KiB) and redacted: no webhook, token, raw DOM, player data, queue payloads, URLs, cookies, or response bodies.", "info"));
         append(section, makeStatusBanner("Storage provenance", storageProvenanceText(buildStorageProvenanceModel(hostname)).join(" "), "info"));
         const metricsSection = makeSection("taa-count-reconciliation", "Count reconciliation");
         const metricGrid = create("div");
@@ -9603,11 +9682,11 @@ ${entry.line}`;
             }
           );
           GM_registerMenuCommand(
-            "Send batch test to Discord",
+            "Send TEST batch to Discord",
             () => {
               sendDiscordBatch([
                 {
-                  name: "Test player 1",
+                  name: "[TEST] Player 1",
                   url: location.href,
                   attackCount: 2,
                   raidCount: 0,
@@ -9616,10 +9695,10 @@ ${entry.line}`;
                   addedAttackCount: 2,
                   addedRaidCount: 0,
                   eventType: "attack",
-                  description: "Test"
+                  description: "TEST — synthetic check; does not affect the attack baseline."
                 },
                 {
-                  name: "Test player 2",
+                  name: "[TEST] Player 2",
                   url: location.href,
                   attackCount: 1,
                   raidCount: 2,
@@ -9628,17 +9707,17 @@ ${entry.line}`;
                   addedAttackCount: 1,
                   addedRaidCount: 2,
                   eventType: "mixed",
-                  description: "Test"
+                  description: "TEST — synthetic check; does not affect the attack baseline."
                 }
               ]);
             }
           );
           GM_registerMenuCommand(
-            "Send raid-only batch test to Discord",
+            "Send TEST raid-only batch to Discord",
             () => {
               sendDiscordBatch([
                 {
-                  name: "Test raid player",
+                  name: "[TEST] Raid player",
                   url: location.href,
                   attackCount: 0,
                   raidCount: 3,
@@ -9647,7 +9726,7 @@ ${entry.line}`;
                   addedAttackCount: 0,
                   addedRaidCount: 2,
                   eventType: "raid",
-                  description: "Test"
+                  description: "TEST — synthetic check; does not affect the attack baseline."
                 }
               ]);
             }
@@ -10132,7 +10211,8 @@ ${entry.line}`;
        formatPlayerPaginationStatus,
        describePlayerFilterState,
        formatTraceCountStatus,
-       describeFreshnessState,
+        describeFreshnessState,
+        buildOperationalStateLines,
        describeAlertRoleError,
        describeAlertThresholdError,
       writeVerifiedJson,

@@ -43,6 +43,7 @@ script.formatPlayerPaginationStatus = require('../script.txt').formatPlayerPagin
 script.describePlayerFilterState = require('../script.txt').describePlayerFilterState;
 script.formatTraceCountStatus = require('../script.txt').formatTraceCountStatus;
 script.describeFreshnessState = require('../script.txt').describeFreshnessState;
+script.buildOperationalStateLines = require('../script.txt').buildOperationalStateLines;
 script.describeAlertRoleError = require('../script.txt').describeAlertRoleError;
 script.describeAlertThresholdError = require('../script.txt').describeAlertThresholdError;
 script.enqueueEvents = require('../script.txt').enqueueEvents;
@@ -1744,6 +1745,52 @@ test('task-3: freshness text labels observed age against the 120s reload lifecyc
     assert.equal(script.describeFreshnessState(880000, 1000000), 'Fresh — observed 120s ago');
     assert.equal(script.describeFreshnessState(879000, 1000000), 'Stale — observed 121s ago');
     assert.equal(script.describeFreshnessState(1005000, 1000000), 'Fresh — observed 0s ago');
+});
+
+test('todo-13: operational state lines expose runtime/route/session/lease/scan/baseline/delivery separately', () => {
+    const lines = script.buildOperationalStateLines({
+        readOnly: false, routeRole: 'canonical-member', storageOutcome: 'ok',
+        leaseGeneration: 3, monitorGeneration: 2,
+        scanLabel: 'accepted/authoritative', scanReason: 'authoritative', scanOutcome: 'ok',
+        baselinePlayers: 3, hasObservation: true,
+        webhookConfigured: true, failed: 0, uncertain: 0,
+    });
+    assert.deepEqual(lines.map((line) => line.label), ['Runtime', 'Route', 'Session', 'Lease', 'Scan', 'Scan detail', 'Baseline', 'Delivery']);
+    assert.deepEqual(lines.map((line) => line.id), [
+        'taa-operational-runtime-value', 'taa-operational-route-value', 'taa-operational-session-value',
+        'taa-operational-lease-value', 'taa-operational-scan-value', 'taa-operational-scan-detail-value',
+        'taa-operational-baseline-value', 'taa-operational-delivery-value',
+    ]);
+    const byLabel = Object.fromEntries(lines.map((line) => [line.label, line.value]));
+    assert.equal(byLabel['Runtime'], 'leader (active)');
+    assert.equal(byLabel['Route'], 'canonical-member');
+    assert.equal(byLabel['Session'], 'storage ok');
+    assert.equal(byLabel['Lease'], 'lease generation 3 · monitor generation 2');
+    assert.equal(byLabel['Scan'], 'accepted/authoritative');
+    assert.equal(byLabel['Scan detail'], 'reason authoritative · outcome ok');
+    assert.equal(byLabel['Baseline'], 'established — 3 players');
+    assert.equal(byLabel['Delivery'], 'webhook configured — 0 failed / 0 uncertain');
+});
+
+test('todo-13: operational state lines keep setup-failure states distinct', () => {
+    const missing = Object.fromEntries(script.buildOperationalStateLines({ readOnly: true }).map((line) => [line.label, line.value]));
+    assert.equal(missing['Runtime'], 'standby (read-only)');
+    assert.equal(missing['Route'], 'unknown');
+    assert.equal(missing['Lease'], 'no lease held (standby)');
+    assert.equal(missing['Scan'], 'not recorded');
+    assert.equal(missing['Baseline'], 'not established — the first accepted scan commits it silently (no historical flood)');
+    assert.equal(missing['Delivery'], 'webhook missing — configuration required; queue preserved');
+
+    const rejected = Object.fromEntries(script.buildOperationalStateLines({
+        readOnly: false, routeRole: 'canonical-member', storageOutcome: 'ok',
+        leaseGeneration: 1, monitorGeneration: 1,
+        scanLabel: 'parser-rejected/malformed-count', scanReason: 'malformed-count', scanOutcome: 'rejected',
+        baselinePlayers: 0, hasObservation: false,
+        webhookConfigured: true, failed: 2, uncertain: 1,
+    }).map((line) => [line.label, line.value]));
+    assert.equal(rejected['Scan'], 'parser-rejected/malformed-count');
+    assert.equal(rejected['Scan detail'], 'reason malformed-count · outcome rejected');
+    assert.equal(rejected['Delivery'], 'webhook configured — 2 failed / 1 uncertain; recover from the Tampermonkey menu');
 });
 
 test('task-3: alert role error text is null only for valid snowflakes', () => {
