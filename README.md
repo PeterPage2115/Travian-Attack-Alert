@@ -73,10 +73,84 @@ The active tab holds a Web-Lock lease and does the work. Any other open tab is a
 
 Optional pings are configured separately and never replace each other:
 
-- Attack role: set with `Set alert role ID`, cleared with `Clear alert role ID`, inspected with `Show alert role ID`. It is pinged when a batch contains attack or mixed events.
-- Leave-moderator role: set with `Set leave-moderator role ID`, cleared with `Clear leave-moderator role ID`, inspected with `Show leave-moderator role ID`. It is pinged when a batch contains at least one departure.
+- Attack role (`roleId`): optional Discord role pinged when a batch contains attack or mixed events. Set it with `Set alert role ID`, clear it with `Clear alert role ID`, inspect it with `Show alert role ID`.
+- Leave-moderator role (`leaveRoleId`): separate global role pinged when a batch contains at least one departure. Configure it as `Leave-moderator role` (`taa-leave-role-input`, `taa-leave-role-set`, `taa-leave-role-clear`, `taa-leave-role-current`) or via the Tampermonkey menu (`Set leave-moderator role ID`, `Clear leave-moderator role ID`, `Show leave-moderator role ID`). It does not replace the attack role; both can fire together in a mixed batch.
 
-A role pings only when the Discord role is set to Mentionable. A departing player is mentioned personally only when a Discord mapping for that Travian player already exists before the leave is observed.
+Role configuration is global and stored in `travianAllianceDiscordConfig_v1` as `{ roleId, leaveRoleId }`, both validated by `validateDiscordRoleId`.
+
+A role pings only when the Discord role is set to Mentionable. Departure mentions follow four operator-visible conditions:
+
+1. A departing player is personally mentioned only when a mapping `mappings[hostname][playerId]` for that Travian player already exists before the leave is observed. Without that pre-existing mapping, no personal ping is produced.
+2. Departures additionally ping the leave-moderator role when at least one departure is present. This role is global and distinct from the attack role; mixed batches include both roles in deterministic order.
+3. The script never removes Discord access automatically. A moderator must manually revoke the departed player's Discord permissions after receiving the leave alert.
+4. A role pings only when its Discord role is set to Mentionable and its ID is present in `allowed_mentions.roles`. Delivery is at-least-once, so a lost acknowledgement can produce the same first request twice even when mention policy is otherwise once-only.
+
+## What alerts look like
+
+Alerts are short and delta-first:
+
+- `🚨 Alliance attack`, `🛡️ Alliance raid`, or `🔄 Alliance changes`, with a linked title and singular/plural player count.
+- The first embed has exactly `New`, `Active now`, and `Priority` fields, in that order. Continuations repeat global context.
+- The footer is `<hostname> · <observation-text>`. One logical dispatch timestamp is placed on the last embed of every request.
+- Multi-request output adds `part X/Y`; continuations repeat global context.
+- Mentions occur once only; continuations use empty mention allowlists.
+- Discord limits use JavaScript UTF-16 `.length`: content 2000, title 256, description 4096, field name 256, field value 1024, total embed text 6000, and at most 10 embeds per request.
+
+Payloads use safe links in DOM order and the mention policy is explicit. `allowed_mentions` is an explicit allowlist with no `parse` key. The first request of a batch may carry `content` such as `<@&leaveRoleId> <@userId>` together with `allowed_mentions` like `{ users: ["123456789012345678"], roles: ["987654321098765432"] }`, or `{ users: [] }` when no one is mentioned. Continuations use empty `content` with `{ users: [] }` and no `roles` key, and the list is bounded and deduplicated to fit the 2000 character content limit. Embed titles, descriptions, field values and footers never contain mention tokens; mentions live only in top-level `content`. Partial, repeated, malformed, or ambiguous input does not change authoritative state; acquisition is rejected without partial state and authoritative state remains unchanged.
+
+The following bytes are generated from the live canonical raid builder:
+
+<!-- discord-alert-example:start -->
+```text
+🛡️ Alliance raid · 2 players
+**Players**
+[Lenny Barre](https://cw.x2.international.travian.com/profile/101) — **+1 raid**
+Now: 0 attacks / 1 raid
+
+[Quinnos](https://cw.x2.international.travian.com/profile/102) — **+1 raid**
+Now: 0 attacks / 1 raid
+New: **+2 raids**
+Active now: 0 attacks / 2 raids
+Priority: Normal
+cw.x2.international.travian.com · Observed <1s before dispatch
+Timestamp: 2026-08-23T09:46:01.000Z
+```
+<!-- discord-alert-example:end -->
+
+The attack and mixed-alert grammar is also captured from the live canonical attack fixture:
+
+<!-- discord-attack-example:start -->
+```text
+🚨 Alliance attack · 6 players
+**Players**
+[Player 365](https://cw.x2.international.travian.com/profile/365) — **+2 attacks**
+Now: 17 attacks / 5 raids
+
+[sandla](https://cw.x2.international.travian.com/profile/1) — **+2 attacks**
+Now: 7 attacks / 7 raids
+
+[Ariadne](https://cw.x2.international.travian.com/profile/2) — **+1 attack** · **+1 raid**
+Now: 8 attacks / 1 raid
+
+[Borek](https://cw.x2.international.travian.com/profile/3) — **+1 attack** · **+1 raid**
+Now: 6 attacks / 2 raids
+
+[Ciri](https://cw.x2.international.travian.com/profile/4) — **+1 attack** · **+1 raid**
+Now: 7 attacks / 1 raid
+
+[Darek](https://cw.x2.international.travian.com/profile/5) — **+1 attack**
+Now: 7 attacks / 1 raid
+New: **+8 attacks** · **+3 raids**
+Active now: 52 attacks / 17 raids
+Priority: Normal
+cw.x2.international.travian.com · Observed <1s before dispatch
+Timestamp: 2026-08-23T09:46:01.000Z
+```
+<!-- discord-attack-example:end -->
+
+No historical or guessed time is invented. Missing observation time remains `Observation time unavailable`; inherited timestamps remain marked approximate observation. Delivery is at-least-once: a lost acknowledgement can produce a duplicate. HTTP 200 with a message ID acknowledges; network, timeout, abort, 429 and 5xx responses are retried, ordinary 4xx stays failed, and a malformed or ID-less 200 is uncertain and is not retried automatically. `wait=true` exists only in the in-memory send URL.
+
+The superseded 5.2.6-era contract is historical; the 1.0.0 contract above is the one this candidate implements.
 
 ## Synthetic TEST versus the detector scan
 
@@ -161,4 +235,4 @@ Support for this project is entirely voluntary and optional. It has no influence
 
 ## Version note
 
-This page documents `1.0.0` (`taa-1.0.0`). Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
+This page documents the Tampermonkey **1.0.0** userscript, identified by release ID `taa-1.0.0`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.

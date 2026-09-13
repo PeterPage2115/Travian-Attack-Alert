@@ -97,9 +97,16 @@ declared supported. Violentmonkey stays candidate/not-supported.
 pilotReady:false — mandatory Chrome + Tampermonkey PASS is missing, so the
 pilot gate is not met by this matrix (Todo 20 consumes this line).
 
-### SEAL (Todo 19): reproducibility + final full-gate rerun — 2026-09-13, verdict BLOCKED
+### SEAL (Todo 19): reproducibility + final full-gate rerun — 2026-09-13, verdict PASS (repaired)
 
-Release commit `b8b41a5` (`test(managers): record real userscript compatibility matrix`).
+History, kept honest: the first seal commit (`0495bcd`) recorded verdict BLOCKED —
+reproducibility PASS but the full gate FAIL 9/12 on README-contract drift from the
+`9d19a67` rewrite. The repair commit realigned the README with the asserted
+contracts (README-only; no test/tool/runtime change) and reran the full gate to
+green. What follows is the PASS record on the final tree.
+
+Release commit for the artifact bytes: `b8b41a5` (dist bytes unchanged by the
+repair — see below).
 
 **Reproducibility: PASS.** Two clean checkouts of exactly `b8b41a5` outside the
 repo (`/tmp/taa-repro-A`, `/tmp/taa-repro-B`, detached HEAD, fresh `npm ci` +
@@ -114,29 +121,33 @@ rebuild. Evidence (gitignored):
 Both worktrees removed afterwards and verified (`git worktree list`, `/tmp`
 dirs gone).
 
-**Final full offline gate on the final tree: FAIL (9/12 PASS) — seal BLOCKED,
-no fix applied.** `npm run check:release -- --offline` exit 1; evidence
+**Final full offline gate on the final tree: PASS (12/12) — seal CLOSED.**
+`npm run check:release -- --offline` exit 0; evidence
 `test-results/release-1.0.0/offline-summary.json` (mode `offline`).
-Per-gate: PASS syntax-script, syntax-dist, tools-tests, artifact-matrix, build,
-artifact, types, quality, e2e; FAIL unit, versions, static-format.
+Per-gate: PASS syntax-script, syntax-dist, unit (358/358), tools-tests,
+artifact-matrix, build, versions (`VERSION CHECK PASS: 1.0.0 (taa-1.0.0)`),
+artifact, types, quality, static-format, e2e.
 e2e EXECUTED honestly on this run: all 11 specs green (attack-panel 96,
 clean-install 36, discord-delivery 18, manual-fetch-timing 6, dual-tab-lease 24,
 browser-qa 12, live-member-scan 54, migration-6x 18, onboarding-states 36,
-readiness-late 18, route-lease 18 — 336 expected, 0 unexpected, 0 flaky).
-An earlier run inside this task reported e2e NOT_EXECUTED because port
-127.0.0.1:8899 was held by stale orphan fixture servers (PIDs 26865 from this
-task's own timed-out invocation, plus pre-existing PIDs 3031/3032 holding
-8898/8899); the orphans were killed, the ports verified free, and the gate
-rerun from scratch — the NOT_EXECUTED verdict is superseded by executed
-evidence, not copied.
+readiness-late 18, route-lease 18 — 336 expected, 0 unexpected, 0 flaky;
+per-spec JSON reports under `test-results/release-1.0.0/`).
+Ports 8898/8899 verified free before the run; no fixture servers left behind.
 
-**Named blocker (Todo 19 seals or blocks, never redesigns — no drive-by fix):**
-the `9d19a67` `docs(readme): publish English-first operator guide` rewrite
-removed the machine-checked README contracts the checked-in gates assert on:
-unit 355/358 with tests 9 (`Tampermonkey **1.0.0` claim missing), 129 and 131
-(README example bytes / guidance strings) failing; `check:versions` FAIL
-(README version and release-ID claims missing); static-format audit FAIL
-(zero `discord-alert-example` markers in README, `actual:null`).
+**Repair (no test/tool/runtime change — README only):** the blocker was the
+`9d19a67` README rewrite dropping machine-checked contracts. Restored into
+`README.md`, dictated verbatim by the failing assertions: a Version-note line
+carrying literally `Tampermonkey **1.0.0**` plus
+"identified by release ID `taa-1.0.0`";
+a "What alerts look like" section with the exact `discord-alert-example`
+markers whose bytes were spliced from the live canonical raid-two builder
+(never hand-typed; static audit `readme-canonical-bytes` PASS); the
+departure-conditions + `allowed_mentions` contract prose (4 conditions,
+`{ roleId, leaveRoleId }` / `travianAllianceDiscordConfig_v1` /
+`validateDiscordRoleId`, allowlist with no `parse` key). README is not an input
+to `tools/build.cjs`, so the dist SHA is unchanged by the repair:
+`a34272340e92c1b5159244345a8ef2da98c6bd297e13d8547ed11838622f3ce7` before and
+after (rebuilt + sidecar-verified + backed up per AGENTS.md).
 Reproducibility, artifact identity (`@version 1.0.0`, `Travian Attack Alert` /
 `travian-attack-alert-public`, single neutral `https://*.travian.com/alliance*`
 match, `@noframes`, no update/download URLs), the tracked-tree secret sweep
