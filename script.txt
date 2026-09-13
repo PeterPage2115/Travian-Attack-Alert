@@ -1677,9 +1677,14 @@ const RELEASE_ID = "taa-1.0.0";
   function buildSettingsBackup(input = {}) {
     const hostname = normalizeHostname(input.hostname || (typeof location !== "undefined" ? location.hostname : ""));
     const storage = input.storage || (typeof localStorage !== "undefined" ? localStorage : null);
+    const includeWebhook = input.includeWebhook === true;
     const data = {};
-    for (const key of SETTINGS_BACKUP_DATA_KEYS) data[key] = key === WEBHOOK_STORAGE_KEY ? (() => { const value = String(input.webhook === void 0 ? loadWebhookUrl() || "" : input.webhook); return value ? { action: "set", url: value } : { action: "clear" }; })() : settingsBackupStorageValue(storage, key);
+    for (const key of SETTINGS_BACKUP_DATA_KEYS) {
+      if (key === WEBHOOK_STORAGE_KEY && !includeWebhook) continue;
+      data[key] = key === WEBHOOK_STORAGE_KEY ? (() => { const value = String(input.webhook === void 0 ? loadWebhookUrl() || "" : input.webhook); return value ? { action: "set", url: value } : { action: "clear" }; })() : settingsBackupStorageValue(storage, key);
+    }
     const backup = { schemaVersion: 1, kind: "taa-settings-backup", exportedAt: new Date(Number.isFinite(input.nowMs) ? input.nowMs : Date.now()).toISOString(), releaseId: RELEASE_ID, hostname, data };
+    if (includeWebhook && Object.prototype.hasOwnProperty.call(data, WEBHOOK_STORAGE_KEY)) backup._warning = "This file contains your live Discord webhook secret (data." + WEBHOOK_STORAGE_KEY + "). It is stored as plain, readable JSON with no additional protection; anyone with this file can post messages to your Discord channel. Store it securely and do not share it.";
     const serialized = JSON.stringify(backup);
     return diagnosticByteLength(serialized) <= DIAGNOSTICS_LIMITS.exportBytes ? backup : { schemaVersion: 1, kind: "taa-settings-backup", bounded: true, boundedMessage: "Settings export bounded: content exceeded 512 KiB; sensitive data omitted.", releaseId: RELEASE_ID, hostname, data: {} };
   }
@@ -9277,7 +9282,8 @@ ${entry.line}`;
            if (!mutationAllowed()) { setFeedback("Standby is read-only; settings import is disabled.", true); return; }
             const plan = inspectSettingsBackup(raw, hostname, Object.fromEntries(SETTINGS_BACKUP_DATA_KEYS.map((key) => [key, key === WEBHOOK_STORAGE_KEY ? loadWebhookUrl() || "" : settingsBackupStorageValue(localStorage, key)])));
             if (!plan.ok) { setFeedback("Settings backup rejected: malformed data; no settings were changed.", true); return; }
-            const summary = "Settings backup validated. Current-host entries: " + plan.counts.current + "; other-host entries: " + plan.counts.otherHost + ". Import after merge?";
+            const webhookNote = plan.webhook.action === "set" ? " The file sets the webhook." : plan.webhook.action === "clear" ? " The file clears the webhook." : " The stored webhook is preserved.";
+            const summary = "Settings backup validated. Current-host entries: " + plan.counts.current + "; other-host entries: " + plan.counts.otherHost + "." + webhookNote + " Import after merge?";
             if (typeof confirm !== "function" || !confirm(summary)) { setFeedback("Settings import cancelled.", false); return; }
             const result = applySettingsBackup(raw, { hostname, storage: localStorage });
             if (!result.ok) { setFeedback("Settings import rejected; existing settings were restored.", true); return; }
@@ -9298,19 +9304,29 @@ ${entry.line}`;
            if (!file || typeof file.text !== "function") { setFeedback("Choose a JSON backup file.", true); return; }
            file.text().then(applySettingsImport).catch(() => setFeedback("Could not read the settings backup file.", true));
          });
-         const exportSettingsButton = makeButton("Export settings", "taa-settings-export", () => {
-           const backup = buildSettingsBackup({ hostname, storage: localStorage });
-           previewBackup(backup);
-           if (backup.bounded) { setFeedback("Settings backup exceeds the 512 KiB limit and was not downloaded.", true); return; }
-           const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-           const url = URL.createObjectURL(blob);
-           const link = create("a");
-           link.href = url;
-           link.download = "taa-settings-backup.json";
-           link.click();
-           URL.revokeObjectURL(url);
-           setFeedback("Settings backup prepared; the webhook is masked only in the preview.", false);
-         });
+          const exportWebhookOptIn = create("input");
+          exportWebhookOptIn.type = "checkbox";
+          exportWebhookOptIn.id = "taa-settings-export-webhook";
+          exportWebhookOptIn.checked = false;
+          const exportWebhookWarning = makeSpan("Exports omit the webhook secret unless you tick the box. A file with the secret contains the live webhook as plain, readable JSON with no additional protection; anyone with that file can post to your Discord channel.", "taa-stat");
+          exportWebhookWarning.id = "taa-settings-export-warning";
+          append(settingsActions, makeLabel("Include the Discord webhook secret in this file", exportWebhookOptIn, "taa-settings-export-warning"));
+          append(settingsActions, exportWebhookWarning);
+          const exportSettingsButton = makeButton("Export settings", "taa-settings-export", () => {
+            const includeWebhook = exportWebhookOptIn.checked === true;
+            if (includeWebhook && (typeof confirm !== "function" || !confirm("This export will contain your live Discord webhook secret as plain, readable JSON. Anyone with this file can post to your Discord channel. Export with the secret?"))) { setFeedback("Settings export cancelled; nothing was downloaded.", false); return; }
+            const backup = buildSettingsBackup({ hostname, storage: localStorage, includeWebhook });
+            previewBackup(backup);
+            if (backup.bounded) { setFeedback("Settings backup exceeds the 512 KiB limit and was not downloaded.", true); return; }
+            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const link = create("a");
+            link.href = url;
+            link.download = "taa-settings-backup.json";
+            link.click();
+            URL.revokeObjectURL(url);
+            setFeedback(includeWebhook ? "Settings backup prepared WITH the webhook secret; the token is masked only in the preview." : "Settings backup prepared WITHOUT the webhook secret; importing it elsewhere keeps the existing webhook.", false);
+          });
           exportSettingsButton.dataset.exportControl = "true";
           append(settingsActions, exportSettingsButton);
           append(settingsActions, importButton);

@@ -1829,7 +1829,7 @@ test('settings backup supports explicit webhook clear and rolls back exact absen
 
 test('settings backup export uses command-shaped webhook and rejects malformed envelopes', () => {
     const storage = settingsStorage({ unrelated: 'keep' });
-    const backup = script.buildSettingsBackup({ hostname: SETTINGS_HOST, storage, webhook: SETTINGS_WEBHOOK, nowMs: 0 });
+    const backup = script.buildSettingsBackup({ hostname: SETTINGS_HOST, storage, webhook: SETTINGS_WEBHOOK, includeWebhook: true, nowMs: 0 });
     assert.deepEqual(backup.data.travianAllianceWebhookUrl_v1, { action: 'set', url: SETTINGS_WEBHOOK });
     for (const raw of [{ kind: 'wrong', schemaVersion: 1, data: {} }, { kind: 'taa-settings-backup', schemaVersion: 2, data: {} }, { kind: 'taa-settings-backup', schemaVersion: 1, data: [] }]) {
         const before = [...storage.values];

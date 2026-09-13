@@ -6,14 +6,14 @@
   },
   "artifact": {
     "path": "script.txt",
-    "sha256": "78f866656bc597e6d3ca7ab4fd24155359f3b80d064ab22a04eb0a5116c44084",
+    "sha256": "b545b25edfb24b5c99706dd185c0ed29d5444917250f0759cbb303ce4e4312d1",
     "source": {
       "path": "script.txt",
-      "sha256": "78f866656bc597e6d3ca7ab4fd24155359f3b80d064ab22a04eb0a5116c44084"
+      "sha256": "b545b25edfb24b5c99706dd185c0ed29d5444917250f0759cbb303ce4e4312d1"
     },
     "dist": {
       "path": "dist/travian-attack-alert.user.js",
-      "sha256": "78f866656bc597e6d3ca7ab4fd24155359f3b80d064ab22a04eb0a5116c44084"
+      "sha256": "b545b25edfb24b5c99706dd185c0ed29d5444917250f0759cbb303ce4e4312d1"
     }
   },
   "toolchain": {
