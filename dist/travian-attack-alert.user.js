@@ -3679,12 +3679,12 @@ const RELEASE_ID = "taa-1.0.0";
     const api = storageApi && typeof storageApi === "object" ? storageApi : {};
     const write = typeof api.setItem === "function" ? api.setItem.bind(api) : api.write;
     const read = typeof api.getItem === "function" ? api.getItem.bind(api) : api.read;
-    const canonical = (inputValue) => {
-      const parsed = typeof inputValue === "string" ? JSON.parse(inputValue) : inputValue;
-      if (Array.isArray(parsed)) return "[" + parsed.map(canonical).join(",") + "]";
-      if (parsed && typeof parsed === "object") return "{" + Object.keys(parsed).sort().map((name) => JSON.stringify(name) + ":" + canonical(parsed[name])).join(",") + "}";
+    const canonicalVerifiedValue = (parsed) => {
+      if (Array.isArray(parsed)) return "[" + parsed.map(canonicalVerifiedValue).join(",") + "]";
+      if (parsed && typeof parsed === "object") return "{" + Object.keys(parsed).sort().map((name) => JSON.stringify(name) + ":" + canonicalVerifiedValue(parsed[name])).join(",") + "}";
       return JSON.stringify(parsed);
     };
+    const canonical = (inputValue) => canonicalVerifiedValue(typeof inputValue === "string" ? JSON.parse(inputValue) : inputValue);
     const bytes = JSON.stringify(value);
     try {
       if (typeof write !== "function") throw new TypeError("storage-write-unavailable");
