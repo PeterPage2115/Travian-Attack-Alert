@@ -1,6 +1,6 @@
-# TravianAttackAlert Design System — 6.2.1 attack-only
+# TravianAttackAlert Design System — 1.0.0 attack-only
 
-This is the source of truth for the vanilla operations console at **6.2.1**. Values marked **EXTRACTED** are preserved from `initAdminPanel` and its helper seam in `script.txt`; **PROPOSED** values complete the approved warm-charcoal + brass/olive direction and must be used as tokens rather than ad-hoc overrides.
+This is the source of truth for the vanilla operations console at **1.0.0**. Values marked **EXTRACTED** are preserved from `initAdminPanel` and its helper seam in `script.txt`; **PROPOSED** values complete the approved warm-charcoal + brass/olive direction and must be used as tokens rather than ad-hoc overrides.
 
 ## 1. Atmosphere & Identity
 
@@ -182,9 +182,9 @@ The strategy is **mixed, restrained**: tonal shifts establish the base hierarchy
 | Host Travian typography/forced-colors can influence injected context | injected panel root | Existing host page cannot be controlled; root isolation and Chromium evidence mitigate it | Critical/Major finding blocks release |
 | Vanilla userscript has no runtime component compiler | `script.txt` | Required single-file/no-build constraint | Keep helper seam token-backed and covered by showcase |
 
-## 9. Release 6.2.1 attack-only operations contract
+## 9. Release 1.0.0 attack-only operations contract
 
-This section is the design contract for the shipped **6.2.1** attack-only userscript. The old `.omo/plans/refine-discord-alert-hierarchy.md` and `.omo/plans/redesign-alliance-news-discord-format.md` are historical input and are superseded; their 5.2.6-era contract is historical, and neither is an independent implementation plan. Previous news data remains inert until you clear site data and no news tab, route, webhook, or storage is active.
+This section is the design contract for the shipped **1.0.0** attack-only userscript. The old `.omo/plans/refine-discord-alert-hierarchy.md` and `.omo/plans/redesign-alliance-news-discord-format.md` are historical input and are superseded; their 5.2.6-era contract is historical, and neither is an independent implementation plan. Previous news data remains inert until you clear site data and no news tab, route, webhook, or storage is active.
 
 ### One-tab route and lifecycle topology
 

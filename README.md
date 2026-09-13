@@ -1,6 +1,6 @@
 # Travian – Alliance Alerts to Discord
 
-Userscript Tampermonkey **6.2.1** detects alliance attacks/raids and forwards
+Userscript Tampermonkey **1.0.0** detects alliance attacks/raids and forwards
 new attack alerts through a durable Discord workflow. The single distributable
 is `script.txt`; no bundler, framework, or runtime dependency is required in
 the browser.
@@ -154,7 +154,7 @@ cannot be inferred. **Players** counts distinct member rows, **attacks/raids**
 count event deltas, and **messages** count Discord requests; these quantities
 must not be substituted.
 
-The runtime authority is `script.txt`, identified by release ID `taa-6.2.1`.
+The runtime authority is `script.txt`, identified by release ID `taa-1.0.0`.
 `npm run build` does not generate `script.txt` from source wrappers; it only
 refreshes the module manifest and artifact metadata hashes for the checked-in
 distributable.
@@ -246,7 +246,7 @@ scroll; IDs and URLs wrap. Reduced motion and forced-colors paths are explicit.
 
 The superseded `.omo/plans/refine-discord-alert-hierarchy.md` hierarchy plan and
 `.omo/plans/redesign-alliance-news-discord-format.md` format plan are historical
-input only. Their 5.2.6-era contract is historical; the current 6.2.1 contract
+input only. Their 5.2.6-era contract is historical; the current 1.0.0 contract
 is the one documented above and neither plan is executed separately.
 
 ## Offline verification

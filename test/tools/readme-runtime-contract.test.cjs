@@ -4,7 +4,7 @@
 // README recovery/operations prose must agree with the script.txt runtime.
 //
 // Version-parameterized by design: the current version and release ID are
-// derived from package.json, never hardcoded, so the task-4 bump to 6.2.1
+// derived from package.json, never hardcoded, so the public 1.0.0 identity
 // (or any later bump) keeps this contract green without edits here.
 // Historical version tokens (e.g. a "5.2.6-era ... historical" line) are
 // allowed only when labelled historical on the same line.

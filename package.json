@@ -1,6 +1,6 @@
 {
   "name": "travian-attack-alert",
-  "version": "6.2.1",
+  "version": "1.0.0",
   "private": true,
   "description": "Testy node:test dla Travian - Alliance Attacks to Discord (script.txt). Bez zewnętrznych zależności.",
   "scripts": {

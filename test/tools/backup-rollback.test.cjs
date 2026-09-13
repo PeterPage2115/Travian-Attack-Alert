@@ -9,6 +9,8 @@ const test = require('node:test');
 
 const ROOT = path.resolve(__dirname, '../..');
 const TOOL_FILES = ['backup.cjs', 'rollback.cjs', 'build.cjs', 'check-artifact.cjs'];
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+const RELEASE_ID = `taa-${VERSION}`;
 
 function hash(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
 function run(project, tool, args = [], extra = {}) {
@@ -22,8 +24,8 @@ function fixture() {
     for (const file of TOOL_FILES) fs.copyFileSync(path.join(ROOT, 'tools', file), path.join(project, 'tools', file));
     fs.copyFileSync(path.join(ROOT, 'package.json'), path.join(project, 'package.json'));
     fs.writeFileSync(path.join(project, 'script.txt'), '// ==UserScript==\n// ==/UserScript==\n// fixture artifact\n');
-    fs.writeFileSync(path.join(project, 'metadata.json'), JSON.stringify({ schemaVersion: 1, release: { version: '6.2.1', releaseId: 'taa-6.2.1' }, artifact: { path: 'script.txt', sha256: hash(path.join(project, 'script.txt')) } }) + '\n');
-    fs.writeFileSync(path.join(project, 'module-manifest.json'), JSON.stringify({ schemaVersion: 1, release: { version: '6.2.1', releaseId: 'taa-6.2.1' }, modules: [] }) + '\n');
+    fs.writeFileSync(path.join(project, 'metadata.json'), JSON.stringify({ schemaVersion: 1, release: { version: VERSION, releaseId: RELEASE_ID }, artifact: { path: 'script.txt', sha256: hash(path.join(project, 'script.txt')) } }) + '\n');
+    fs.writeFileSync(path.join(project, 'module-manifest.json'), JSON.stringify({ schemaVersion: 1, release: { version: VERSION, releaseId: RELEASE_ID }, modules: [] }) + '\n');
     return project;
 }
 function liveHashes(project) { return ['script.txt', 'metadata.json', 'module-manifest.json'].map((file) => hash(path.join(project, file))); }
@@ -32,7 +34,7 @@ function backupSelector(project) {
     assert.equal(result.status, 0, result.stderr);
     return result.stdout.trim();
 }
-function selectorInfo(project) { const digest = backupSelector(project); return { digest, selector: `6.2.1-${digest.slice(0, 8)}`, dir: path.join(project, 'backups') }; }
+function selectorInfo(project) { const digest = backupSelector(project); return { digest, selector: `${VERSION}-${digest.slice(0, 8)}`, dir: path.join(project, 'backups') }; }
 function payloadName(kind, selector) { return `${kind === 'moduleManifest' ? 'module-manifest' : kind}-${selector}.${kind === 'script' ? 'txt' : 'json'}`; }
 function unchangedFailure(project, args, extra = {}) { const before = liveHashes(project); const result = run(project, 'rollback.cjs', args, extra); assert.notEqual(result.status, 0, result.stdout); assert.deepEqual(liveHashes(project), before); }
 
@@ -40,15 +42,15 @@ test('Given a fixture, When backup runs, Then it publishes matching payloads and
     const project = fixture();
     try {
         const digest = backupSelector(project);
-        const selector = `6.2.1-${digest.slice(0, 8)}`;
+        const selector = `${VERSION}-${digest.slice(0, 8)}`;
         const backupDir = path.join(project, 'backups');
         const names = [`script-${selector}.txt`, `metadata-${selector}.json`, `module-manifest-${selector}.json`, `script-${selector}.txt.sha256`, `metadata-${selector}.json.sha256`, `module-manifest-${selector}.json.sha256`, `backup-${selector}.manifest.json`];
         for (const name of names) assert.ok(fs.existsSync(path.join(backupDir, name)), name);
         const manifest = JSON.parse(fs.readFileSync(path.join(backupDir, `backup-${selector}.manifest.json`), 'utf8'));
         assert.deepEqual(Object.keys(manifest), ['schemaVersion', 'version', 'releaseId', 'selector', 'files', 'artifactSha256']);
-        assert.equal(manifest.releaseId, 'taa-6.2.1');
+        assert.equal(manifest.releaseId, RELEASE_ID);
         assert.equal(manifest.files.script.sha256, digest);
-        for (const kind of ['script', 'metadata', 'moduleManifest']) assert.equal(manifest.files[kind].path, `${kind === 'moduleManifest' ? 'module-manifest' : kind}-6.2.1-${digest.slice(0, 8)}.${kind === 'script' ? 'txt' : 'json'}`);
+        for (const kind of ['script', 'metadata', 'moduleManifest']) assert.equal(manifest.files[kind].path, `${kind === 'moduleManifest' ? 'module-manifest' : kind}-${VERSION}-${digest.slice(0, 8)}.${kind === 'script' ? 'txt' : 'json'}`);
         for (const kind of ['script', 'metadata', 'moduleManifest']) {
             const payload = names[['script', 'metadata', 'moduleManifest'].indexOf(kind)];
             assert.equal(fs.readFileSync(path.join(backupDir, `${payload}.sha256`), 'utf8'), `${hash(path.join(backupDir, payload))}  ${payload}\n`);
@@ -63,10 +65,10 @@ test('Given a valid backup, When rollback selects version-hash, Then it restores
         const expected = ['script.txt', 'metadata.json', 'module-manifest.json'].map((file) => fs.readFileSync(path.join(project, file)));
         const digest = backupSelector(project);
         fs.writeFileSync(path.join(project, 'script.txt'), 'new live artifact\n');
-        const result = run(project, 'rollback.cjs', [`6.2.1-${digest.slice(0, 8)}`]);
+        const result = run(project, 'rollback.cjs', [`${VERSION}-${digest.slice(0, 8)}`]);
         assert.equal(result.status, 0, result.stderr);
         for (const [index, file] of ['script.txt', 'metadata.json', 'module-manifest.json'].entries()) assert.deepEqual(fs.readFileSync(path.join(project, file)), expected[index]);
-        assert.equal(JSON.parse(fs.readFileSync(path.join(project, 'package.json'))).version, '6.2.1');
+        assert.equal(JSON.parse(fs.readFileSync(path.join(project, 'package.json'))).version, VERSION);
         const artifactCheck = run(project, 'check-artifact.cjs'); assert.equal(artifactCheck.status, 0, artifactCheck.stderr);
     } finally { fs.rmSync(project, { recursive: true, force: true }); }
 });
@@ -74,7 +76,7 @@ test('Given a valid backup, When rollback selects version-hash, Then it restores
 test('Given a tampered backup, When rollback runs, Then it fails before changing live files', () => {
     const project = fixture();
     try {
-        const digest = backupSelector(project); const selector = `6.2.1-${digest.slice(0, 8)}`;
+        const digest = backupSelector(project); const selector = `${VERSION}-${digest.slice(0, 8)}`;
         const before = liveHashes(project);
         fs.appendFileSync(path.join(project, 'backups', `script-${selector}.txt`), 'tamper');
         const result = run(project, 'rollback.cjs', [selector]);
@@ -159,7 +161,7 @@ test('Given a swap failure, When rollback starts again, Then startup recovery re
     const project = fixture();
     try {
         const digest = backupSelector(project); const before = liveHashes(project);
-        const failed = run(project, 'rollback.cjs', [`6.2.1-${digest.slice(0, 8)}`], { TAA_FAIL_PHASE: 'target-moved' });
+        const failed = run(project, 'rollback.cjs', [`${VERSION}-${digest.slice(0, 8)}`], { TAA_FAIL_PHASE: 'target-moved' });
         assert.notEqual(failed.status, 0);
         const recovered = run(project, 'rollback.cjs', ['bad']);
         assert.notEqual(recovered.status, 0); assert.deepEqual(liveHashes(project), before);

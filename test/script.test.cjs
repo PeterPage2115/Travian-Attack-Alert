@@ -115,8 +115,8 @@ function readDocumentMarker(source, name) {
 }
 
 function contract610ReleaseIdentity({ scriptSource, readme, packageJson, metadata, manifest, diagnostics, incidentBundle }) {
-const version = '6.2.1';
-const releaseId = 'taa-6.2.1';
+const version = '1.0.0';
+const releaseId = 'taa-1.0.0';
     assert.match(scriptSource, new RegExp(`^// @version\\s+${version.replaceAll('.', '\\.')}$`, 'm'));
     assert.match(readme, new RegExp(`Tampermonkey \\*\\*${version.replaceAll('.', '\\.')}`));
     assert.equal(packageJson.version, version);
@@ -137,8 +137,8 @@ test('release identity contract is invoked for the active distributable', () => 
     const diagnostics = script.buildDiagnosticsPanelModel({ atMs: 0, statusOrError: 'ok' });
     const incidentBundle = script.buildIncidentBundle({ envelope: {}, diagnostics: {}, traces: [] });
      assert.deepEqual(contract610ReleaseIdentity({ scriptSource, readme, packageJson, metadata, manifest, diagnostics, incidentBundle }), {
-     version: '6.2.1',
-     releaseId: 'taa-6.2.1'
+     version: '1.0.0',
+     releaseId: 'taa-1.0.0'
     });
 });
 
@@ -5812,7 +5812,7 @@ test('buildDiagnosticsPanelModel: null bez failure; pola z failure', () => {
         }),
         {
             at: new Date(1700000000000).toLocaleString(),
-    releaseId: 'taa-6.2.1',
+    releaseId: 'taa-1.0.0',
             statusOrError: 'timeout',
             eventCount: 3
         }
@@ -5822,7 +5822,7 @@ test('buildDiagnosticsPanelModel: null bez failure; pola z failure', () => {
         script.buildDiagnosticsPanelModel({ atMs: 1 }),
         {
             at: new Date(1).toLocaleString(),
-    releaseId: 'taa-6.2.1',
+    releaseId: 'taa-1.0.0',
             statusOrError: '—',
             eventCount: 0
         }
@@ -7898,4 +7898,83 @@ test('Todo 8 migration is one-shot and keeps baseline, accounting, and schema ke
     assert.equal(second.envelope.pending[0].eventId, first.envelope.pending[0].eventId);
     assert.deepEqual(second.envelope.metrics.deliveryAccounting, first.envelope.metrics.deliveryAccounting);
     assert.equal(script.monitorActiveStorageKey(HOST), 'travianAllianceMonitor_v1:cw.x2.international.travian.com');
+});
+
+// Public 1.0.0 identity: neutral host scope. The userscript installs on exactly
+// one neutral match (https://*.travian.com/alliance*), carries the public
+// @name/@namespace/@version, declares no update/download URLs, and opts out of
+// iframes via @noframes (iframe contexts never run, so they cannot scan, write,
+// send, or reload). Runtime authority still requires the query-free canonical
+// /alliance/profile/members route; install scope alone never grants it.
+function readPublicHeader() {
+    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const header = source.slice(0, source.indexOf('==/UserScript=='));
+    const value = (key) => {
+        const line = header.split('\n').find((candidate) => candidate.startsWith(`// ${key}`));
+        assert.ok(line, `userscript header must declare ${key}`);
+        return line.slice(`// ${key}`.length).trim();
+    };
+    return { source, header, value };
+}
+
+function matchPatternToRegExp(match) {
+    const escaped = match.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
+    return new RegExp(`^${escaped}$`);
+}
+
+test('public 1.0.0 header: single neutral @match, public identity, no update/download URLs, @noframes', () => {
+    const { header, value } = readPublicHeader();
+    assert.equal(value('@name'), 'Travian Attack Alert');
+    assert.equal(value('@namespace'), 'travian-attack-alert-public');
+    assert.equal(value('@version'), '1.0.0');
+    const matches = header.split('\n').filter((line) => line.startsWith('// @match'));
+    assert.equal(matches.length, 1, 'exactly one neutral @match line');
+    assert.equal(matches[0].slice('// @match'.length).trim(), 'https://*.travian.com/alliance*');
+    for (const key of ['@updateURL', '@downloadURL']) {
+        assert.equal(header.split('\n').filter((line) => line.startsWith(`// ${key}`)).length, 0, `${key} must be absent`);
+    }
+    assert.ok(header.split('\n').some((line) => line.trim() === '// @noframes'), '@noframes must be present');
+});
+
+test('neutral @match scope: any travian.com subdomain alliance URL installs; http and non-travian hosts do not', () => {
+    const { value } = readPublicHeader();
+    const scope = matchPatternToRegExp(value('@match'));
+    for (const url of [
+        'https://s1.example.travian.com/alliance/profile/members',
+        'https://cw.x2.international.travian.com/alliance/profile/members',
+        'https://ts1.travian.com/alliance',
+        'https://a.b.travian.com/allianceXYZ'
+    ]) assert.ok(scope.test(url), `${url} must be inside install scope`);
+    for (const url of [
+        'http://s1.example.travian.com/alliance/profile/members',
+        'https://example.com/alliance/profile/members',
+        'https://travian.com/alliance',
+        'https://travian.com.evil.com/alliance',
+        'https://faketravian.com/alliance'
+    ]) assert.equal(scope.test(url), false, `${url} must be outside install scope`);
+});
+
+test('neutral world host reaches canonical-member with per-hostname isolated state', () => {
+    assert.equal(script.classifyAllianceRoute('https://s1.example.travian.com/alliance/profile/members').role, 'canonical-member');
+    assert.equal(script.classifyAllianceRoute('https://cw.x2.international.travian.com/alliance/profile/members').role, 'canonical-member');
+    const first = script.lockNameForHostname('s1.example.travian.com');
+    const second = script.lockNameForHostname('s2.example.travian.com');
+    assert.ok(first.startsWith('taa-monitor:') && second.startsWith('taa-monitor:'));
+    assert.notEqual(first, second, 'two world hostnames must keep isolated monitor state');
+});
+
+test('noncanonical and unsupported routes never qualify for scan authority', () => {
+    const { source } = readPublicHeader();
+    assert.ok(source.includes('classifyAllianceRoute(location.href).role === ROUTE_ROLES.CANONICAL_MEMBER ? loadState() : null'), 'state loads only on the canonical-member route');
+    for (const url of [
+        'https://s1.example.travian.com/alliance/profile/members?page=2',
+        'https://s1.example.travian.com/alliance/profile/members?foo=bar',
+        'https://s1.example.travian.com/alliance/profile',
+        'https://s1.example.travian.com/alliance/overview',
+        'http://s1.example.travian.com/village'
+        // NOTE: the route classifier is host-agnostic by design (path-only);
+        // non-travian hosts such as https://example.com/... are rejected one
+        // layer earlier by the single neutral @match (see scope test above),
+        // and per-host state stays isolated via lockNameForHostname.
+    ]) assert.notEqual(script.classifyAllianceRoute(url).role, 'canonical-member', `${url} must not reach canonical-member`);
 });

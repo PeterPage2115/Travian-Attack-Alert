@@ -4,7 +4,7 @@ Userscript Tampermonkey, monolit `script.txt` (~9959 linii). Testy offline `node
 
 ## 1. Wersjonowanie
 
-- Jedno zrodlo prawdy: `package.json` (`version`, aktualnie 6.2.1).
+- Jedno zrodlo prawdy: `package.json` (`version`, aktualnie 1.0.0).
 - Bump semver: patch = fix, minor = nowa funkcja, major = break storage/schema.
 - Po bumpie obowiazkowo: `npm run build && npm run check:artifact && npm run backup`.
 - Miejsca do synchronizacji wersji: naglowek `script.txt` + RELEASE, `tools/*` (RELEASE), asercje w testach, README.
@@ -17,7 +17,7 @@ Userscript Tampermonkey, monolit `script.txt` (~9959 linii). Testy offline `node
 
 ## 3. Testy
 
-- `npm test` musi byc zielone (322 testy). Zero tolerancji na fail.
+- `npm test` musi byc zielone (caly pakiet testow offline, zero fail).
 - Szybki syntax check: `node -e "new Function(require('fs').readFileSync('script.txt','utf8'))"`.
 - Fikstury deterministyczne (loopback), zadnych realnych webhookow i requestow do Travian.
 
@@ -36,5 +36,5 @@ Userscript Tampermonkey, monolit `script.txt` (~9959 linii). Testy offline `node
 ## 6. Architektura
 
 - `script.txt` to checked-in source of truth. `npm run build` tylko odswieza manifest i hashe metadanych, nie generuje dystrybucji.
-- `src/` to shimy, runtime autorytetem jest `script.txt` (release ID `taa-6.2.1`).
+- `src/` to shimy, runtime autorytetem jest `script.txt` (release ID `taa-1.0.0`).
 - Zakaz nowych zaleznosci runtime bez pytania. Dev: esbuild, playwright, typescript tylko dla narzedzi/testow.

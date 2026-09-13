@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Travian - Alliance Attacks to Discord
-// @namespace    travian-alliance-attacks
-// @version      6.2.1
+// @name         Travian Attack Alert
+// @namespace    travian-attack-alert-public
+// @version      1.0.0
 // @description  Notifies on Discord about new attacks on alliance members
-// @match        https://cw.x2.international.travian.com/alliance*
+// @match        https://*.travian.com/alliance*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // @grant        GM_getValue
@@ -15,8 +15,8 @@
 // ==/UserScript==
 (function() {
   "use strict";
-const RELEASE_VERSION = "6.2.1";
-const RELEASE_ID = "taa-6.2.1";
+const RELEASE_VERSION = "1.0.0";
+const RELEASE_ID = "taa-1.0.0";
   const CONFIG = {
     // Losowe odświeżanie strony co 1–2 minuty.
     reloadMinSeconds: 60,
