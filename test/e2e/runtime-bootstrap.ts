@@ -25,6 +25,12 @@ export type RuntimeScenario = {
   // Todo 9 clean-install support: which artifact bytes to execute.
   // Defaults to '/script.txt' so every pre-existing spec is untouched.
   readonly artifactPath?: string;
+  // Todo 11 dual-tab lease proof: when true, the navigator.locks stub is NOT
+  // installed, so the page uses REAL Web Locks. Two pages in ONE browser
+  // context then genuinely contend for the exclusive lock (shared origin +
+  // shared localStorage, like two real tabs). Defaults to false, so every
+  // pre-existing spec keeps its deterministic leader/standby stub.
+  readonly realLocks?: boolean;
 };
 
 export type ArtifactRuntime = {
@@ -66,7 +72,7 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
   const fixtureOrigin = new URL(page.url() || 'http://127.0.0.1:8899').origin;
   const discordOrigin = fixtureOrigin;
   await page.request.post('/e2e-log');
-  await page.addInitScript(({ leader, webhook, fixture }) => {
+  await page.addInitScript(({ leader, webhook, fixture, realLocks }) => {
     const gm = Object.create(null) as Record<string, unknown>;
     const requests: string[] = [];
     const events: Array<Record<string, unknown>> = [];
@@ -97,12 +103,17 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
         .then(async response => options.onload?.({ status: response.status, responseText: await response.text() }))
         .catch(error => options.onerror?.(error));
     };
+    // Todo 11: realLocks skips this stub so the page contends on REAL Web
+    // Locks. Without the skip, leader:true would grant the lock to EVERY page
+    // and prove nothing about exclusivity.
+    if (!realLocks) {
     Object.defineProperty(navigator, 'locks', { configurable: true, value: {
       request: async (_name: string, _options: unknown, callback: (lock: object) => Promise<void> | void) => {
         if (!leader) return undefined;
         return callback({ name: 'taa-monitor' });
       }
     } });
+    }
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), location.href);
       if (url.origin !== location.origin && url.origin !== fixture) throw new Error(`blocked fixture request: ${url.origin}`);
@@ -111,7 +122,7 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
     };
     if (webhook) gm.travianAllianceWebhookUrl_v1 = 'https://discord.com/api/webhooks/123456789/fake-fixture-token';
     window.__TAA_E2E_SCENARIO__ = { leader, webhook, lateTable: false };
-  }, { leader: scenario.leader !== false, webhook: scenario.webhook === true, fixture: fixtureOrigin });
+  }, { leader: scenario.leader !== false, webhook: scenario.webhook === true, fixture: fixtureOrigin, realLocks: scenario.realLocks === true });
 
   await page.goto(scenario.path || '/alliance/profile/members', { waitUntil: 'domcontentloaded' });
   if (scenario.lateTable || scenario.continuousMutation) {

@@ -9,7 +9,7 @@ const PORT = Number(process.env.PORT || 8899);
 const PANEL_HTML = path.join(__dirname, 'attack-panel.html');
 
 const sockets = new Set();
-const e2eState = { discordRequests: [], openRequests: 0, webhookAttempts: 0 };
+const e2eState = { discordRequests: [], openRequests: 0, webhookAttempts: 0, deliveryHold: false };
 
 function sendFile(response, filePath, contentType) {
   fs.readFile(filePath, (error, content) => {
@@ -142,14 +142,49 @@ function handleRequest(request, response) {
       e2eState.webhookAttempts += 1;
       e2eState.discordRequests.push({ attempt: e2eState.webhookAttempts, startedAt, endedAt: Date.now(), body: JSON.parse(body || '{}') });
       e2eState.openRequests -= 1;
-      if (e2eState.webhookAttempts === 1) {
-        response.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '1' });
-        response.end(JSON.stringify({ retry_after: 1 }));
+      const respond = () => {
+        if (e2eState.webhookAttempts === 1) {
+          response.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '1' });
+          response.end(JSON.stringify({ retry_after: 1 }));
+        } else {
+          response.writeHead(200, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ id: 'fixture-message-id' }));
+        }
+      };
+      // Todo 11 fence-loss arm: while deliveryHold is true the response is
+      // withheld (the request is already logged above), so a test can revoke
+      // the page's lease mid-flight and prove the settle path stays
+      // recoverable. Defaults to false: every pre-existing spec is untouched.
+      if (e2eState.deliveryHold) {
+        const timer = setInterval(() => {
+          if (!e2eState.deliveryHold) {
+            clearInterval(timer);
+            respond();
+          }
+        }, 25);
       } else {
-        response.writeHead(200, { 'Content-Type': 'application/json' });
-        response.end(JSON.stringify({ id: 'fixture-message-id' }));
+        respond();
       }
     });
+    return;
+  }
+
+  if (pathname === '/e2e-delivery-hold') {
+    if (request.method === 'POST') {
+      const chunks = [];
+      request.on('data', chunk => chunks.push(chunk));
+      request.on('end', () => {
+        try {
+          const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          e2eState.deliveryHold = parsed.hold === true;
+        } catch {
+          e2eState.deliveryHold = false;
+        }
+        sendJson(response, 200, { hold: e2eState.deliveryHold });
+      });
+      return;
+    }
+    sendJson(response, 200, { hold: e2eState.deliveryHold });
     return;
   }
 
@@ -157,6 +192,7 @@ function handleRequest(request, response) {
     if (request.method === 'POST') {
       e2eState.discordRequests.length = 0;
       e2eState.webhookAttempts = 0;
+      e2eState.deliveryHold = false;
       sendJson(response, 200, { reset: true, openRequests: e2eState.openRequests });
     } else sendJson(response, 200, { ...e2eState, discordRequests: [...e2eState.discordRequests] });
     return;

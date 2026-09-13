@@ -2566,7 +2566,7 @@ const RELEASE_ID = "taa-1.0.0";
     try {
       const worldKey = normalizeHostname(hostname);
       const now = Number.isFinite(nowMs) ? nowMs : Date.now();
-      const existing = loadLease(worldKey);
+      const existing = loadLeaseRecord(worldKey);
       if (!isLeaseActive(existing, ownerId, now)) {
         return false;
       }
