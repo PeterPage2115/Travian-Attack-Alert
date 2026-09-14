@@ -18,7 +18,7 @@ const EXCLUSIONS = Object.freeze({
 });
 
 function categoryFor(file) {
-  if (file === 'AGENTS.md' || file === 'DESIGN.md') return 'governance';
+  if (file === 'AGENTS.md' || file === 'docs/architecture.md') return 'governance';
   if (file === 'package.json') return 'package-scripts';
   if (file === 'metadata.json' || file === 'module-manifest.json' || file.endsWith('.sha256')) {
     return 'metadata-manifests';

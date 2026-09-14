@@ -118,7 +118,7 @@ function build() {
         toolchain: {
             esbuild: generated.packageJson.devDependencies.esbuild,
             typescript: generated.packageJson.devDependencies.typescript,
-            node: '22.19.0'
+            node: process.version.startsWith('v') ? process.version.slice(1) : process.version
         }
     };
 

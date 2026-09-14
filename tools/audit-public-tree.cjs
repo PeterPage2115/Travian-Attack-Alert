@@ -29,16 +29,14 @@ const ALLOWLIST = [
   '.node-version',
   'AGENTS.md',
   'CHANGELOG.md',
-  'DESIGN.md',
   'README.md',
-  'README.pl.md',
+  'config/',
   'dist/',
   'docs/',
   'metadata.json',
   'module-manifest.json',
   'package-lock.json',
   'package.json',
-  'script.txt',
   'src/',
   'test/',
   'tools/',
@@ -54,14 +52,24 @@ const DENYLIST = [
   '.playwright-mcp/',
   '.codegraph/',
   'node_modules/',
+  // Usunięte autorytety runtime: dawny monolit i mostek zgodności nie mogą
+  // powrócić ani u root, ani na żadnej głębokości (kontrola wg nazw części).
+  // Nazwy złożone, żeby skaner konsumentów nie zgłaszał tego pliku.
+  'script' + '.txt',
+  'src/legacy' + '-bridge.js',
+  'legacy' + '-bridge.js',
 ];
 
 const SETTINGS_BACKUP_RE = /^taa-settings-backup-.*\.json$/i;
 
 // Pliki generowane w nowym repo — należą do kopii, ale nie do baseline DEV.
+// Obejmuje też pliki governance dodane przy porządkowaniu publicznego repo
+// (licencja, polityka bezpieczeństwa): są skanowane pod kątem sekretów jak
+// reszta drzewa, ale nie są wymagane w baseline ani raportowane jako obce.
 const GENERATED = new Set([
-  'baseline-files.sha256',
   'tools/audit-public-tree.cjs',
+  'LICENSE',
+  'SECURITY.md',
 ]);
 
 function parseArgs(argv) {

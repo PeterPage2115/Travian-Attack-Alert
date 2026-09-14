@@ -14,17 +14,14 @@ const REVIEWED_FILES = [
   '.node-version',
   'AGENTS.md',
   'CHANGELOG.md',
-  'DESIGN.md',
   'README.md',
-  'README.pl.md',
   'metadata.json',
   'module-manifest.json',
   'package-lock.json',
   'package.json',
-  'script.txt',
   'tsconfig.json',
 ];
-const REVIEWED_DIRS = ['.github', 'dist', 'docs', 'src', 'test', 'tools'];
+const REVIEWED_DIRS = ['.github', 'config', 'dist', 'docs', 'src', 'test', 'tools'];
 
 function runAudit(root, baseline, reportPath) {
   return spawnSync(
@@ -130,7 +127,7 @@ test('Given a private migration backup reference, When audited, Then the public 
 test('Given a Discord snowflake, When audited, Then the public tree is rejected without printing it', () => {
   withFixture((fixture) => {
     const snowflake = ['123456', '789012', '345678'].join('');
-    fs.writeFileSync(path.join(fixture.publicRoot, 'script.txt'), `channel=${snowflake}\n`);
+    fs.writeFileSync(path.join(fixture.publicRoot, 'metadata.json'), `channel=${snowflake}\n`);
     const { result, report } = assertRejected(fixture, (auditReport) => {
       assert.ok(auditReport.secretHits.some((hit) => hit.kind === 'discord-snowflake'));
     });
@@ -155,7 +152,7 @@ test('Given a Discord webhook URL, When audited, Then the public tree is rejecte
 
 test('Given an absolute DEV path, When audited, Then the public tree is rejected without printing the path', () => {
   withFixture((fixture) => {
-    const absoluteDevPath = ['', 'mnt', 'e', 'Projekty', 'TravianAttackAlertDEV', 'script.txt'].join('/');
+    const absoluteDevPath = ['', 'mnt', 'e', 'Projekty', 'TravianAttackAlertDEV', 'src', 'runtime.js'].join('/');
     fs.writeFileSync(path.join(fixture.publicRoot, 'README.md'), `${absoluteDevPath}\n`);
     const { result, report } = assertRejected(fixture, (auditReport) => {
       assert.ok(auditReport.secretHits.some((hit) => hit.kind === 'private-path'));

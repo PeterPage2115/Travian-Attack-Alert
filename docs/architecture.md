@@ -1,6 +1,6 @@
 # TravianAttackAlert Design System — 1.0.0 attack-only
 
-This is the source of truth for the vanilla operations console at **1.0.0**. Values marked **EXTRACTED** are preserved from `initAdminPanel` and its helper seam in `script.txt`; **PROPOSED** values complete the approved warm-charcoal + brass/olive direction and must be used as tokens rather than ad-hoc overrides.
+This is the source of truth for the vanilla operations console at **1.0.0**. Values marked **EXTRACTED** are preserved from `initAdminPanel` and its helper seam in `src/runtime.js`; **PROPOSED** values complete the approved warm-charcoal + brass/olive direction and must be used as tokens rather than ad-hoc overrides.
 
 ## 1. Atmosphere & Identity
 
@@ -75,7 +75,7 @@ The dialog shell is the only scroll owner: overlay `overflow-y: auto`, panel con
 
 ## 5. Components
 
-Every primitive below is present in `test/fixtures/design-system/showcase.html`. State names are stable hooks for Playwright and future `script.txt` helpers.
+Every primitive below is present in `test/fixtures/design-system/showcase.html`. State names are stable hooks for Playwright and future `src/` runtime helpers.
 
 ### Dialog shell
 - **Structure**: `<div data-primitive="dialog-shell" role="dialog" aria-modal="true" aria-labelledby="…">` with `<header>`, live feedback, and `<main>`.
@@ -178,9 +178,9 @@ The strategy is **mixed, restrained**: tonal shifts establish the base hierarchy
 ### Accepted Debt
 | Item | Location | Why accepted | Exit |
 |---|---|---|---|
-| Tampermonkey menu commands remain prompt/alert based | `script.txt` menu commands | Explicitly accepted for this release; the panel is the primary workflow | Revisit only with explicit scope |
+| Tampermonkey menu commands remain prompt/alert based | runtime menu commands (`src/runtime.js`) | Explicitly accepted for this release; the panel is the primary workflow | Revisit only with explicit scope |
 | Host Travian typography/forced-colors can influence injected context | injected panel root | Existing host page cannot be controlled; root isolation and Chromium evidence mitigate it | Critical/Major finding blocks release |
-| Vanilla userscript has no runtime component compiler | `script.txt` | Required single-file/no-build constraint | Keep helper seam token-backed and covered by showcase |
+| Vanilla userscript ships as one generated file | `dist/*.user.js` (built from `src/`) | Required single-file installable constraint | Keep helper seam token-backed and covered by showcase |
 
 ## 9. Release 1.0.0 attack-only operations contract
 
