@@ -29,45 +29,8 @@ const script = Object.assign({},
     require('../src/diagnostics.js'), require('../src/panel.js'),
     require('../src/acquisition.js')
 );
-script.buildPlayerWorkspaceReadModel = require('../script.txt').buildPlayerWorkspaceReadModel;
-script.inspectMappingStorage = require('../script.txt').inspectMappingStorage;
-script.inspectDiscordConfigStorage = require('../script.txt').inspectDiscordConfigStorage;
-script.loadMappingsProvenance = require('../script.txt').loadMappingsProvenance;
-script.loadDiscordConfigProvenance = require('../script.txt').loadDiscordConfigProvenance;
-script.buildStorageProvenanceModel = require('../script.txt').buildStorageProvenanceModel;
-script.storageProvenanceText = require('../script.txt').storageProvenanceText;
-script.applySettingsBackup = require('../script.txt').applySettingsBackup;
-script.buildSettingsBackup = require('../script.txt').buildSettingsBackup;
-// task-3 panel clarity additions (delimited): textual panel-state models owned by script.txt.
-script.formatPlayerPaginationStatus = require('../script.txt').formatPlayerPaginationStatus;
-script.describePlayerFilterState = require('../script.txt').describePlayerFilterState;
-script.formatTraceCountStatus = require('../script.txt').formatTraceCountStatus;
-script.describeFreshnessState = require('../script.txt').describeFreshnessState;
-script.buildOperationalStateLines = require('../script.txt').buildOperationalStateLines;
-script.describeAlertRoleError = require('../script.txt').describeAlertRoleError;
-script.describeAlertThresholdError = require('../script.txt').describeAlertThresholdError;
-script.enqueueEvents = require('../script.txt').enqueueEvents;
-script.QUEUE_MAX_EVENTS = require('../script.txt').QUEUE_MAX_EVENTS;
-script.buildIncidentBundle = require('../script.txt').buildIncidentBundle;
-script.buildSettingsBackup = require('../script.txt').buildSettingsBackup;
-script.MAPPING_STORAGE_KEY = require('../script.txt').MAPPING_STORAGE_KEY;
-script.NAME_NOT_FOUND_TTL_MS = require('../script.txt').NAME_NOT_FOUND_TTL_MS;
-script.NAME_BACKFILL_TIMEOUT_MS = require('../script.txt').NAME_BACKFILL_TIMEOUT_MS;
-script.NAME_BACKFILL_MAX_CONCURRENCY = require('../script.txt').NAME_BACKFILL_MAX_CONCURRENCY;
-script.runNameBackfill = require('../script.txt').runNameBackfill;
-// task-1 scan-cycle contract: pure bounded helpers owned by script.txt.
-script.SCAN_CYCLE_DEADLINE_MS = require('../script.txt').SCAN_CYCLE_DEADLINE_MS;
-script.SCAN_CYCLE_QUIET_MS = require('../script.txt').SCAN_CYCLE_QUIET_MS;
-script.SCAN_COMMIT_ERROR_REASONS = require('../script.txt').SCAN_COMMIT_ERROR_REASONS;
-script.RELOAD_REFUSAL_REASONS = require('../script.txt').RELOAD_REFUSAL_REASONS;
-script.isScanCycleReady = require('../script.txt').isScanCycleReady;
-script.createScanCycleId = require('../script.txt').createScanCycleId;
-script.decideScanCycleOutcome = require('../script.txt').decideScanCycleOutcome;
-script.isScanTerminalRecord = require('../script.txt').isScanTerminalRecord;
-script.selectScanTerminalRecord = require('../script.txt').selectScanTerminalRecord;
-script.selectLatestScanTerminalRecord = require('../script.txt').selectLatestScanTerminalRecord;
-script.describeScanTerminal = require('../script.txt').describeScanTerminal;
-script.classifyReloadRefusal = require('../script.txt').classifyReloadRefusal;
+const runtime = require('../src/runtime.js');
+Object.assign(script, runtime);
 const canonicalDiscord = require('./fixtures/discord/canonical.cjs');
 const acquisition = require('./fixtures/acquisition/sanitizer.cjs');
 const acquisitionBrowser = require('./fixtures/acquisition/browser-harness.cjs');
@@ -130,7 +93,7 @@ const releaseId = 'taa-1.0.0';
 }
 
 test('release identity contract is invoked for the active distributable', () => {
-    const scriptSource = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const scriptSource = fs.readFileSync(require.resolve('../dist/travian-attack-alert.user.js'), 'utf8');
     const readme = fs.readFileSync(require.resolve('../README.md'), 'utf8');
     const packageJson = JSON.parse(fs.readFileSync(require.resolve('../package.json'), 'utf8'));
     const metadata = JSON.parse(fs.readFileSync(require.resolve('../metadata.json'), 'utf8'));
@@ -2658,7 +2621,7 @@ test('README departure operator guidance and allowed_mentions contract matches l
     const { spawnSync } = require('node:child_process');
     const auditEnv = Object.assign({}, process.env);
     delete auditEnv.NODE_TEST_CONTEXT;
-    const auditResult = spawnSync(process.execPath, ['test/fixtures/discord/static-format-audit.cjs', '--file', 'script.txt', '--readme', 'README.md'], { encoding: 'utf8', env: auditEnv });
+    const auditResult = spawnSync(process.execPath, ['test/fixtures/discord/static-format-audit.cjs', '--file', 'src/runtime.js', '--readme', 'README.md'], { encoding: 'utf8', env: auditEnv });
     assert.equal(auditResult.status, 0, auditResult.stdout + auditResult.stderr);
     const parsed = JSON.parse(auditResult.stdout);
     assert.equal(parsed.verdict, 'PASS');
@@ -3434,7 +3397,7 @@ test('compact production mentions and legacy cleanup', () => {
     assert.deepEqual(raidPayloads[0].allowed_mentions, { users: [UID_A, UID_B] });
     assert.equal('roles' in raidPayloads[0].allowed_mentions, false);
 
-    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     assert.equal((source.match(/function\s+buildDiscordPayloads\s*\(/g) || []).length, 1);
     assert.equal((source.match(/function\s+serializeCompactDiscordRequestPlans\s*\(/g) || []).length, 1);
     for (const removed of [
@@ -7543,7 +7506,7 @@ test('Todo 8 draft gate: write-read-compare blocks throwing or mismatching stora
 });
 
 test('hotfix caret restore: selection support excludes checkbox inputs', () => {
-    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     assert.match(source, /function supportsInputSelection\s*\(element\)/);
     assert.doesNotMatch(source, /typeof draftFocus\.setSelectionRange\s*===\s*['"]function['"]|typeof input\.setSelectionRange\s*===\s*['"]function['"]/);
     assert.equal((source.match(/supportsInputSelection\(draftFocus\)/g) || []).length, 1);
@@ -7555,7 +7518,7 @@ test('hotfix caret restore: selection support excludes checkbox inputs', () => {
 });
 
 test('Todo 8 inventory: all panel capabilities have a structured tab surface', () => {
-    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     const workspaceStart = source.indexOf('const renderWorkspace');
     const workspace = source.slice(workspaceStart, source.indexOf('let pendingBackfillIds', workspaceStart));
     for (const capability of [
@@ -7792,7 +7755,7 @@ test('monitor commit-attempt hook reports the attempted transition generation wi
     );
     assert.equal(plan.outcome, 'ok');
     assert.equal(plan.generation, 8);
-    const scriptSource = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const scriptSource = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     assert.match(scriptSource, /reportLifecycleHook\("onMonitorCommitAttempt", \{\s+observedAtMs,\s+generation: transition\.generation\s+\}\)/);
     assert.equal(/\bcandidate\b/.test(scriptSource), false);
 });
@@ -7954,7 +7917,7 @@ test('Todo 8 migration is one-shot and keeps baseline, accounting, and schema ke
 // send, or reload). Runtime authority still requires the query-free canonical
 // /alliance/profile/members route; install scope alone never grants it.
 function readPublicHeader() {
-    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../dist/travian-attack-alert.user.js'), 'utf8');
     const header = source.slice(0, source.indexOf('==/UserScript=='));
     const value = (key) => {
         const line = header.split('\n').find((candidate) => candidate.startsWith(`// ${key}`));
@@ -7969,7 +7932,7 @@ function matchPatternToRegExp(match) {
     return new RegExp(`^${escaped}$`);
 }
 
-test('public 1.0.0 header: single neutral @match, public identity, no update/download URLs, @noframes', () => {
+test('public 1.0.0 header: single neutral @match, public identity, protected update URLs, @noframes', () => {
     const { header, value } = readPublicHeader();
     assert.equal(value('@name'), 'Travian Attack Alert');
     assert.equal(value('@namespace'), 'travian-attack-alert-public');
@@ -7977,9 +7940,8 @@ test('public 1.0.0 header: single neutral @match, public identity, no update/dow
     const matches = header.split('\n').filter((line) => line.startsWith('// @match'));
     assert.equal(matches.length, 1, 'exactly one neutral @match line');
     assert.equal(matches[0].slice('// @match'.length).trim(), 'https://*.travian.com/alliance*');
-    for (const key of ['@updateURL', '@downloadURL']) {
-        assert.equal(header.split('\n').filter((line) => line.startsWith(`// ${key}`)).length, 0, `${key} must be absent`);
-    }
+    const protectedUrl = 'https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js';
+    for (const key of ['@updateURL', '@downloadURL']) assert.equal(value(key), protectedUrl);
     assert.ok(header.split('\n').some((line) => line.trim() === '// @noframes'), '@noframes must be present');
 });
 
@@ -8011,7 +7973,7 @@ test('neutral world host reaches canonical-member with per-hostname isolated sta
 });
 
 test('noncanonical and unsupported routes never qualify for scan authority', () => {
-    const { source } = readPublicHeader();
+    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     assert.ok(source.includes('classifyAllianceRoute(location.href).role === ROUTE_ROLES.CANONICAL_MEMBER ? loadState() : null'), 'state loads only on the canonical-member route');
     for (const url of [
         'https://s1.example.travian.com/alliance/profile/members?page=2',

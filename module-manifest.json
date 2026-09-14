@@ -8,72 +8,8 @@
   "temporaryExceptions": [],
   "modules": [
     {
-      "path": "src/constants.js",
-      "sha256": "8e1c1fcbaa5d76bf5eac5cd20e1d177846ac3a48fb7479e16018ccbc9a6d4a27"
-    },
-    {
-      "path": "src/text.js",
-      "sha256": "d585e17f404fbd292db797e725807bf060d63650edab992b0a2f332f3475da3c"
-    },
-    {
-      "path": "src/storage.js",
-      "sha256": "100d4e9273284af6ff24b254ccb5c05aba8b67a729bc93aa269b102401ba6f54"
-    },
-    {
-      "path": "src/lease.js",
-      "sha256": "44037fa390259f5acce921428c7fea5ca0fc5f64be2d48a5e322dbcf287d5096"
-    },
-    {
-      "path": "src/route.js",
-      "sha256": "3f4670c7777f22604a348c0b03c70259fe71080d2ae6815ee480e9e9b8f98c61"
-    },
-    {
-      "path": "src/parser.js",
-      "sha256": "cdc01e55a5268d28644fa0aa69717d7ce926342593e77030f125b907718116ad"
-    },
-    {
-      "path": "src/snapshot.js",
-      "sha256": "fdd3b9461ad4d775e1d162ba8c9ea74e99061dbe76f62e3f07d23c89fe82f9b7"
-    },
-    {
-      "path": "src/envelope.js",
-      "sha256": "7375c94e964d2c5fdbe3752e271bf196254cbc6ef60a5cb2c60d052f3acc5944"
-    },
-    {
-      "path": "src/migration.js",
-      "sha256": "53666a6873f7fcdc4f0f629804e9e5afba51a328b3afb4d086d07f7fdd6a9505"
-    },
-    {
-      "path": "src/discord.js",
-      "sha256": "2357ffa8403ee7203099bc61b61e45c6e3cff722fd7fe7634da0b9da57dd119b"
-    },
-    {
-      "path": "src/transport.js",
-      "sha256": "cb2b5c5284ab292770e996a8442f5dcec23c2710fa2ac9aeb5039eef73dbec8a"
-    },
-    {
-      "path": "src/dispatch.js",
-      "sha256": "a13ded4d88952d3b4fd8082d78a58f36db2dbaffa7eed0b272d0df8c5f9577b2"
-    },
-    {
-      "path": "src/conservation.js",
-      "sha256": "ae23471393c7f7349ee71e4f05ba88c98b69e142488b395753b7fd363825e04c"
-    },
-    {
-      "path": "src/diagnostics.js",
-      "sha256": "543d0f691aa494b969b35bd23206ba4f57644059d31db06665663cd6f142af3c"
-    },
-    {
-      "path": "src/panel.js",
-      "sha256": "b91946468e041f43b624b65a742f48e4ae13b4b9cdef1f388b70161ceb594312"
-    },
-    {
       "path": "src/acquisition.js",
-      "sha256": "f9a9d13a12cf33f1a09c3c1ddba77119f1fcfdde707e79ac77f8696dfcead420"
-    },
-    {
-      "path": "src/legacy-bridge.js",
-      "sha256": "4a251589ffb13f75094af901afc81182e040e685d08a8587844d206d3f2f04fb"
+      "sha256": "69b6e85c5785474b9c4c62268e58879048b9f16f7d427ceab5bb58087442ffea"
     },
     {
       "path": "src/boot.js",
@@ -82,6 +18,82 @@
     {
       "path": "src/browser-entry.js",
       "sha256": "c5c1b98aafdd168f5a062e5e842d8294cdb22168fa0f8323fe86e938c07d6894"
+    },
+    {
+      "path": "src/conservation.js",
+      "sha256": "c672e49c7caab528fb7275134d08e60b4f8465dcb180db9c83c6c4ee4e7ff609"
+    },
+    {
+      "path": "src/constants.js",
+      "sha256": "8e1c1fcbaa5d76bf5eac5cd20e1d177846ac3a48fb7479e16018ccbc9a6d4a27"
+    },
+    {
+      "path": "src/diagnostics.js",
+      "sha256": "d70e9f1ec8bb70c6b3bf306f32b20c15d7f0087a326af05cf5da0c65e58efb0a"
+    },
+    {
+      "path": "src/discord.js",
+      "sha256": "3c339b89e7e99b1e01b9f1c6b01cb4366724a33ab22fa28cfdddf891b8392cb4"
+    },
+    {
+      "path": "src/dispatch.js",
+      "sha256": "3871a7c62bbe5168dbef0fc43222787ce1f049d55408cdd11b299a6c2572b923"
+    },
+    {
+      "path": "src/envelope.js",
+      "sha256": "537f2f74be19865dce7f126d38d21ec1ee2088ca712d522a3c8a1b1e46fb674b"
+    },
+    {
+      "path": "src/lease.js",
+      "sha256": "2902a1e5ecb4ee0341f6758f093b9662bfae11c650513a51d07d3831a39cbea0"
+    },
+    {
+      "path": "src/legacy-bridge.js",
+      "sha256": "1be13a19aa23a07605d1b390f618ec24ca1e011a02e36b96565dd0f923e65a46"
+    },
+    {
+      "path": "src/migration.js",
+      "sha256": "d6b92fc32f294dd2f3739d029f07cea48e37d52ccd8d3bd1c0d04a2467585809"
+    },
+    {
+      "path": "src/panel.js",
+      "sha256": "8152a86e6f96041f2a6fedc31c62b55e8d2cb87de2e672a17739783bba428741"
+    },
+    {
+      "path": "src/parser.js",
+      "sha256": "3dcee4dcabf1c2b7ffb1c5d28dc2f1ee8e00d45fd31167157dbc7acf6df89c19"
+    },
+    {
+      "path": "src/route.js",
+      "sha256": "3f4670c7777f22604a348c0b03c70259fe71080d2ae6815ee480e9e9b8f98c61"
+    },
+    {
+      "path": "src/runtime-api.js",
+      "sha256": "9dea1d548b498a02985468210d357273e7f7b604ba40444ec1c9113e64842f16"
+    },
+    {
+      "path": "src/runtime.js",
+      "sha256": "b66faa64c59eac0b143907e720cc926d282db2afe8a6e1ef5b0a9b4fa88f1609"
+    },
+    {
+      "path": "src/snapshot.js",
+      "sha256": "4ed96a74546978f04bcbcf43f5bdb879e11f0b0c33d1018e2c3840d1f1bf5828"
+    },
+    {
+      "path": "src/storage.js",
+      "sha256": "db20c39a2b7ab763314e9f5231b9f06cd2fec5791709452ab4a4315e5d045662"
+    },
+    {
+      "path": "src/text.js",
+      "sha256": "d585e17f404fbd292db797e725807bf060d63650edab992b0a2f332f3475da3c"
+    },
+    {
+      "path": "src/transport.js",
+      "sha256": "95a80884bac69a8ba98adadabbcfc431235ca52e536337e5cc1ecd1cfa1ebffc"
+    },
+    {
+      "path": "src/userscript-entry.js",
+      "sha256": "d3d5cc19aa8be0e44aeaf5277752d1b1519c1576ed22219b86ab924f8bc6124b"
     }
   ]
 }

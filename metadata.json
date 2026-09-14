@@ -5,15 +5,15 @@
     "releaseId": "taa-1.0.0"
   },
   "artifact": {
-    "path": "script.txt",
-    "sha256": "a34272340e92c1b5159244345a8ef2da98c6bd297e13d8547ed11838622f3ce7",
+    "path": "dist/travian-attack-alert.user.js",
+    "sha256": "0e2ea1eb46be534289fc2e0029a9b2dbe938042de7e34182a2ced37a557f44f2",
     "source": {
-      "path": "script.txt",
-      "sha256": "a34272340e92c1b5159244345a8ef2da98c6bd297e13d8547ed11838622f3ce7"
+      "path": "src/userscript-entry.js",
+      "sha256": "d3d5cc19aa8be0e44aeaf5277752d1b1519c1576ed22219b86ab924f8bc6124b"
     },
     "dist": {
       "path": "dist/travian-attack-alert.user.js",
-      "sha256": "a34272340e92c1b5159244345a8ef2da98c6bd297e13d8547ed11838622f3ce7"
+      "sha256": "0e2ea1eb46be534289fc2e0029a9b2dbe938042de7e34182a2ced37a557f44f2"
     }
   },
   "toolchain": {

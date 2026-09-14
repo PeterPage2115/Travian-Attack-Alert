@@ -3,7 +3,7 @@
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
-const script = require(path.join(ROOT, 'script.txt'));
+const script = require(path.join(ROOT, 'src', 'runtime.js'));
 const GENERATION = '6.0.0';
 const HOST = 'cw.x2.international.travian.com';
 const OBSERVED_AT = Date.UTC(2026, 7, 23, 9, 46, 1, 0);

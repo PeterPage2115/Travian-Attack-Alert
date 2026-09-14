@@ -16,7 +16,7 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
-const runtime = fs.readFileSync(path.join(ROOT, 'script.txt'), 'utf8');
+const runtime = fs.readFileSync(path.join(ROOT, 'dist', 'travian-attack-alert.user.js'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
 const VERSION = String(pkg.version);
