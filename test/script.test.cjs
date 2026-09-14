@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Testy node:test dla czystych funkcji eksportowanych z ../script.txt
+ * Testy node:test dla czystych funkcji eksportowanych z ../src/runtime.js
  * (Travian - Alliance Attacks to Discord, wersja 4.6).
  *
  * Zasady:

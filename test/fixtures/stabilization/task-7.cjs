@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const script = require('../../../script.txt');
+const script = require('../../../src/runtime.js');
 
 const events = Array.from({ length: 25 }, (_, index) => ({
     sourceEventIds: [`s1:evidence-${String(index + 1).padStart(2, '0')}`],

@@ -252,6 +252,20 @@ function main() {
   const placeholderRe = /(<|>|FAKE|PLACEHOLDER|example)/i;
   const snowflakeRe = /\b\d{17,19}\b/g;
   const privatePathRe = /(?:\.\.[\\/]TravianAttackAlertDEV[\\/]backups\b)|(?:[A-Za-z]:[\\/][^\r\n]*?TravianAttackAlertDEV(?:[\\/][^\r\n\s]*)?)|(?:\/(?:[^\s/]+\/)*TravianAttackAlertDEV(?:\/[^\s]*)?)/g;
+  // --- (c-bis) zakazane tożsamości legacy (bez znalezionych bajtów w raporcie) ---
+  // Nazwy graczy i host świata przeniesione z prywatnego materiału DEV nie
+  // mogą występować na żywej powierzchni publicznej. test/ niesie syntetyczne
+  // fixtury i nieprzezroczyste identyfikatory, a docs/release-history/ to
+  // zamrożone archiwa cytujące odrzucone przynęty dosłownie — oba obszary są
+  // wyłączone z tego wymiaru (ten sam precedens co reguła snowflake dla
+  // test/ i README). Wzorce są składane z fragmentów, żeby ten plik nigdy
+  // nie pasował do samego siebie (jak wpisy DENYLIST i NEEDLES obok).
+  const legacyIdentityRe = new RegExp(
+    ['Le' + 'nny', 'Ba' + 'rre', 'Qui' + 'nno' + 's', 'sa' + 'ndla', 'Aria' + 'dne', 'Bo' + 'rek', 'Ci' + 'ri', 'Da' + 'rek'].join('|'),
+    'gi',
+  );
+  const legacyHostRe = new RegExp(['cw', 'x2', 'international', 'tra' + 'vian', 'com'].join('[.]'), 'gi');
+  const identityExemptRe = /^(?:test\/|docs\/release-history\/)/;
   // Prawdziwy token webhooka Discorda ma ~68 znaków (base64url o wysokiej
   // entropii). Deterministyczne fixtury loopback w testach używają krótkich
   // dummy-tokenów (zweryfikowano: maks. 20 znaków na całej powierzchni
@@ -298,6 +312,11 @@ function main() {
             tokenLen: token.length,
           });
         }
+      }
+      // Tożsamości legacy poza zwolnionymi obszarami (fixtury, archiwa).
+      if (!identityExemptRe.test(rel)) {
+        recordMatches(legacyIdentityRe, 'legacy-identity');
+        recordMatches(legacyHostRe, 'legacy-host');
       }
     });
   }

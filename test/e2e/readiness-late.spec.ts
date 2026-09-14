@@ -45,7 +45,7 @@ test('a later canonical cycle succeeds after a timed-out document', async ({ pag
     return Object.values(diagnostics).some((world) => world.records?.some((record) => record.reason === 'readiness-timeout') ?? false);
   }), { timeout: 20_000 }).toBe(true);
   await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-  await page.addScriptTag({ content: await page.evaluate(async () => await (await fetch('/script.txt')).text()) });
+  await page.addScriptTag({ content: await page.evaluate(async () => await (await fetch('/dist/travian-attack-alert.user.js')).text()) });
   await expect.poll(async () => await page.evaluate(() => window.__TAA_E2E_EVENTS__?.filter((event) => event.kind === 'snapshot' && event.status === 'authoritative').length ?? 0)).toBe(1);
   expect(await page.evaluate(() => window.__TAA_E2E_EVENTS__?.filter((event) => event.kind === 'extraction').length ?? 0)).toBe(1);
 });

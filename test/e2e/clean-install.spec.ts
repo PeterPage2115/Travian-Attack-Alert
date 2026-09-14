@@ -1,7 +1,7 @@
 // Todo 9 — clean-install baseline safety (plan external-alliance-public-1.0.0).
 //
 // Proves, against the FINAL distributed bytes (dist/travian-attack-alert.user.js,
-// NOT script.txt), that a first scan from EMPTY localStorage + EMPTY GM storage:
+// the generated installable), that a first scan from EMPTY localStorage + EMPTY GM storage:
 //   - commits baseline + roster, and
 //   - sends ZERO Discord requests (no historical flood for pre-existing counts).
 // A synthetic +1 attack for playerId 101 then delivers EXACTLY ONE loopback
@@ -332,7 +332,7 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       expect(await overlayMetric(page, 'Overview', 'taa-queue-count-value')).toBe('0 / 0');
       expect(await overlayMetric(page, 'Overview', 'taa-last-sent-value')).not.toBe('Not recorded');
       // The Diagnostics acknowledged counter counts represented sourceEventIds;
-      // legacy-bridged events carry none, so it stays 0 here while the ledger
+      // runtime-contract events carry none, so it stays 0 here while the ledger
       // above proves the acknowledgement. Panel-count ownership: Todos 10/13.
 
       writeEvidencePhase('delta-single-delivery', {

@@ -26,9 +26,9 @@ function pageHtml() {
 
 function createServer(rootDir = path.resolve(__dirname, '../..', '..')) {
     return http.createServer((request, response) => {
-        if (request.url === '/script.txt') {
+        if (request.url === '/dist/travian-attack-alert.user.js') {
             response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-            response.end(fs.readFileSync(path.join(rootDir, 'script.txt')));
+            response.end(fs.readFileSync(path.join(rootDir, 'dist', 'travian-attack-alert.user.js')));
             return;
         }
         if (request.url && request.url.startsWith('/alliance/profile')) {

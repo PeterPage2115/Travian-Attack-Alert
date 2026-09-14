@@ -3,7 +3,7 @@
 
 const assert = require('node:assert/strict');
 const canonical = require('./canonical.cjs');
-const script = require('../../../script.txt');
+const script = require('../../../src/runtime.js');
 
 function sourceIdsFromPlans(events, options) {
     const presentation = script.buildCompactDiscordPresentation(events, options);

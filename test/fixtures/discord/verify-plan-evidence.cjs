@@ -45,7 +45,7 @@ function securityFilesWithContent() {
         }
         if (stat.isDirectory() && path.basename(file) !== 'node_modules') for (const child of fs.readdirSync(file)) visit(path.join(file, child), depth + 1);
     };
-    for (const item of ['README.md', 'script.txt', 'test', '.omo/evidence']) visit(path.join(ROOT, item), 0);
+    for (const item of ['README.md', 'src/runtime.js', 'test', '.omo/evidence']) visit(path.join(ROOT, item), 0);
     return files;
 }
 function classifyWebhookMatch(match) {
@@ -82,7 +82,7 @@ function check(root, skipSpawns = false) {
     }
     set('MN-security', violations.length === 0, violations.length > 0 ? `real-looking webhook literal found in: ${violations.join(', ')}` : 'no real-looking webhook literal found');
     const commands = [
-        { command: 'node -e "new Function(require(\'fs\').readFileSync(\'script.txt\',\'utf8\'))"', args: ['-e', "new Function(require('fs').readFileSync('script.txt','utf8'))"] },
+        { command: 'node -e "new Function(require(\'fs\').readFileSync(\'src/runtime.js\',\'utf8\'))"', args: ['-e', "new Function(require('fs').readFileSync('src/runtime.js','utf8'))"] },
         { command: 'node --test test/script.test.cjs', args: ['--test', 'test/script.test.cjs'] },
         { command: 'npm test', args: ['npm', 'test'] }
     ];
@@ -93,7 +93,7 @@ function check(root, skipSpawns = false) {
             if (snapshot.status === 0) { fs.writeFileSync(temp, snapshot.stdout); scope = run('manifest', ['.omo/evidence/workspace-manifest-redesign-discord-alert-format.cjs', '--verify', manifest.baseline[0], temp]); }
         } catch (_) { scope = false; } finally { if (exists(temp)) fs.rmSync(temp, { force: true }); }
         set('MN-scope', scope, scope ? 'fresh manifest verification PASS' : 'fresh manifest verification failed');
-        const audit = spawnSync(process.execPath, ['test/fixtures/discord/static-format-audit.cjs', '--file', 'script.txt'], { cwd: ROOT, shell: false, encoding: 'utf8', timeout: 120000, maxBuffer: 20 * 1024 * 1024 });
+        const audit = spawnSync(process.execPath, ['test/fixtures/discord/static-format-audit.cjs', '--file', 'src/runtime.js'], { cwd: ROOT, shell: false, encoding: 'utf8', timeout: 120000, maxBuffer: 20 * 1024 * 1024 });
         let auditPass = false; try { auditPass = audit.status === 0 && JSON.parse(audit.stdout).verdict === 'PASS' && JSON.parse(audit.stdout).findings.length === 0; } catch (_) {}
         set('MN-dead-cleanup', auditPass, auditPass ? 'static audit PASS' : 'static audit failed');
         for (const item of commands) {

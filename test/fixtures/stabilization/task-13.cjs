@@ -9,7 +9,8 @@ const modules = ['discord', 'transport', 'dispatch', 'conservation', 'diagnostic
 const run = (args) => spawnSync(process.execPath, args, { cwd: ROOT, shell: false, encoding: 'utf8' });
 
 function assertHappy() {
-    const legacy = require(path.join(ROOT, 'src', 'legacy-bridge.js')).loadLegacy();
+    const runtime = require(path.join(ROOT, 'src', 'runtime.js'));
+    const legacy = Object.fromEntries(Object.entries(runtime).filter(([name]) => name !== 'startBrowserRuntime'));
     const surfaces = Object.fromEntries(modules.map(name => [name, require(path.join(ROOT, 'src', `${name}.js`))]));
     const missing = ['buildDiscordPayloads', 'classifyDiscordResponse', 'sendDiscordPayload', 'buildDispatchPlanV1', 'sourceEventTuple', 'serializeDiagnosticsExportV2']
         .filter(name => !Object.values(surfaces).some(surface => typeof surface[name] === 'function'));
@@ -23,7 +24,7 @@ function assertHappy() {
 }
 
 function assertFailures() {
-    const artifact = path.join(ROOT, 'script.txt');
+    const artifact = path.join(ROOT, 'dist', 'travian-attack-alert.user.js');
     const original = fs.readFileSync(artifact);
     const checks = {};
     try {

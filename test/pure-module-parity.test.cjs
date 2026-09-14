@@ -6,13 +6,13 @@ const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const bridge = require(path.join(root, 'src', 'legacy-bridge.js'));
+const runtimeApi = require(path.join(root, 'src', 'runtime-api.js'));
 const constants = require(path.join(root, 'src', 'constants.js'));
 const text = require(path.join(root, 'src', 'text.js'));
 const route = require(path.join(root, 'src', 'route.js'));
 
 function selected(names) {
-    return bridge.select(names);
+    return runtimeApi.select('pure-module-parity', names);
 }
 
 test('pure seams preserve the legacy public names and fixture outputs', () => {
@@ -23,7 +23,7 @@ test('pure seams preserve the legacy public names and fixture outputs', () => {
     ];
     for (const [name, actual, names] of contracts) {
         assert.deepEqual(Object.keys(actual).sort(), names.slice().sort(), `${name} export mismatch`);
-        if (name === 'constants') assert.deepEqual(actual, selected(names), `${name} exports differ from legacy bridge`);
+        if (name === 'constants') assert.deepEqual(actual, selected(names), `${name} exports differ from runtime contract`);
         else for (const exportName of names) assert.equal(typeof actual[exportName], typeof selected([exportName])[exportName], `${name}.${exportName} type differs`);
     }
 
@@ -68,12 +68,12 @@ test('pure seams preserve the legacy public names and fixture outputs', () => {
     }
 });
 
-test('pure seams load when script.txt resolution is blocked', () => {
+test('pure seams load when runtime resolution is blocked', () => {
     const probe = `
         const Module = require('node:module');
         const original = Module._resolveFilename;
         Module._resolveFilename = function(request, parent, isMain, options) {
-            if (request.endsWith('/script.txt') || request === '../script.txt') throw new Error('script blocked');
+            if (request.endsWith('/runtime.js') || request === '../runtime.js') throw new Error('runtime blocked');
             return original.call(this, request, parent, isMain, options);
         };
         for (const name of ['constants', 'text', 'route']) {

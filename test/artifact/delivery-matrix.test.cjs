@@ -4,8 +4,8 @@
  * Delivery + transport recovery matrix for public release 1.0.0 (plan Todo 10).
  *
  * Loads the BUILT ARTIFACT (dist/travian-attack-alert.user.js) via require —
- * dist is the byte-identical committed copy of the runtime authority
- * (script.txt), so every assertion below locks shipped behavior.
+ * dist is the generated installable bundled from the src/ runtime authority,
+ * so every assertion below locks shipped behavior.
  *
  * Scope (each gate maps to the Todo 10 acceptance matrix):
  *   (a) 429 + retry_after:1 then 200+ID → exactly 2 attempts, ~1000 ms capped
@@ -49,7 +49,7 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const DIST_FILE = path.join(ROOT, 'dist', 'travian-attack-alert.user.js');
 const DIST_SIDECAR = `${DIST_FILE}.sha256`;
-const SCRIPT_FILE = path.join(ROOT, 'script.txt');
+const RUNTIME_FILE = path.join(ROOT, 'src', 'runtime.js');
 
 const runtime = require(DIST_FILE);
 const canonical = require('../fixtures/discord/canonical.cjs');
@@ -188,10 +188,9 @@ function seedEnvelope(storage, baseline101 = { attackCount: 0, raidCount: 0 }) {
 // T0 — artifact authority.
 // ---------------------------------------------------------------------------
 
-test('T0 artifact authority: dist is the byte-identical 1.0.0 runtime authority', () => {
+test('T0 artifact authority: dist is the generated 1.0.0 installable', () => {
     const distBytes = fs.readFileSync(DIST_FILE);
-    const scriptBytes = fs.readFileSync(SCRIPT_FILE);
-    assert.equal(distBytes.equals(scriptBytes), true);
+    assert.deepEqual(Object.keys(runtime).sort(), Object.keys(require(RUNTIME_FILE)).sort());
     const digest = crypto.createHash('sha256').update(distBytes).digest('hex');
     assert.equal(fs.readFileSync(DIST_SIDECAR, 'utf8').trim(), `${digest}  dist/travian-attack-alert.user.js`);
     assert.match(distBytes.toString('utf8'), /^\/\/ @version\s+1\.0\.0$/m);

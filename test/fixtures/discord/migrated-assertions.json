@@ -7,7 +7,7 @@
     "discordLimits": "title, description, field name, and field value remain within Discord UTF-16 limits",
     "sourceIdsExactlyOnce": "canonical source IDs are unique and the partition output is a sorted bijection",
     "loopbackOnly": "inherited evidence keeps network destinations on 127.0.0.1",
-    "independentExecution": "verify-attack-evidence.cjs requires only canonical.cjs and script.txt"
+    "independentExecution": "verify-attack-evidence.cjs requires only canonical.cjs and src/runtime.js"
   },
   "cases": ["attack-mixed-six", "players-60", "forced-split", "unicode"],
   "verdict": "PASS"

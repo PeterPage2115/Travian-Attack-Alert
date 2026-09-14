@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const script = require('../../../script.txt');
+const script = require('../../../src/runtime.js');
 
 const world = 'CW.X2.International.Travian.com';
 const fields = { name: 'A', url: '/profile/1', attackCount: 3, raidCount: 1, oldAttackCount: 2, oldRaidCount: 1, addedAttackCount: 1, addedRaidCount: 0, eventType: 'attack', observedAtMs: 10, queuedAtMs: 11, attemptCount: 0, responseClass: null };

@@ -23,7 +23,8 @@ export type RuntimeScenario = {
   readonly lateTable?: boolean;
   readonly continuousMutation?: boolean;
   // Todo 9 clean-install support: which artifact bytes to execute.
-  // Defaults to '/script.txt' so every pre-existing spec is untouched.
+  // Defaults to the generated dist installable so every spec runs the exact
+  // release artifact.
   readonly artifactPath?: string;
   // Todo 11 dual-tab lease proof: when true, the navigator.locks stub is NOT
   // installed, so the page uses REAL Web Locks. Two pages in ONE browser
@@ -128,7 +129,7 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
   if (scenario.lateTable || scenario.continuousMutation) {
     await page.evaluate(() => document.querySelector('table.allianceMembers')?.remove());
   }
-  const artifact = await page.evaluate(async (artifactPath: string) => await (await fetch(artifactPath)).text(), scenario.artifactPath || '/script.txt');
+  const artifact = await page.evaluate(async (artifactPath: string) => await (await fetch(artifactPath)).text(), scenario.artifactPath || '/dist/travian-attack-alert.user.js');
   await page.addScriptTag({ content: artifact });
   if (scenario.lateTable) {
     await page.evaluate(() => {

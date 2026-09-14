@@ -1,7 +1,7 @@
 'use strict';
 
 // Contract test for task 4 of .omo/plans/visual-functional-evolution.md:
-// README recovery/operations prose must agree with the script.txt runtime.
+// README recovery/operations prose must agree with the generated dist runtime.
 //
 // Version-parameterized by design: the current version and release ID are
 // derived from package.json, never hardcoded, so the public 1.0.0 identity
@@ -47,15 +47,15 @@ describe('readme-runtime contract (Panel vs menu recovery boundary)', () => {
   it('derives one current version/release ID shared by package, runtime, and docs', () => {
     assert.ok(
       runtime.includes(`const RELEASE_VERSION = "${VERSION}"`),
-      `script.txt must declare RELEASE_VERSION "${VERSION}"`,
+      `dist must declare RELEASE_VERSION "${VERSION}"`,
     );
     assert.ok(
       runtime.includes(`const RELEASE_ID = "${RELEASE_ID}"`),
-      `script.txt must declare RELEASE_ID "${RELEASE_ID}"`,
+      `dist must declare RELEASE_ID "${RELEASE_ID}"`,
     );
     assert.ok(
       runtime.includes(`// @version      ${VERSION}`),
-      `script.txt userscript header must carry version ${VERSION}`,
+      `dist userscript header must carry version ${VERSION}`,
     );
     assert.ok(
       readme.includes(RELEASE_ID),
@@ -96,7 +96,7 @@ describe('readme-runtime contract (Panel vs menu recovery boundary)', () => {
     for (const id of ['taa-incident-bundle-export', 'taa-settings-details']) {
       assert.ok(
         runtime.includes(`"${id}"`),
-        `script.txt must contain the runtime ID "${id}"`,
+        `dist must contain the runtime ID "${id}"`,
       );
       assert.ok(
         readme.includes(id),
@@ -106,7 +106,7 @@ describe('readme-runtime contract (Panel vs menu recovery boundary)', () => {
     for (const id of ['taa-settings-export', 'taa-settings-import']) {
       assert.ok(
         runtime.includes(`"${id}"`),
-        `script.txt must contain the runtime ID "${id}"`,
+        `dist must contain the runtime ID "${id}"`,
       );
     }
   });
@@ -117,7 +117,7 @@ describe('readme-runtime contract (Panel vs menu recovery boundary)', () => {
         runtime.includes(`GM_registerMenuCommand(\n            "${label}"`) ||
           runtime.includes(`GM_registerMenuCommand("${label}"`) ||
           new RegExp(`GM_registerMenuCommand\\(\\s*"${escapeRegExp(label)}"`).test(runtime),
-        `script.txt must register the Tampermonkey menu command "${label}"`,
+        `dist must register the Tampermonkey menu command "${label}"`,
       );
     }
   });

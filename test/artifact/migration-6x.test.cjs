@@ -4,8 +4,8 @@
  * Controlled 6.x -> public 1.0.0 owner transfer matrix (plan Todo 12).
  *
  * Loads the BUILT ARTIFACT (dist/travian-attack-alert.user.js) via require —
- * dist is the byte-identical committed copy of the runtime authority
- * (script.txt). Proves the migration contracts of docs/MIGRATION-6X.md:
+ * dist is the generated installable bundled from the src/ runtime authority.
+ * Proves the migration contracts of docs/MIGRATION-6X.md:
  *
  *   - legacy in-flight queue records carry an injective `ls1:` provenance
  *     identity and stay recoverable (never acknowledged);

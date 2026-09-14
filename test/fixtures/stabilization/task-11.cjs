@@ -7,7 +7,7 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 function command(args) { const result = spawnSync(process.execPath, args, { cwd: ROOT, shell: false, encoding: 'utf8' }); return result.status === 0; }
 function main() {
-    const artifact = path.join(ROOT, 'script.txt'); const manifest = path.join(ROOT, 'module-manifest.json');
+    const artifact = path.join(ROOT, 'dist', 'travian-attack-alert.user.js'); const manifest = path.join(ROOT, 'module-manifest.json');
     const originalArtifact = fs.readFileSync(artifact); const originalManifest = fs.readFileSync(manifest); const failures = [];
     try {
         fs.writeFileSync(artifact, Buffer.concat([originalArtifact, Buffer.from('\n// stale sentinel\n')])); failures.push(!command(['tools/check-artifact.cjs'])); fs.writeFileSync(artifact, originalArtifact);

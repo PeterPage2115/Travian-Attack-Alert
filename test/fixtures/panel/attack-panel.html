@@ -60,6 +60,6 @@
     window.GM_deleteValue = (key) => { delete window.__TAA_GM_VALUES__[key]; };
     window.GM_xmlhttpRequest = (options) => setTimeout(() => options.onload?.({ status: 200, responseText: JSON.stringify({ id: 'fixture-message-id' }) }), 0);
   </script>
-  <script src="/script.txt"></script>
+  <script src="/dist/travian-attack-alert.user.js"></script>
 </body>
 </html>

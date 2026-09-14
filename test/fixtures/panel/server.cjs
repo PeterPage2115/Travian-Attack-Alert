@@ -47,7 +47,7 @@ function handleAlliance(request, response) {
       response.end('missing panel fixture');
       return;
     }
-    let withState = content.replace('<script src="/script.txt"></script>', '').replace(
+    let withState = content.replace('<script src="/dist/travian-attack-alert.user.js"></script>', '').replace(
       'window.__TAA_TEST_ALLOW_PANEL__ = true;',
       `window.__TAA_TEST_ALLOW_PANEL__ = true; window.__TAA_TEST_PANEL_STATE__ = ${JSON.stringify(panelState)};`
     );
@@ -75,7 +75,7 @@ function alliancePage(parsedUrl) {
       ? `<table class="allianceMembers" data-pagination="true"><tbody>${rows}</tbody></table>`
       : '';
   const canonicalize = '';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alliance loopback</title></head><body><main><h1>Alliance</h1>${table}<p id="panel-state-marker" data-panel-state="${state}" hidden>${state}</p></main><script>window.__TAA_TEST_ALLOW_PANEL__=true;window.__TAA_TEST_PANEL_STATE__=${JSON.stringify(state)};window.__TAA_GM_VALUES__=Object.create(null);window.GM_registerMenuCommand=()=>{};window.GM_getValue=(key,fallback)=>Object.prototype.hasOwnProperty.call(window.__TAA_GM_VALUES__,key)?window.__TAA_GM_VALUES__[key]:fallback;window.GM_setValue=(key,value)=>{window.__TAA_GM_VALUES__[key]=value};window.GM_deleteValue=(key)=>{delete window.__TAA_GM_VALUES__[key]};window.GM_xmlhttpRequest=(options)=>{if(new URL(options.url,location.href).origin!==location.origin)throw new Error('loopback-only');setTimeout(()=>options.onload?.({status:200,responseText:JSON.stringify({id:'fixture-message-id'})}),0)};</script>${canonicalize}<script src="/script.txt"></script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alliance loopback</title></head><body><main><h1>Alliance</h1>${table}<p id="panel-state-marker" data-panel-state="${state}" hidden>${state}</p></main><script>window.__TAA_TEST_ALLOW_PANEL__=true;window.__TAA_TEST_PANEL_STATE__=${JSON.stringify(state)};window.__TAA_GM_VALUES__=Object.create(null);window.GM_registerMenuCommand=()=>{};window.GM_getValue=(key,fallback)=>Object.prototype.hasOwnProperty.call(window.__TAA_GM_VALUES__,key)?window.__TAA_GM_VALUES__[key]:fallback;window.GM_setValue=(key,value)=>{window.__TAA_GM_VALUES__[key]=value};window.GM_deleteValue=(key)=>{delete window.__TAA_GM_VALUES__[key]};window.GM_xmlhttpRequest=(options)=>{if(new URL(options.url,location.href).origin!==location.origin)throw new Error('loopback-only');setTimeout(()=>options.onload?.({status:200,responseText:JSON.stringify({id:'fixture-message-id'})}),0)};</script>${canonicalize}<script src="/dist/travian-attack-alert.user.js"></script></body></html>`;
 }
 
 function sendJson(response, status, value) {
@@ -120,13 +120,8 @@ function handleRequest(request, response) {
     return;
   }
 
-  if (pathname === '/script.txt') {
-    sendFile(response, path.join(ROOT, 'script.txt'), 'text/plain; charset=utf-8');
-    return;
-  }
-
-  // Todo 9 clean-install harness support: serve the final distributed bytes
-  // (NOT script.txt) so e2e executes the exact release artifact.
+  // Fixture servers serve the generated dist installable so e2e executes the
+  // exact release artifact.
   if (pathname === '/dist/travian-attack-alert.user.js') {
     sendFile(response, path.join(ROOT, 'dist', 'travian-attack-alert.user.js'), 'text/plain; charset=utf-8');
     return;

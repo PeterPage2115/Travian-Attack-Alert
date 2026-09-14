@@ -8,9 +8,9 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
 const changedFiles = [
-    'src/panel.js', 'src/boot.js', 'src/browser-entry.js', 'src/legacy-bridge.js',
+    'src/panel.js', 'src/boot.js', 'src/browser-entry.js', 'src/runtime-api.js',
     'tools/build.cjs', 'tools/check-artifact.cjs', 'tools/quality.cjs',
-    'tsconfig.json', 'README.md', 'DESIGN.md', 'script.txt', 'metadata.json',
+    'tsconfig.json', 'README.md', 'DESIGN.md', 'src/runtime.js', 'metadata.json',
     'module-manifest.json', 'test/fixtures/stabilization/evidence-cases.cjs',
     'test/fixtures/stabilization/task-14.cjs',
     '.omo/notepads/stabilizacja-akwizycji-atakow/learnings.md',
@@ -18,7 +18,7 @@ const changedFiles = [
 ];
 
 function contract() {
-    const runtime = require(path.join(ROOT, 'script.txt'));
+    const runtime = require(path.join(ROOT, 'src', 'runtime.js'));
     const readme = read('README.md');
     const design = read('DESIGN.md');
     const roles = Object.values(runtime.ROUTE_ROLES);
