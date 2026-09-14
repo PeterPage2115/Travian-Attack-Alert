@@ -1,5 +1,7 @@
 # Audit 1.0.0 — detector behavior matrix (plan Todo 7)
 
+> **Layout note (repository-cleanup restructure).** This audit predates the cleanup: its "Runtime authority" line names `script.txt`, which has since been removed — the installable `dist/travian-attack-alert.user.js` is now generated from `src/` via `npm run build`. The locked behaviors and limitations below still describe the `1.0.0` (`taa-1.0.0`) detector contract; only the authority path changed.
+
 Date: 2026-09-13 · Branch: `release/public-1.0.0` · Release: `taa-1.0.0`
 Runtime authority: `dist/travian-attack-alert.user.js` (byte-identical to `script.txt`, SHA `78f86665…44084` per inherited tree state; re-verified by the matrix test itself).
 Matrix: `test/artifact/detector-matrix.test.cjs` — 17 tests, all green on unchanged code.

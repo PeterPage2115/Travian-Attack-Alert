@@ -1,5 +1,7 @@
 # Test Report — 1.0.0 release candidate (unpublished)
 
+> **Archive note (repository-cleanup restructure).** This file was moved from `docs/TEST-REPORT.md` to `docs/release-history/1.0.0-rc/TEST-REPORT.md`; only this note was added and code-span links were adjusted for the move. It is an unpublished 1.0.0 release-candidate record, not current proof: cited commit SHAs refer to private, unreachable history, and cited `test-results/` evidence was gitignored and never committed. Do not mistake it for a live operational guide — current guides are indexed in `../../README.md`.
+
 Distribution terms: TBD owner decision — blocks public-ready, not the local RC.
 
 Every PASS claim below cites an evidence file. Nothing here claims
@@ -15,7 +17,7 @@ release commit is PENDING Todo 19).
 |---|---|---|---|
 | Unit (core + parity) | 358 | PASS | `test-results/release-1.0.0/offline-summary.json` (unit gate) |
 | Tools (backup/rollback, readme contract) | 55 | PASS | `test-results/release-1.0.0/offline-summary.json` (tools-tests gate) |
-| Detector matrix | 17 | PASS | `test/artifact/detector-matrix.test.cjs`, `docs/AUDIT.md` |
+| Detector matrix | 17 | PASS | `test/artifact/detector-matrix.test.cjs`, `../../AUDIT.md` |
 | Settings/secret-omit | 11 | PASS | `test/artifact/settings-backup.test.cjs` |
 | Lease release | 3 | PASS | `test/artifact/lease-release.test.cjs` |
 | Migration 6.x | 11 | PASS | `test/artifact/migration-6x.test.cjs` |

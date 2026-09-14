@@ -1,5 +1,7 @@
 # Release Checklist — 1.0.0 (unpublished release candidate)
 
+> **Archive note (repository-cleanup restructure).** This file was moved from `docs/RELEASE-CHECKLIST.md` to `docs/release-history/1.0.0-rc/RELEASE-CHECKLIST.md`; only this note was added and code-span links were adjusted for the move. It is an unpublished 1.0.0 release-candidate record, not current proof: its "Docs complete" list names the pre-cleanup layout (`README.pl.md`, `docs/OPERATIONS.pl.md`), and cited `test-results/` evidence was gitignored and never committed. Do not mistake it for a live operational guide — current guides are indexed in `../../README.md`.
+
 This task prepares materials only. It creates no tag, no GitHub Release,
 no push, and no public message. Publication needs separate owner consent.
 
@@ -17,12 +19,12 @@ must print nothing until the owner chooses terms.
 - [ ] Docs complete: `README.md` (English primary), `README.pl.md`,
       `docs/OPERATIONS.md` + `docs/OPERATIONS.pl.md`,
       `docs/MIGRATION-6X.md`, `docs/AUDIT.md`, `CHANGELOG.md`,
-      `docs/TEST-REPORT.md`, issue template.
+      `TEST-REPORT.md`, issue template.
 - [ ] No `LICENSE` decision recorded → pilot may proceed, public stays blocked.
 
 ## Pilot-entry gates
 
-- [ ] Real-manager matrix recorded in `docs/TEST-REPORT.md` (Todo 18):
+- [ ] Real-manager matrix recorded in `TEST-REPORT.md` (Todo 18):
       desktop Chrome stable + Tampermonkey stable mandatory; other
       combinations are candidates until proven.
 - [ ] Reproducibility seal + final full-gate rerun (Todo 19): two builds

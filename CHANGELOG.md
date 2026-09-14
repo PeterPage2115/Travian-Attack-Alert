@@ -7,7 +7,7 @@ rewritten here; it is noted as lineage only.
 ## 1.0.0 — first public release based on historical internal 6.x development (release candidate, unpublished)
 
 No tag, no GitHub Release, and no download link exist for this entry yet.
-Publication needs a separate owner decision (see `docs/RELEASE-CHECKLIST.md`).
+Publication needs a separate owner decision (see `docs/release-history/1.0.0-rc/RELEASE-CHECKLIST.md`).
 
 ### Product identity
 

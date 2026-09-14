@@ -1,5 +1,7 @@
 # Pilot Checklist — 1.0.0 external alliance trial (unpublished)
 
+> **Archive note (repository-cleanup restructure).** This file was moved from `docs/PILOT.md` to `docs/release-history/1.0.0-rc/PILOT.md`; only this note was added and code-span links were adjusted for the move. It is an unpublished 1.0.0 release-candidate record, not current proof: the pilot status recorded inside was never executed, and cited `test-results/` evidence was gitignored and never committed. Do not mistake it for a live operational guide — current guides are indexed in `../../README.md`.
+
 This checklist is for YOU, the pilot operator: a second person running the
 trial on your own equipment. Nobody installs anything for you, and you share
 no credentials with anyone. You use your own device, your own browser, your
@@ -16,7 +18,7 @@ honestly. Nothing here publishes anything.
 > synthetic operator persona against loopback fixtures only
 > (`test-results/release-1.0.0/readme-walkthrough.json`,
 > `test-results/release-1.0.0/docs-equivalence.json`). Your completed run is
-> what flips `pilotReady` (see `docs/VERDICTS.md`).
+> what flips `pilotReady` (see `VERDICTS.md`).
 
 ## What you need before you start
 
@@ -79,7 +81,7 @@ honestly. Nothing here publishes anything.
   profile WILL double-send; the local lock cannot prevent it." Disable the
   old sender first and confirm silence for one full monitor cycle (60 to 120
   seconds) before you enable the new one. Never run two senders side by side,
-  not even during an update. See `docs/MIGRATION-6X.md` for the owner
+  not even during an update. See `../../MIGRATION-6X.md` for the owner
   transfer order.
 - Login wall: if Travian shows a login page, log in yourself on the Travian
   site first. The monitor never scans a login page and never changes state
