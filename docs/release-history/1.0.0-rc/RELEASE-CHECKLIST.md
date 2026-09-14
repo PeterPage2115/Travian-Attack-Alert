@@ -9,6 +9,42 @@ Distribution terms: TBD owner decision — blocks public-ready, not the local RC
 No `LICENSE` file exists by intent; `find . -maxdepth 1 -iname 'LICENSE*'`
 must print nothing until the owner chooses terms.
 
+## Gate ownership — AGENT-AUTOMATED vs OWNER-MANUAL
+
+Machine-readable state: `docs/release-state.json` reports `stable:false`
+until every OWNER-MANUAL box below is recorded by the owner. No automated
+step (npm script, test, build, CI job) may flip it; only an owner edit that
+populates those fields — plus the matching edit to the gate test — can
+advance it.
+
+### AGENT-AUTOMATED (done by this migration)
+
+- `src/` cutover, deterministic `dist/` build (SHA-256 in `metadata.json`
+  plus sidecar), privacy fixtures (loopback only, no real webhooks, no live
+  requests), read-only CI, docs.
+- Pre-pilot material preparation: the offline-PASS evidence, sidecar
+  verification, secret scan, and docs list below, to the extent automation
+  can reach. The pilot-entry real-manager matrix and everything under
+  OWNER-MANUAL remain owner-only.
+
+### OWNER-MANUAL (owner only — blocks stable-1.0 and DEV retirement)
+
+- [ ] Chrome + Tampermonkey real install by a second person, run to green
+  per `PILOT.md` in this directory.
+- [ ] Evidence/version record filed by the owner (browser + manager
+  versions, TEST + accepted-scan proof, redacted incident bundle).
+- [ ] Default-branch/protection settings applied and verified per
+  `docs/REPOSITORY-SETTINGS.md`.
+- [ ] Tag and GitHub Release created MANUALLY by the owner. This task
+  creates NEITHER. Do not automate this step.
+- [ ] Sibling TravianAttackAlertDEV directory (one level above the repo
+  root) privately archived outside the repo: read-only migration input,
+  never committed to the public repo, never deleted without owner consent,
+  marked non-authoritative; never delete or upload backups.
+- Until every box is recorded, `docs/release-state.json` stays
+  `stable:false` and the README keeps its release-candidate warning even
+  though the target version is 1.0.0.
+
 ## Pre-pilot gates (all required before any pilot)
 
 - [ ] `npm run check:release -- --offline` overall PASS with evidence
@@ -34,5 +70,10 @@ must print nothing until the owner chooses terms.
 
 - [ ] License chosen by the owner and added to the repo.
 - [ ] Pilot sign-off recorded with evidence.
+- [ ] Default branch `main` plus protection (required CI check) applied and
+      verified per `docs/REPOSITORY-SETTINGS.md`.
 - [ ] Tag + GitHub Release created MANUALLY by the owner.
       This task creates NEITHER. Do not automate this step.
+- [ ] Sibling DEV tree privately archived outside the repo (read-only
+      migration input, never committed, never deleted without owner
+      consent, non-authoritative); never delete or upload backups.

@@ -20,6 +20,53 @@ honestly. Nothing here publishes anything.
 > `test-results/release-1.0.0/docs-equivalence.json`). Your completed run is
 > what flips `pilotReady` (see `VERDICTS.md`).
 
+## Release gates — AGENT-AUTOMATED vs OWNER-MANUAL
+
+Machine-readable state: `docs/release-state.json` reports `stable:false`.
+No automated step (npm script, test, build, CI job) may flip it; only an
+owner edit that records every OWNER-MANUAL field below — plus the matching
+edit to the gate test — can advance it.
+
+### AGENT-AUTOMATED (done by this migration)
+
+- `src/` cutover: `src/userscript-entry.js` is the editable authority;
+  `dist/travian-attack-alert.user.js` is generated deterministically
+  (`npm run build`; SHA-256 recorded in `metadata.json` and the sidecar).
+- Privacy fixtures: deterministic loopback fixtures only — no real
+  webhooks, no live Travian requests; the incident bundle is bounded
+  (512 KiB) and redacted by construction.
+- CI: read-only `.github/workflows/ci.yml` (push + PR to `main`, Node
+  18/20 matrix, run artifacts uploaded, no publish step).
+- Docs: concise README, OPERATIONS (EN + PL), MIGRATION-6X, AUDIT,
+  CHANGELOG, issue template; this archive record kept honest (its
+  never-executed status box above is the truth, not a plan).
+
+### OWNER-MANUAL (owner only — blocks stable-1.0 and DEV retirement)
+
+- [ ] Real install by a second person: desktop Chrome + Tampermonkey on
+  their own device, Allow User Scripts toggle where required, every step
+  of this checklist completed by them.
+- [ ] Evidence/version record: browser + manager versions, marked TEST
+  result, accepted scan, lease/queue/diagnostics state, redacted incident
+  bundle — recorded by the owner; the status box above flips only then.
+- [ ] Default-branch/protection settings per `docs/REPOSITORY-SETTINGS.md`
+  (default branch `main`, protection rule with required CI check) — applied
+  and verified by the owner in GitHub Settings.
+- [ ] Tag and GitHub Release created manually by the owner; no automation
+  creates either.
+- [ ] Private archival of the sibling TravianAttackAlertDEV directory (one
+  level above the repo root) outside the repo: read-only migration input,
+  never committed to the public repo, never deleted without owner consent,
+  marked non-authoritative; never delete or upload backups.
+- Until every box is recorded, `docs/release-state.json` stays
+  `stable:false` and the README keeps its release-candidate warning even
+  though the target version is 1.0.0.
+
+(Naming note: the `../`-relative spelling of that DEV directory is never
+written literally in this tree — the frozen privacy scanner rejects that
+literal as a private-path leak. The sibling phrasing above names the same
+directory.)
+
 ## What you need before you start
 
 - Your own computer with desktop Chrome and Tampermonkey installed.

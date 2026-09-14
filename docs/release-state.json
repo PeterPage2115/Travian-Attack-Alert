@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "releaseId": "taa-1.0.0",
+  "stable": false,
+  "gateDocs": [
+    "docs/release-history/1.0.0-rc/PILOT.md",
+    "docs/release-history/1.0.0-rc/RELEASE-CHECKLIST.md",
+    "docs/REPOSITORY-SETTINGS.md"
+  ],
+  "agentAutomated": {
+    "srcCutover": true,
+    "deterministicBuild": true,
+    "privacyFixtures": true,
+    "ciReadOnly": true,
+    "docs": true
+  },
+  "ownerManual": {
+    "pilotInstallBySecondPerson": false,
+    "evidenceRecord": null,
+    "branchProtection": false,
+    "tagAndRelease": false,
+    "devArchival": false
+  },
+  "flipRule": "stable may become true only through an owner edit that populates every ownerManual field with pilot evidence, together with the matching edit to test/tools/release-state.test.cjs. No npm script, test, build step, or CI job may set stable:true."
+}

@@ -4,6 +4,8 @@ Alliance attack, raid, and departure alerts from Travian to your own Discord ser
 
 **Version 1.0.0, release ID `taa-1.0.0`. Release candidate under pilot, not yet declared public.**
 
+Release candidate under pilot; stable publication requires owner pilot evidence (pilot checklist and machine-readable gate: `docs/release-history/1.0.0-rc/PILOT.md`, `docs/release-state.json`).
+
 The script (`Travian Attack Alert`, namespace `travian-attack-alert-public`) periodically reads the alliance members table on the canonical page and sends Discord alerts when attacks, raids, or departures appear. No bundler, framework, or runtime dependency is required in the browser. The installable file is `dist/travian-attack-alert.user.js`, generated from `src/` via `npm run build`.
 
 ## Constraints
@@ -20,7 +22,7 @@ Daily routine, handover order, queue recovery, and diagnostics live in `docs/OPE
 
 ## Install and update
 
-Build the installable file from source (never copy a `script.txt`; there is none — `dist/` is generated):
+Build the installable file from source (`src/` is the editable authority — `dist/` is generated, never hand-edited):
 
 ```text
 npm run build
