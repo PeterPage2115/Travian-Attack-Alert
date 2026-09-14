@@ -66,6 +66,7 @@ Alerts are short and delta-first:
 - The footer is `<hostname> · <observation-text>`. One logical dispatch timestamp is placed on the last embed of every request.
 - Multi-request output adds `part X/Y`; continuations repeat global context.
 - Mentions occur once only; continuations use empty mention allowlists.
+- Departure-operator roles: Attack role (`roleId`) pings on attack/mixed batches; Leave-moderator role (`leaveRoleId`) is a separate global role pinged when a batch contains a departure. Configure the leave role as `Leave-moderator role` (`taa-leave-role-input`, `taa-leave-role-set`, `taa-leave-role-clear`, `taa-leave-role-current`) or via the Tampermonkey menu; both IDs live in `travianAllianceDiscordConfig_v1` and are validated by `validateDiscordRoleId`. A role pings only when its Discord role is Mentionable. A departing player is personally mentioned only when a pre-existing `mappings[hostname][playerId]` mapping already exists, so the first request may carry `<@&leaveRoleId> <@userId>` exactly as the live builder emits it.
 - Discord limits use JavaScript UTF-16 `.length`: content 2000, title 256, description 4096, field name 256, field value 1024, total embed text 6000, and at most 10 embeds per request.
 
 Payloads use safe links in DOM order and the mention policy is explicit. `allowed_mentions` is an explicit allowlist with no `parse` key. The first request of a batch may carry `content` such as `<@&leaveRoleId> <@userId>` together with `allowed_mentions` like `{ users: ["123456789012345678"], roles: ["987654321098765432"] }`, or `{ users: [] }` when no one is mentioned. Continuations use empty `content` with `{ users: [] }` and no `roles` key, and the list is bounded and deduplicated to fit the 2000 character content limit. Embed titles, descriptions, field values and footers never contain mention tokens; mentions live only in top-level `content`. Partial, repeated, malformed, or ambiguous input does not change authoritative state; acquisition is rejected without partial state and authoritative state remains unchanged.
@@ -76,15 +77,15 @@ The following bytes are generated from the live canonical raid builder:
 ```text
 🛡️ Alliance raid · 2 players
 **Players**
-[Lenny Barre](https://cw.x2.international.travian.com/profile/101) — **+1 raid**
+[Player 900001](https://world.example.invalid/profile/900001) — **+1 raid**
 Now: 0 attacks / 1 raid
 
-[Quinnos](https://cw.x2.international.travian.com/profile/102) — **+1 raid**
+[Player 900002](https://world.example.invalid/profile/900002) — **+1 raid**
 Now: 0 attacks / 1 raid
 New: **+2 raids**
 Active now: 0 attacks / 2 raids
 Priority: Normal
-cw.x2.international.travian.com · Observed <1s before dispatch
+world.example.invalid · Observed <1s before dispatch
 Timestamp: 2026-08-23T09:46:01.000Z
 ```
 <!-- discord-alert-example:end -->
@@ -95,27 +96,27 @@ The attack and mixed-alert grammar is also captured from the live canonical atta
 ```text
 🚨 Alliance attack · 6 players
 **Players**
-[Player 365](https://cw.x2.international.travian.com/profile/365) — **+2 attacks**
+[Player 900003](https://world.example.invalid/profile/900003) — **+2 attacks**
 Now: 17 attacks / 5 raids
 
-[sandla](https://cw.x2.international.travian.com/profile/1) — **+2 attacks**
+[Player 900004](https://world.example.invalid/profile/900004) — **+2 attacks**
 Now: 7 attacks / 7 raids
 
-[Ariadne](https://cw.x2.international.travian.com/profile/2) — **+1 attack** · **+1 raid**
+[Player 900005](https://world.example.invalid/profile/900005) — **+1 attack** · **+1 raid**
 Now: 8 attacks / 1 raid
 
-[Borek](https://cw.x2.international.travian.com/profile/3) — **+1 attack** · **+1 raid**
+[Player 900006](https://world.example.invalid/profile/900006) — **+1 attack** · **+1 raid**
 Now: 6 attacks / 2 raids
 
-[Ciri](https://cw.x2.international.travian.com/profile/4) — **+1 attack** · **+1 raid**
+[Player 900007](https://world.example.invalid/profile/900007) — **+1 attack** · **+1 raid**
 Now: 7 attacks / 1 raid
 
-[Darek](https://cw.x2.international.travian.com/profile/5) — **+1 attack**
+[Player 900008](https://world.example.invalid/profile/900008) — **+1 attack**
 Now: 7 attacks / 1 raid
 New: **+8 attacks** · **+3 raids**
 Active now: 52 attacks / 17 raids
 Priority: Normal
-cw.x2.international.travian.com · Observed <1s before dispatch
+world.example.invalid · Observed <1s before dispatch
 Timestamp: 2026-08-23T09:46:01.000Z
 ```
 <!-- discord-attack-example:end -->

@@ -57,7 +57,7 @@ test.describe('attack panel — 6.0.0 attack-only', () => {
       const wrapCheck = await page.evaluate(() => {
         const probe = document.createElement('div');
         probe.style.cssText = 'overflow-wrap:anywhere;word-break:break-word;max-width:10px';
-        probe.textContent = 'https://cw.x2.international.travian.com/profile/12345678901234567890';
+        probe.textContent = 'https://world.example.invalid/profile/12345678901234567890';
         document.body.appendChild(probe);
         const wraps = probe.scrollWidth <= 20 || getComputedStyle(probe).overflowWrap === 'anywhere';
         probe.remove();

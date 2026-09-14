@@ -5,7 +5,7 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const script = require(path.join(ROOT, 'src', 'runtime.js'));
 const GENERATION = '6.0.0';
-const HOST = 'cw.x2.international.travian.com';
+const HOST = 'world.example.invalid';
 const OBSERVED_AT = Date.UTC(2026, 7, 23, 9, 46, 1, 0);
 const DISPATCHED_AT = OBSERVED_AT;
 const BASE_SETTINGS = script.validateSettings({
@@ -54,19 +54,19 @@ function options(overrides = {}) {
 const previewCases = {
     'raid-two': () => ({
         events: [
-            event('raid-lenny', 'Lenny Barre', 101, { attackCount: 0, raidCount: 1, addedAttackCount: 0, addedRaidCount: 1 }, 'raid'),
-            event('raid-quinnos', 'Quinnos', 102, { attackCount: 0, raidCount: 1, addedAttackCount: 0, addedRaidCount: 1 }, 'raid')
+            event('raid-900001', 'Player 900001', 900001, { attackCount: 0, raidCount: 1, addedAttackCount: 0, addedRaidCount: 1 }, 'raid'),
+            event('raid-900002', 'Player 900002', 900002, { attackCount: 0, raidCount: 1, addedAttackCount: 0, addedRaidCount: 1 }, 'raid')
         ],
         options: options()
     }),
     'attack-mixed-six': () => ({
         events: [
-            event('attack-player-365', 'Player 365', 365, { attackCount: 17, raidCount: 5, addedAttackCount: 2, addedRaidCount: 0 }, 'attack'),
-            event('attack-sandla', 'sandla', 1, { attackCount: 7, raidCount: 7, addedAttackCount: 2, addedRaidCount: 0 }, 'attack'),
-            event('mixed-ariadne', 'Ariadne', 2, { attackCount: 8, raidCount: 1, addedAttackCount: 1, addedRaidCount: 1 }, 'mixed'),
-            event('mixed-borek', 'Borek', 3, { attackCount: 6, raidCount: 2, addedAttackCount: 1, addedRaidCount: 1 }, 'mixed'),
-            event('mixed-ciri', 'Ciri', 4, { attackCount: 7, raidCount: 1, addedAttackCount: 1, addedRaidCount: 1 }, 'mixed'),
-            event('attack-darek', 'Darek', 5, { attackCount: 7, raidCount: 1, addedAttackCount: 1, addedRaidCount: 0 }, 'attack')
+            event('attack-900003', 'Player 900003', 900003, { attackCount: 17, raidCount: 5, addedAttackCount: 2, addedRaidCount: 0 }, 'attack'),
+            event('attack-900004', 'Player 900004', 900004, { attackCount: 7, raidCount: 7, addedAttackCount: 2, addedRaidCount: 0 }, 'attack'),
+            event('mixed-900005', 'Player 900005', 900005, { attackCount: 8, raidCount: 1, addedAttackCount: 1, addedRaidCount: 1 }, 'mixed'),
+            event('mixed-900006', 'Player 900006', 900006, { attackCount: 6, raidCount: 2, addedAttackCount: 1, addedRaidCount: 1 }, 'mixed'),
+            event('mixed-900007', 'Player 900007', 900007, { attackCount: 7, raidCount: 1, addedAttackCount: 1, addedRaidCount: 1 }, 'mixed'),
+            event('attack-900008', 'Player 900008', 900008, { attackCount: 7, raidCount: 1, addedAttackCount: 1, addedRaidCount: 0 }, 'attack')
         ],
         options: options()
     }),
