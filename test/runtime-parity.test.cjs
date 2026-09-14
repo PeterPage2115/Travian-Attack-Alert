@@ -6,9 +6,9 @@ const path = require('node:path');
 const test = require('node:test');
 
 const ROOT = path.resolve(__dirname, '..');
-const SCRIPT_PATH = path.join(ROOT, 'script.txt');
-const source = fs.readFileSync(SCRIPT_PATH, 'utf8');
-const runtime = require(SCRIPT_PATH);
+const SOURCE_PATH = path.join(ROOT, 'src', 'runtime.js');
+const source = fs.readFileSync(SOURCE_PATH, 'utf8');
+const runtime = require(path.join(ROOT, 'src', 'runtime.js'));
 
 const API_NAMES = `
 BATCH_FLUSH_MS
@@ -325,6 +325,7 @@ shouldRebaseline
 snapshotBatch
 sourceEventIdFromTuple
 sourceEventTuple
+startBrowserRuntime
 storageProvenanceText
 supportsInputSelection
 toPendingEvent
@@ -453,7 +454,7 @@ function menuCommandSnapshot() {
 }
 
 function bootEffectSnapshot() {
-  const browserBranch = source.slice(source.indexOf('  if (!isNodeEnvironment) {'), source.indexOf('  if (typeof module !== "undefined" && module.exports) {'));
+  const browserBranch = source.slice(source.indexOf('  function startBrowserRuntime() {'), source.indexOf('  if (typeof module !== "undefined" && module.exports) {'));
   assert.ok(browserBranch.length > 0, 'browser boot branch is present');
   return BOOT_EFFECTS.map(([name, oracleText]) => {
     assert.ok(browserBranch.includes(oracleText), `browser boot effect changed: ${name}`);
@@ -465,8 +466,11 @@ function releaseIdentitySnapshot() {
   const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   const metadata = JSON.parse(fs.readFileSync(path.join(ROOT, 'metadata.json'), 'utf8'));
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'module-manifest.json'), 'utf8'));
+  const distText = fs.readFileSync(path.join(ROOT, 'dist', 'travian-attack-alert.user.js'), 'utf8');
+  const distHeaderMatch = distText.match(/^\/\/ @version\s+([^\s]+)$/mu);
+  assert.ok(distHeaderMatch, 'dist userscript header must declare @version');
   return {
-    headerVersion: requiredMatch(/^\/\/ @version\s+([^\s]+)$/mu, 'userscript header version'),
+    headerVersion: distHeaderMatch[1],
     manifestReleaseId: manifest.release.releaseId,
     manifestVersion: manifest.release.version,
     metadataReleaseId: metadata.release.releaseId,
@@ -492,7 +496,15 @@ function runtimeContractSnapshot() {
   };
 }
 
-test('current script.txt runtime matches the frozen offline parity contract', () => {
+// Post-cutover parity guard: src/runtime.js is now the sole editable runtime
+// authority. This test preserves the frozen oracle established before script.txt
+// was deleted (task-4/parity.json: 324 oracle exports preserved + startBrowserRuntime).
+// Source API names, storage keys, menu commands, and boot effects are read from
+// src/runtime.js; release identity comes from dist/*.user.js + metadata.json +
+// package.json + module-manifest.json. Every EXPECTED value below is identical
+// to the pre-deletion oracle contract.
+
+test('post-cutover src/runtime.js matches the frozen offline parity contract', () => {
   assert.deepEqual(runtimeContractSnapshot(), EXPECTED_RUNTIME_CONTRACT);
 });
 
