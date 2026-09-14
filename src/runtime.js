@@ -262,7 +262,15 @@ const RELEASE_ID = "taa-1.0.0";
     high: 15844367,
     critical: 10038562
   };
+  // Bundler-proof Node detection: esbuild wraps every CommonJS module in a
+  // __commonJS shim that always provides a `module` object, so `typeof
+  // module` alone is true even in the browser bundle (this silently disabled
+  // initAdminPanel and forced hasExclusiveWebLocks() true in dist). Requiring
+  // the absence of DOM globals restores the old script.txt dual-mode:
+  // Node (artifact tests) has CJS without a DOM, browsers have a DOM.
   const isNodeEnvironment = Boolean(
+    typeof document === "undefined" &&
+    typeof location === "undefined" &&
     typeof module !== "undefined" && module.exports
   );
   const ROUTE_ROLES = Object.freeze({

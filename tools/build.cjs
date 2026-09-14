@@ -70,7 +70,13 @@ function generateArtifact() {
         entryPoints: [ENTRY],
         bundle: true,
         platform: 'browser',
-        format: 'iife',
+        // CJS dual-mode: in Node, require(dist) executes this file as a
+        // CommonJS module so the entry's `module.exports = runtime` guard
+        // exposes the runtime contract to artifact tests; in a browser the
+        // same file loads as a classic userscript where `module` is
+        // undefined, so the export guard short-circuits and only the
+        // document/location-guarded browser start runs.
+        format: 'cjs',
         target: 'es2022',
         write: false,
         metafile: true,
