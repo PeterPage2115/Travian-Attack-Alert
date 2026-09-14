@@ -3,7 +3,7 @@
  * audit-public-tree.cjs — weryfikacja bezpiecznej kopii allowlistowej (Todo 2).
  *
  * Użycie:
- *   node tools/audit-public-tree.cjs --root . --baseline ../TravianAttackAlertDEV --out test-results/release-1.0.0/copy-audit.json
+ *   node tools/audit-public-tree.cjs --root . --baseline <private-dev-root> --out <report.json>
  *
  * Kontrole:
  *   (a) każdy plik z allowlisty w --root ma hash równy źródłu w --baseline,
@@ -21,22 +21,28 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// 14-entry allowlist (Todo 2) — kopiowane indywidualnie, nigdy rekurencyjnie całością.
+// Jawna allowlista publicznego repo — katalogi są kopiowane tylko z tych
+// przejrzanych ścieżek, nigdy przez rekurencyjne kopiowanie całego DEV.
 const ALLOWLIST = [
-  'script.txt',
-  'package.json',
-  'package-lock.json',
+  '.github/',
+  '.gitignore',
+  '.node-version',
+  'AGENTS.md',
+  'CHANGELOG.md',
+  'DESIGN.md',
+  'README.md',
+  'README.pl.md',
+  'dist/',
+  'docs/',
   'metadata.json',
   'module-manifest.json',
+  'package-lock.json',
+  'package.json',
+  'script.txt',
   'src/',
-  'tools/',
   'test/',
-  'README.md',
-  'DESIGN.md',
-  'AGENTS.md',
+  'tools/',
   'tsconfig.json',
-  '.node-version',
-  '.gitignore',
 ];
 
 // Ścieżki, które nie mogą istnieć w kopii publicznej (przed `npm ci`).
@@ -50,8 +56,7 @@ const DENYLIST = [
   'node_modules/',
 ];
 
-// Wzorce plików sekretów (dopasowane basename lub glob `*` na końcu).
-const DENYLIST_FILES = ['.env', '.env.*'];
+const SETTINGS_BACKUP_RE = /^taa-settings-backup-.*\.json$/i;
 
 // Pliki generowane w nowym repo — należą do kopii, ale nie do baseline DEV.
 const GENERATED = new Set([
@@ -214,13 +219,31 @@ function main() {
     if (GENERATED.has(rel)) continue;
     if (rel === outRel) continue; // własny plik wynikowy
     if (rel.startsWith('node_modules/') || rel.startsWith('test-results/')) continue; // raportowane przez denylistę
-    if (rel.startsWith('.git/')) continue; // Todo 3 dopiero inicjalizuje git
+    if (rel === '.git' || rel.startsWith('.git/')) continue;
     hashMismatches.push({ file: rel, reason: 'unexpected-extra' });
   }
 
-  // --- (c) skan token-pattern w plikach tekstowych (bez pełnego tokena w raporcie) ---
+  // Denylista obowiązuje na dowolnej głębokości. Raport zawiera wyłącznie
+  // ścieżkę, nigdy zawartość znalezionego pliku.
+  for (const rel of actualTop) {
+    const parts = rel.split('/');
+    for (const denied of DENYLIST) {
+      const name = denied.replace(/\/$/, '');
+      const index = parts.indexOf(name);
+      if (index === -1) continue;
+      const deniedPath = `${parts.slice(0, index + 1).join('/')}/`;
+      if (!excludedFound.includes(deniedPath)) excludedFound.push(deniedPath);
+    }
+    if (SETTINGS_BACKUP_RE.test(path.posix.basename(rel)) && !excludedFound.includes(rel)) {
+      excludedFound.push(rel);
+    }
+  }
+
+  // --- (c) skan prywatnych wzorców (bez znalezionych bajtów w raporcie) ---
   const webhookRe = /discord\.com\/api\/webhooks\/(\d+)\/([^\s"'`)}\]]+)/g;
   const placeholderRe = /(<|>|FAKE|PLACEHOLDER|example)/i;
+  const snowflakeRe = /\b\d{17,19}\b/g;
+  const privatePathRe = /(?:\.\.[\\/]TravianAttackAlertDEV[\\/]backups\b)|(?:[A-Za-z]:[\\/][^\r\n]*?TravianAttackAlertDEV(?:[\\/][^\r\n\s]*)?)|(?:\/(?:[^\s/]+\/)*TravianAttackAlertDEV(?:\/[^\s]*)?)/g;
   // Prawdziwy token webhooka Discorda ma ~68 znaków (base64url o wysokiej
   // entropii). Deterministyczne fixtury loopback w testach używają krótkich
   // dummy-tokenów (zweryfikowano: maks. 20 znaków na całej powierzchni
@@ -241,13 +264,31 @@ function main() {
     if (text.includes('\u0000')) continue; // binarny
     const lines = text.split('\n');
     lines.forEach((line, idx) => {
+      const recordMatches = (regex, kind) => {
+        regex.lastIndex = 0;
+        let match;
+        while ((match = regex.exec(line)) !== null) {
+          secretHits.push({ file: rel, line: idx + 1, kind, tokenLen: match[0].length });
+        }
+      };
+      recordMatches(privatePathRe, 'private-path');
+      // README i test/ zawierają jawnie syntetyczne identyfikatory kontraktowe.
+      // Pozostałe przejrzane ścieżki nie mogą zawierać Discord snowflakes.
+      if (rel !== 'README.md' && !rel.startsWith('test/')) {
+        recordMatches(snowflakeRe, 'discord-snowflake');
+      }
       webhookRe.lastIndex = 0;
       let m;
       while ((m = webhookRe.exec(line)) !== null) {
         const token = m[2];
         if (!placeholderRe.test(token) && token.length >= MIN_REAL_TOKEN_LEN) {
           // Celowo BEZ wartości tokena: tylko lokalizacja i długość.
-          secretHits.push({ file: rel, line: idx + 1, tokenLen: token.length });
+          secretHits.push({
+            file: rel,
+            line: idx + 1,
+            kind: 'discord-webhook',
+            tokenLen: token.length,
+          });
         }
       }
     });
@@ -267,7 +308,9 @@ function main() {
   );
   for (const e of excludedFound) console.log(`  excluded-present: ${e}`);
   for (const m of hashMismatches) console.log(`  mismatch: ${m.file} (${m.reason})`);
-  for (const s of secretHits) console.log(`  secret-hit: ${s.file}:${s.line} (tokenLen=${s.tokenLen})`);
+  for (const s of secretHits) {
+    console.log(`  secret-hit: ${s.file}:${s.line} (${s.kind}, tokenLen=${s.tokenLen})`);
+  }
 
   process.exit(verdict === 'PASS' ? 0 : 1);
 }
