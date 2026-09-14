@@ -5,7 +5,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const NEEDLES = Object.freeze(['legacy-bridge', 'script.txt']);
+// Needles are assembled so this scanner never matches its own source.
+const NEEDLES = Object.freeze(['legacy' + '-bridge', 'script' + '.txt']);
+
+// Files whose only references are intentional and frozen: historical records
+// or negative guards this migration must not rewrite. They are reported
+// separately (never as actionable consumers).
+const EXCLUSIONS = Object.freeze({
+  'test/runtime-parity.test.cjs': 'frozen Todo-3 oracle guard comment; Task 10 must not modify this file',
+  'test/tools/userscript-build-contract.test.cjs': 'negative deletion guards asserting the old authority is gone; Task 10 must not modify this file',
+  'docs/AUDIT.md': 'frozen 1.0.0 behavior audit; colon cites are historical code pointers framed by the layout note',
+});
 
 function categoryFor(file) {
   if (file === 'AGENTS.md' || file === 'DESIGN.md') return 'governance';
@@ -30,6 +40,7 @@ function trackedFiles() {
 
 function readTrackedText(file) {
   const absolute = path.join(ROOT, file);
+  if (!fs.existsSync(absolute)) return null;
   const stat = fs.lstatSync(absolute);
   const bytes = stat.isSymbolicLink()
     ? Buffer.from(fs.readlinkSync(absolute), 'utf8')
@@ -49,11 +60,16 @@ function referencesIn(file, source) {
 
 function inventory() {
   const consumers = [];
+  const exclusions = [];
   for (const file of trackedFiles()) {
     const source = readTrackedText(file);
     if (source === null) continue;
     const references = referencesIn(file, source);
     if (references.length === 0) continue;
+    if (Object.hasOwn(EXCLUSIONS, file)) {
+      exclusions.push({ path: file, reason: EXCLUSIONS[file], references });
+      continue;
+    }
     consumers.push({ category: categoryFor(file), path: file, references });
   }
 
@@ -66,7 +82,8 @@ function inventory() {
       referenceCount: consumers.reduce((count, consumer) => count + consumer.references.length, 0),
       categories
     },
-    consumers
+    consumers,
+    exclusions
   };
 }
 
