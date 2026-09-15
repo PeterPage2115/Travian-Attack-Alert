@@ -55,7 +55,7 @@ function artifactAudit() {
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout.trim().split(/\r?\n/).pop()).verdict, 'PASS');
     const metadata = JSON.parse(fs.readFileSync(path.join(ROOT, 'metadata.json'), 'utf8'));
-    assert.equal(metadata.artifact.sha256, sha256('script.txt'));
+    assert.equal(metadata.artifact.sha256, sha256('dist/travian-attack-alert.user.js'));
     return { pass: true, sha256: metadata.artifact.sha256 };
 }
 
@@ -64,7 +64,7 @@ function happy() {
         ['npm', ['run', 'check:types'], 'types'],
         ['npm', ['run', 'check:artifact'], 'artifact'],
         ['npm', ['run', 'quality', '--', '--gate', 'todo14-final'], 'quality'],
-        [process.execPath, ['-e', "new Function(require('fs').readFileSync('script.txt','utf8'))"], 'syntax'],
+        [process.execPath, ['-e', "new Function(require('fs').readFileSync('src/runtime.js','utf8'))"], 'syntax'],
         ['npm', ['test', '--', '--test-name-pattern=Todo 6|Todo 8|Todo 9|monitor queue hard bound|monitor recovery'], 'migration-corruption']
     ];
     const outcomes = commands.map(([command, args, name]) => { const result = run(command, args); return { name, command: [command, ...args], exitCode: result.status }; });
@@ -76,7 +76,7 @@ function happy() {
     const quality = qualityAudit();
     const artifact = artifactAudit();
     const privacy = privacyAudit();
-    return { gates: outcomes, quality, artifact, privacy, diagnosticsOffCriticalPath: true, activeDeliveryEviction: false, schema1Readable: true, generatedArtifact: 'metadata hash equals script.txt' };
+    return { gates: outcomes, quality, artifact, privacy, diagnosticsOffCriticalPath: true, activeDeliveryEviction: false, schema1Readable: true, generatedArtifact: 'metadata hash equals dist artifact' };
 }
 
 function expectRejected(label, action) {
@@ -111,7 +111,7 @@ function failures() {
         fs.writeFileSync(secret, ['https://discord', '.com/api/webhooks/', '123456789012345678', '/', 'xK9mP2qR7wL4vN8z'].join(''));
         try { rejected.push(expectRejected('secret/raw-capture', privacyAudit)); } finally { fs.rmSync(secret, { force: true }); }
         rejected.push(expectRejected('active-ledger eviction', () => { if (256 + 1 > 256) throw new Error('active ledger capacity rejected'); }));
-        rejected.push(expectRejected('stale artifact', () => { if (JSON.parse(fs.readFileSync(path.join(ROOT, 'metadata.json'))).artifact.sha256 !== sha256('script.txt')) throw new Error('stale artifact'); fs.writeFileSync(path.join(os.tmpdir(), 'f2-stale-script.txt'), 'stale'); throw new Error('stale artifact sentinel'); }));
+        rejected.push(expectRejected('stale artifact', () => { if (JSON.parse(fs.readFileSync(path.join(ROOT, 'metadata.json'))).artifact.sha256 !== sha256('dist/travian-attack-alert.user.js')) throw new Error('stale artifact'); fs.writeFileSync(path.join(os.tmpdir(), 'f2-stale-dist.txt'), 'stale'); throw new Error('stale artifact sentinel'); }));
         return { injections: rejected, allRejected: true };
     } finally { for (const file of temporary) fs.rmSync(file, { force: true }); }
 }

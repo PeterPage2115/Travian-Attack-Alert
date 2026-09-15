@@ -29,32 +29,32 @@ const tasks = Object.freeze({
         failure: { command: process.execPath, args: ['--test', '--test-name-pattern=invalid and partial|duplicate ID conflict|conflicting tooltip|missing ID|member-table contract rejects', TEST], artifacts: ['test/fixtures/acquisition/golden/overview.json', 'test/fixtures/acquisition/golden/reports-paginated.json', 'test/fixtures/acquisition/golden/report-detail.json', '.omo/evidence/stabilizacja-akwizycji-atakow/task-4-matrix.json'] }
     },
     5: {
-        happy: { command: process.execPath, args: ['--test', '--test-name-pattern=accepted scan planner|accepted scan commit|threshold.*baseline|Todo 5 accepted scan', TEST], artifacts: ['script.txt', 'test/script.test.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-5-manifest.json'] },
-        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=failed monitor storage|stale term and capacity|accepted scan commit', TEST], artifacts: ['script.txt', 'test/script.test.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-5-manifest.json'] }
+        happy: { command: process.execPath, args: ['--test', '--test-name-pattern=accepted scan planner|accepted scan commit|threshold.*baseline|Todo 5 accepted scan', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-5-manifest.json'] },
+        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=failed monitor storage|stale term and capacity|accepted scan commit', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-5-manifest.json'] }
     },
     6: {
-        happy: { command: process.execPath, args: ['--test', '--test-name-pattern=coalesce.*sourceEventIds|delivery accounting|injective normal identity|legacy active lineage|terminal compaction conservation', TEST], artifacts: ['script.txt', 'test/script.test.cjs', 'test/fixtures/stabilization/conservation-oracle.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-6-manifest.json'] },
-        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Todo 6 injective|Todo 6 delivery accounting|Todo 6 old envelopes', TEST], artifacts: ['script.txt', 'test/script.test.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-6-manifest.json'] }
+        happy: { command: process.execPath, args: ['--test', '--test-name-pattern=coalesce.*sourceEventIds|delivery accounting|injective normal identity|legacy active lineage|terminal compaction conservation', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs', 'test/fixtures/stabilization/conservation-oracle.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-6-manifest.json'] },
+        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Todo 6 injective|Todo 6 delivery accounting|Todo 6 old envelopes', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs', '.omo/evidence/stabilizacja-akwizycji-atakow/task-6-manifest.json'] }
     },
     7: {
-        happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-7.cjs'], artifacts: ['script.txt', 'test/script.test.cjs', 'test/e2e/discord-manual-fetch-timing.spec.ts'] },
-        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Task 7 rejection', TEST], artifacts: ['script.txt', 'test/script.test.cjs', 'test/e2e/discord-manual-fetch-timing.spec.ts'] }
+        happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-7.cjs'], artifacts: ['src/runtime.js', 'test/script.test.cjs', 'test/e2e/discord-manual-fetch-timing.spec.ts'] },
+        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Task 7 rejection', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs', 'test/e2e/discord-manual-fetch-timing.spec.ts'] }
     },
     8: {
-        happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-8.cjs'], artifacts: ['script.txt', 'test/script.test.cjs', 'test/fixtures/stabilization/task-8.cjs'] },
-        failure: { command: process.execPath, args: ['test/fixtures/stabilization/task-8.cjs', '--failures'], artifacts: ['script.txt', 'test/script.test.cjs', 'test/fixtures/stabilization/task-8.cjs'] }
+        happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-8.cjs'], artifacts: ['src/runtime.js', 'test/script.test.cjs', 'test/fixtures/stabilization/task-8.cjs'] },
+        failure: { command: process.execPath, args: ['test/fixtures/stabilization/task-8.cjs', '--failures'], artifacts: ['src/runtime.js', 'test/script.test.cjs', 'test/fixtures/stabilization/task-8.cjs'] }
     },
     9: {
-        happy: { command: process.execPath, args: ['--test', '--test-name-pattern=Todo 9 canonical|Todo 9 retains', TEST], artifacts: ['script.txt', 'test/script.test.cjs'] },
-        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Todo 9 rejects|Todo 9 retains', TEST], artifacts: ['script.txt', 'test/script.test.cjs'] }
+        happy: { command: process.execPath, args: ['--test', '--test-name-pattern=Todo 9 canonical|Todo 9 retains', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs'] },
+        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=Todo 9 rejects|Todo 9 retains', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs'] }
     },
     10: {
-        happy: { command: process.execPath, args: ['--test', '--test-name-pattern=count reconciliation|\\+8 for one player|coalesced multi-request|rejected scan reason|incident export', TEST], artifacts: ['script.txt', 'test/script.test.cjs', 'test/e2e/attack-panel.spec.ts'] },
-        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=diagnostics corrupted|incident redaction|incident export byte cap', TEST], artifacts: ['script.txt', 'test/script.test.cjs', 'test/e2e/attack-panel.spec.ts'] }
+        happy: { command: process.execPath, args: ['--test', '--test-name-pattern=count reconciliation|\\+8 for one player|coalesced multi-request|rejected scan reason|incident export', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs', 'test/e2e/attack-panel.spec.ts'] },
+        failure: { command: process.execPath, args: ['--test', '--test-name-pattern=diagnostics corrupted|incident redaction|incident export byte cap', TEST], artifacts: ['src/runtime.js', 'test/script.test.cjs', 'test/e2e/attack-panel.spec.ts'] }
     },
     11: {
-        happy: { command: process.execPath, args: ['-e', "const {spawnSync}=require('node:child_process'); for (const command of [['npm','run','build'],['npm','run','check:artifact'],['npm','run','check:types'],['npm','run','quality'],['npm','test']]) { const result=spawnSync(command[0],command.slice(1),{cwd:process.cwd(),stdio:'inherit',shell:false}); if(result.status!==0) process.exit(result.status||1); }"], artifacts: ['script.txt', 'src/browser-entry.js', 'tools/build.cjs', 'tools/check-artifact.cjs', 'tools/quality.cjs', 'metadata.json', 'module-manifest.json', 'package-lock.json'] },
-        failure: { command: process.execPath, args: ['test/fixtures/stabilization/task-11.cjs'], artifacts: ['script.txt', 'module-manifest.json'] }
+        happy: { command: process.execPath, args: ['-e', "const {spawnSync}=require('node:child_process'); for (const command of [['npm','run','build'],['npm','run','check:artifact'],['npm','run','check:types'],['npm','run','quality'],['npm','test']]) { const result=spawnSync(command[0],command.slice(1),{cwd:process.cwd(),stdio:'inherit',shell:false}); if(result.status!==0) process.exit(result.status||1); }"], artifacts: ['src/runtime.js', 'src/browser-entry.js', 'tools/build.cjs', 'tools/check-artifact.cjs', 'tools/quality.cjs', 'metadata.json', 'module-manifest.json', 'package-lock.json'] },
+        failure: { command: process.execPath, args: ['test/fixtures/stabilization/task-11.cjs'], artifacts: ['src/runtime.js', 'module-manifest.json'] }
     },
     12: {
         happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-12.cjs'], artifacts: ['src/constants.js', 'src/text.js', 'src/storage.js', 'src/lease.js', 'src/route.js', 'src/parser.js', 'src/snapshot.js', 'src/envelope.js', 'src/migration.js', 'test/script.test.cjs'] },
@@ -62,10 +62,10 @@ const tasks = Object.freeze({
     },
     13: {
         happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-13.cjs'], artifacts: ['src/discord.js', 'src/transport.js', 'src/dispatch.js', 'src/conservation.js', 'src/diagnostics.js', 'test/fixtures/stabilization/task-13.cjs'] },
-        failure: { command: process.execPath, args: ['test/fixtures/stabilization/task-13.cjs', '--failures'], artifacts: ['script.txt', 'test/script.test.cjs'] }
+        failure: { command: process.execPath, args: ['test/fixtures/stabilization/task-13.cjs', '--failures'], artifacts: ['src/runtime.js', 'test/script.test.cjs'] }
     },
     14: {
-        happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-14.cjs'], artifacts: ['src/panel.js', 'src/boot.js', 'src/browser-entry.js', 'README.md', 'DESIGN.md', 'script.txt', 'test/fixtures/stabilization/task-14.cjs'] },
+        happy: { command: process.execPath, args: ['test/fixtures/stabilization/task-14.cjs'], artifacts: ['src/panel.js', 'src/boot.js', 'src/browser-entry.js', 'README.md', 'DESIGN.md', 'src/runtime.js', 'test/fixtures/stabilization/task-14.cjs'] },
         failure: { command: process.execPath, args: ['test/fixtures/stabilization/task-14.cjs', '--failures'], artifacts: ['README.md', 'DESIGN.md'] }
     }
 });
@@ -80,15 +80,15 @@ const finals = Object.freeze({
         failure: { command: process.execPath, args: [F1, '--failure'], artifacts: [] }
     },
     F2: {
-        happy: { command: process.execPath, args: [F2, '--happy'], artifacts: ['test/fixtures/stabilization/f2-audit.cjs', 'script.txt', 'metadata.json', 'module-manifest.json'] },
+        happy: { command: process.execPath, args: [F2, '--happy'], artifacts: ['test/fixtures/stabilization/f2-audit.cjs', 'src/runtime.js', 'metadata.json', 'module-manifest.json'] },
         failure: { command: process.execPath, args: [F2, '--failure'], artifacts: [] }
     },
     F3: {
-        happy: { command: process.execPath, args: [F3, '--happy'], artifacts: ['test/fixtures/stabilization/f3-audit.cjs', 'test/e2e/f3-browser-qa.spec.ts', 'script.txt'] },
+        happy: { command: process.execPath, args: [F3, '--happy'], artifacts: ['test/fixtures/stabilization/f3-audit.cjs', 'test/e2e/f3-browser-qa.spec.ts', 'src/runtime.js'] },
         failure: { command: process.execPath, args: [F3, '--failure'], artifacts: ['test/fixtures/stabilization/f3-audit.cjs', 'test/e2e/f3-browser-qa.spec.ts'] }
     },
     F4: {
-        happy: { command: process.execPath, args: [F4, '--happy'], artifacts: ['test/fixtures/stabilization/f4-audit.cjs', 'script.txt', 'README.md', 'DESIGN.md'] },
+        happy: { command: process.execPath, args: [F4, '--happy'], artifacts: ['test/fixtures/stabilization/f4-audit.cjs', 'src/runtime.js', 'README.md', 'DESIGN.md'] },
         failure: { command: process.execPath, args: [F4, '--failure'], artifacts: ['test/fixtures/stabilization/f4-audit.cjs'] }
     }
 });

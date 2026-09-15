@@ -1,18 +1,3 @@
-// ==UserScript==
-// @name         Travian Attack Alert
-// @namespace    travian-attack-alert-public
-// @version      1.0.0
-// @description  Notifies on Discord about new attacks on alliance members
-// @match        https://*.travian.com/alliance*
-// @grant        GM_xmlhttpRequest
-// @grant        GM_registerMenuCommand
-// @grant        GM_getValue
-// @grant        GM_setValue
-// @grant        GM_deleteValue
-// @connect      discord.com
-// @run-at       document-idle
-// @noframes
-// ==/UserScript==
 (function() {
   "use strict";
 const RELEASE_VERSION = "1.0.0";
@@ -277,7 +262,15 @@ const RELEASE_ID = "taa-1.0.0";
     high: 15844367,
     critical: 10038562
   };
+  // Bundler-proof Node detection: esbuild wraps every CommonJS module in a
+  // __commonJS shim that always provides a `module` object, so `typeof
+  // module` alone is true even in the browser bundle (this silently disabled
+  // initAdminPanel and forced hasExclusiveWebLocks() true in dist). Requiring
+  // the absence of DOM globals restores the old script.txt dual-mode:
+  // Node (artifact tests) has CJS without a DOM, browsers have a DOM.
   const isNodeEnvironment = Boolean(
+    typeof document === "undefined" &&
+    typeof location === "undefined" &&
     typeof module !== "undefined" && module.exports
   );
   const ROUTE_ROLES = Object.freeze({
@@ -9549,7 +9542,7 @@ ${entry.line}`;
     renderPanel();
     return overlay;
   }
-  if (!isNodeEnvironment) {
+  function startBrowserRuntime() {
     const initialRoute = classifyAllianceRoute(location.href);
     const browserCanOwnAuthority = initialRoute.role === ROUTE_ROLES.CANONICAL_MEMBER && hasExclusiveWebLocks();
     if (!browserCanOwnAuthority) {
@@ -10142,6 +10135,7 @@ ${entry.line}`;
   }
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
+      startBrowserRuntime,
       ROUTE_ROLES,
       classifyAllianceRoute,
       lockNameForHostname,

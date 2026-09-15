@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Read-only CI: verify and upload evidence, never publish or release.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install (locked dependencies)
+        run: npm ci
+
+      - name: Type gate
+        run: npm run check:types
+
+      - name: Offline unit gates
+        run: npm test
+
+      - name: Tools gates
+        run: npm run test:tools
+
+      - name: Quality gate
+        run: npm run quality
+
+      - name: Artifact gate (syntax + read-only check + sidecar)
+        run: npm run test:artifact
+
+      - name: Deterministic build (twice) + SHA comparison
+        run: |
+          npm run build
+          sha256sum dist/travian-attack-alert.user.js > /tmp/build-first.sha256
+          cp dist/travian-attack-alert.user.js /tmp/build-first.user.js
+          npm run build
+          sha256sum dist/travian-attack-alert.user.js > /tmp/build-second.sha256
+          cmp /tmp/build-first.user.js dist/travian-attack-alert.user.js
+          diff /tmp/build-first.sha256 /tmp/build-second.sha256
+          sha256sum -c dist/travian-attack-alert.user.js.sha256
+
+      - name: Privacy / secrets scan
+        run: |
+          node tools/audit-public-tree.cjs --root . --baseline . --out test-results/privacy-scan.json
+          node -e "const r=require('./test-results/privacy-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r,null,2));process.exit(1);} console.log('privacy scan verdict: PASS');"
+          hits=$(grep -rEn "discord\\.com/api/webhooks/[0-9]+/[A-Za-z0-9_\\-]{32,}" --exclude-dir=node_modules --exclude-dir=.git . || true)
+          hits=$(printf '%s\n' "$hits" | grep -viE "FAKE|PLACEHOLDER|example" || true)
+          if [ -n "$hits" ]; then printf '%s\n' "$hits"; echo "secret pattern scan: live webhook token found"; exit 1; fi
+          echo "secret pattern scan: clean"
+
+      - name: Upload evidence (no publishing)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-evidence-node-${{ matrix.node-version }}
+          path: |
+            test-results/
+            dist/
+            metadata.json
+          if-no-files-found: error

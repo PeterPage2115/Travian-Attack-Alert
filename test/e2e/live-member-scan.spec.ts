@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 // Todo-6 production-like journey: live vs cached vs absent configuration states.
-// Exact user-facing strings are quoted from script.txt (buildPlayerWorkspaceReadModel,
+// Exact user-facing strings are quoted from the src runtime (buildPlayerWorkspaceReadModel,
 // storageProvenanceText) — never paraphrased. Surrogate IDs only (900001+
 // Travian IDs; 100000000000000001/20000000000000000N Discord snowflakes).
 

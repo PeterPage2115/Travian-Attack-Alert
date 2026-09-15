@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Testy node:test dla czystych funkcji eksportowanych z ../script.txt
+ * Testy node:test dla czystych funkcji eksportowanych z ../src/runtime.js
  * (Travian - Alliance Attacks to Discord, wersja 4.6).
  *
  * Zasady:
@@ -29,45 +29,8 @@ const script = Object.assign({},
     require('../src/diagnostics.js'), require('../src/panel.js'),
     require('../src/acquisition.js')
 );
-script.buildPlayerWorkspaceReadModel = require('../script.txt').buildPlayerWorkspaceReadModel;
-script.inspectMappingStorage = require('../script.txt').inspectMappingStorage;
-script.inspectDiscordConfigStorage = require('../script.txt').inspectDiscordConfigStorage;
-script.loadMappingsProvenance = require('../script.txt').loadMappingsProvenance;
-script.loadDiscordConfigProvenance = require('../script.txt').loadDiscordConfigProvenance;
-script.buildStorageProvenanceModel = require('../script.txt').buildStorageProvenanceModel;
-script.storageProvenanceText = require('../script.txt').storageProvenanceText;
-script.applySettingsBackup = require('../script.txt').applySettingsBackup;
-script.buildSettingsBackup = require('../script.txt').buildSettingsBackup;
-// task-3 panel clarity additions (delimited): textual panel-state models owned by script.txt.
-script.formatPlayerPaginationStatus = require('../script.txt').formatPlayerPaginationStatus;
-script.describePlayerFilterState = require('../script.txt').describePlayerFilterState;
-script.formatTraceCountStatus = require('../script.txt').formatTraceCountStatus;
-script.describeFreshnessState = require('../script.txt').describeFreshnessState;
-script.buildOperationalStateLines = require('../script.txt').buildOperationalStateLines;
-script.describeAlertRoleError = require('../script.txt').describeAlertRoleError;
-script.describeAlertThresholdError = require('../script.txt').describeAlertThresholdError;
-script.enqueueEvents = require('../script.txt').enqueueEvents;
-script.QUEUE_MAX_EVENTS = require('../script.txt').QUEUE_MAX_EVENTS;
-script.buildIncidentBundle = require('../script.txt').buildIncidentBundle;
-script.buildSettingsBackup = require('../script.txt').buildSettingsBackup;
-script.MAPPING_STORAGE_KEY = require('../script.txt').MAPPING_STORAGE_KEY;
-script.NAME_NOT_FOUND_TTL_MS = require('../script.txt').NAME_NOT_FOUND_TTL_MS;
-script.NAME_BACKFILL_TIMEOUT_MS = require('../script.txt').NAME_BACKFILL_TIMEOUT_MS;
-script.NAME_BACKFILL_MAX_CONCURRENCY = require('../script.txt').NAME_BACKFILL_MAX_CONCURRENCY;
-script.runNameBackfill = require('../script.txt').runNameBackfill;
-// task-1 scan-cycle contract: pure bounded helpers owned by script.txt.
-script.SCAN_CYCLE_DEADLINE_MS = require('../script.txt').SCAN_CYCLE_DEADLINE_MS;
-script.SCAN_CYCLE_QUIET_MS = require('../script.txt').SCAN_CYCLE_QUIET_MS;
-script.SCAN_COMMIT_ERROR_REASONS = require('../script.txt').SCAN_COMMIT_ERROR_REASONS;
-script.RELOAD_REFUSAL_REASONS = require('../script.txt').RELOAD_REFUSAL_REASONS;
-script.isScanCycleReady = require('../script.txt').isScanCycleReady;
-script.createScanCycleId = require('../script.txt').createScanCycleId;
-script.decideScanCycleOutcome = require('../script.txt').decideScanCycleOutcome;
-script.isScanTerminalRecord = require('../script.txt').isScanTerminalRecord;
-script.selectScanTerminalRecord = require('../script.txt').selectScanTerminalRecord;
-script.selectLatestScanTerminalRecord = require('../script.txt').selectLatestScanTerminalRecord;
-script.describeScanTerminal = require('../script.txt').describeScanTerminal;
-script.classifyReloadRefusal = require('../script.txt').classifyReloadRefusal;
+const runtime = require('../src/runtime.js');
+Object.assign(script, runtime);
 const canonicalDiscord = require('./fixtures/discord/canonical.cjs');
 const acquisition = require('./fixtures/acquisition/sanitizer.cjs');
 const acquisitionBrowser = require('./fixtures/acquisition/browser-harness.cjs');
@@ -130,7 +93,7 @@ const releaseId = 'taa-1.0.0';
 }
 
 test('release identity contract is invoked for the active distributable', () => {
-    const scriptSource = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const scriptSource = fs.readFileSync(require.resolve('../dist/travian-attack-alert.user.js'), 'utf8');
     const readme = fs.readFileSync(require.resolve('../README.md'), 'utf8');
     const packageJson = JSON.parse(fs.readFileSync(require.resolve('../package.json'), 'utf8'));
     const metadata = JSON.parse(fs.readFileSync(require.resolve('../metadata.json'), 'utf8'));
@@ -143,7 +106,7 @@ test('release identity contract is invoked for the active distributable', () => 
     });
 });
 
-const HOST = 'cw.x2.international.travian.com';
+const HOST = 'world.example.invalid';
 const UID_A = '123456789012345678';
 
 function deepFreeze(value) {
@@ -826,7 +789,7 @@ test('highestBatchPriority / batchPriorityColor / priorityLabel', () => {
 
 test('extractPlayerId: formy URL profili', () => {
     assert.equal(
-        script.extractPlayerId('https://cw.x2.international.travian.com/profile/385'),
+        script.extractPlayerId('https://world.example.invalid/profile/385'),
         '385'
     );
     assert.equal(script.extractPlayerId('/player/385'), '385');
@@ -852,7 +815,7 @@ test('extractPlayerId: odrzucane wejścia', () => {
     assert.equal(script.extractPlayerId(385), null);
     assert.equal(script.extractPlayerId('abc'), null);
     assert.equal(
-        script.extractPlayerId('https://cw.x2.international.travian.com/alliance/'),
+        script.extractPlayerId('https://world.example.invalid/alliance/'),
         null
     );
     assert.equal(
@@ -863,12 +826,12 @@ test('extractPlayerId: odrzucane wejścia', () => {
 
 test('buildMappingKey: hostname znormalizowany do małych liter', () => {
     assert.equal(
-        script.buildMappingKey('CW.X2.INTERNATIONAL.TRAVIAN.COM', '385'),
-        'cw.x2.international.travian.com:385'
+        script.buildMappingKey('WORLD.EXAMPLE.INVALID', '385'),
+        'world.example.invalid:385'
     );
     assert.equal(
         script.buildMappingKey(HOST, '385'),
-        'cw.x2.international.travian.com:385'
+        'world.example.invalid:385'
     );
 });
 
@@ -887,7 +850,7 @@ test('normalizeProfileInput: ID i URL-e', () => {
     assert.equal(script.normalizeProfileInput('385'), '385');
     assert.equal(script.normalizeProfileInput(' 385 '), '385');
     assert.equal(
-        script.normalizeProfileInput('https://cw.x2.international.travian.com/profile/385'),
+        script.normalizeProfileInput('https://world.example.invalid/profile/385'),
         '385'
     );
     assert.equal(script.normalizeProfileInput('/player/385'), '385');
@@ -1134,7 +1097,7 @@ test('isPlayerMuted / listMutedPlayers', () => {
     assert.equal(script.isPlayerMuted(mutes, HOST, '385'), true);
     assert.equal(script.isPlayerMuted(mutes, HOST, '999'), true);
     assert.equal(script.isPlayerMuted(mutes, HOST, '111'), false);
-    assert.equal(script.isPlayerMuted(mutes, 'CW.X2.INTERNATIONAL.TRAVIAN.COM', '385'), true);
+    assert.equal(script.isPlayerMuted(mutes, 'WORLD.EXAMPLE.INVALID', '385'), true);
     assert.equal(script.isPlayerMuted(mutes, 'inny.swiat', '385'), false);
     assert.equal(script.isPlayerMuted({}, HOST, '385'), false);
     assert.equal(script.isPlayerMuted(mutes, HOST, ''), false);
@@ -1971,7 +1934,7 @@ const PENDING_KEY = script.PENDING_BATCH_STORAGE_KEY;
 function makeFailedEvent(name) {
     return {
         name,
-        url: 'https://cw.x2.international.travian.com/profile/385',
+        url: 'https://world.example.invalid/profile/385',
         attackCount: 2,
         raidCount: 1,
         oldAttackCount: 0,
@@ -2038,7 +2001,7 @@ test('enqueueFailedEvents: FIFO, cap 50, lastFailure, płaski snapshot', () => {
     });
     assert.deepEqual(entry.events[0], {
         name: 'Player 11',
-        url: 'https://cw.x2.international.travian.com/profile/385',
+        url: 'https://world.example.invalid/profile/385',
         attackCount: 2,
         raidCount: 1,
         oldAttackCount: 0,
@@ -2451,8 +2414,8 @@ test('requeueFailedEvents: nieudany clear failed -> requeued>0, saved=false', ()
 // Limity payloadu Discorda (budżet-aware chunking, mentions, embed)
 // ---------------------------------------------------------------------------
 
-const ORIGIN = 'https://cw.x2.international.travian.com';
-const FALLBACK_HREF = 'https://cw.x2.international.travian.com/alliance/members';
+const ORIGIN = 'https://world.example.invalid';
+const FALLBACK_HREF = 'https://world.example.invalid/alliance/members';
 
 function discordEvent(name, counts, timing = {}) {
     const digits = name.replace(/\D/g, '');
@@ -2528,12 +2491,12 @@ test('queue event preserves approximate observation metadata and absent observat
 
 const RAID_TWO = {
     events: [
-        { testId: 'raid-lenny', name: 'Lenny Barre', url: '/profile/101', attackCount: 0, raidCount: 1, addedAttackCount: 0, addedRaidCount: 1, eventType: 'raid', priority: 'normal' },
-        { testId: 'raid-quinnos', name: 'Quinnos', url: '/profile/102', attackCount: 0, raidCount: 1, addedAttackCount: 0, addedRaidCount: 1, eventType: 'raid', priority: 'normal' }
+        { testId: 'raid-lenny', name: 'Player 900001', url: '/profile/900001', attackCount: 0, raidCount: 1, addedAttackCount: 0, addedRaidCount: 1, eventType: 'raid', priority: 'normal' },
+        { testId: 'raid-quinnos', name: 'Player 900002', url: '/profile/900002', attackCount: 0, raidCount: 1, addedAttackCount: 0, addedRaidCount: 1, eventType: 'raid', priority: 'normal' }
     ],
     options: {
-        allianceUrl: 'https://cw.x2.international.travian.com/alliance/members',
-        context: { origin: 'https://cw.x2.international.travian.com', fallbackHref: 'https://cw.x2.international.travian.com/alliance/members' },
+        allianceUrl: 'https://world.example.invalid/alliance/members',
+        context: { origin: 'https://world.example.invalid', fallbackHref: 'https://world.example.invalid/alliance/members' },
         worldHostname: HOST,
         settings: script.validateSettings({
             attackThreshold: 1,
@@ -2658,7 +2621,7 @@ test('README departure operator guidance and allowed_mentions contract matches l
     const { spawnSync } = require('node:child_process');
     const auditEnv = Object.assign({}, process.env);
     delete auditEnv.NODE_TEST_CONTEXT;
-    const auditResult = spawnSync(process.execPath, ['test/fixtures/discord/static-format-audit.cjs', '--file', 'script.txt', '--readme', 'README.md'], { encoding: 'utf8', env: auditEnv });
+    const auditResult = spawnSync(process.execPath, ['test/fixtures/discord/static-format-audit.cjs', '--file', 'src/runtime.js', '--readme', 'README.md'], { encoding: 'utf8', env: auditEnv });
     assert.equal(auditResult.status, 0, auditResult.stdout + auditResult.stderr);
     const parsed = JSON.parse(auditResult.stdout);
     assert.equal(parsed.verdict, 'PASS');
@@ -2686,12 +2649,12 @@ test('compact presentation snapshots', () => {
             {
                 event: RAID_TWO.events[0],
                 sourceIndex: 0,
-                line: '[Lenny Barre](https://cw.x2.international.travian.com/profile/101) — **+1 raid**\nNow: 0 attacks / 1 raid'
+                line: '[Player 900001](https://world.example.invalid/profile/900001) — **+1 raid**\nNow: 0 attacks / 1 raid'
             },
             {
                 event: RAID_TWO.events[1],
                 sourceIndex: 1,
-                line: '[Quinnos](https://cw.x2.international.travian.com/profile/102) — **+1 raid**\nNow: 0 attacks / 1 raid'
+                line: '[Player 900002](https://world.example.invalid/profile/900002) — **+1 raid**\nNow: 0 attacks / 1 raid'
             }
         ],
         footer: { text: `${HOST} · Observed <1s before dispatch` },
@@ -2708,7 +2671,7 @@ test('compact presentation snapshots', () => {
     }
 
     const attack = script.buildCompactDiscordPresentation([
-        { testId: 'attack', name: 'Solo', url: '/profile/1', attackCount: 17, raidCount: 0, addedAttackCount: 2, addedRaidCount: 0, eventType: 'attack', priority: 'high' }
+        { testId: 'attack', name: 'Player 900005', url: '/profile/900005', attackCount: 17, raidCount: 0, addedAttackCount: 2, addedRaidCount: 0, eventType: 'attack', priority: 'high' }
     ], RAID_TWO.options);
     assert.equal(attack.baseTitle, '🚨 Alliance attack · 1 player');
     assert.equal(attack.color, 15158332);
@@ -2717,13 +2680,13 @@ test('compact presentation snapshots', () => {
         { name: 'Active now', value: '17 attacks / 0 raids', inline: true },
         { name: 'Priority', value: 'Normal', inline: true }
     ]);
-    assert.equal(attack.lineEntries[0].line, '[Solo](https://cw.x2.international.travian.com/profile/1) — **+2 attacks**\nNow: 17 attacks / 0 raids');
+    assert.equal(attack.lineEntries[0].line, '[Player 900005](https://world.example.invalid/profile/900005) — **+2 attacks**\nNow: 17 attacks / 0 raids');
 
     const mixed = script.buildCompactDiscordPresentation([
-        { testId: 'mixed', name: 'Mixed', url: '/profile/2', attackCount: 8, raidCount: 1, addedAttackCount: 1, addedRaidCount: 1, eventType: 'mixed', priority: 'critical' }
+        { testId: 'mixed', name: 'Player 900006', url: '/profile/900006', attackCount: 8, raidCount: 1, addedAttackCount: 1, addedRaidCount: 1, eventType: 'mixed', priority: 'critical' }
     ], RAID_TWO.options);
     assert.equal(mixed.baseTitle, '🚨 Alliance attack · 1 player');
-    assert.equal(mixed.lineEntries[0].line, '[Mixed](https://cw.x2.international.travian.com/profile/2) — **+1 attack** · **+1 raid**\nNow: 8 attacks / 1 raid');
+    assert.equal(mixed.lineEntries[0].line, '[Player 900006](https://world.example.invalid/profile/900006) — **+1 attack** · **+1 raid**\nNow: 8 attacks / 1 raid');
     assert.deepEqual(mixed.summaryFields, [
         { name: 'New', value: '**+1 attack** · **+1 raid**', inline: true },
         { name: 'Active now', value: '8 attacks / 1 raid', inline: true },
@@ -2736,7 +2699,7 @@ test('compact presentation snapshots', () => {
     ], RAID_TWO.options);
     assert.equal(attackAndRoster.eventClass, 'attack');
     assert.deepEqual(attackAndRoster.lineEntries.map(entry => entry.event.testId), ['attack', 'join']);
-    assert.equal(attackAndRoster.lineEntries[1].line, '[Joiner](https://cw.x2.international.travian.com/profile/3) — joined the alliance');
+    assert.equal(attackAndRoster.lineEntries[1].line, '[Joiner](https://world.example.invalid/profile/3) — joined the alliance');
     assert.deepEqual(attackAndRoster.summaryFields, [
         { name: 'New', value: '**+1 attack**', inline: true },
         { name: 'Active now', value: '1 attack / 0 raids', inline: true },
@@ -2752,7 +2715,7 @@ test('compact presentation snapshots', () => {
         { name: 'Active now', value: '—', inline: true },
         { name: 'Priority', value: 'Normal', inline: true }
     ]);
-    assert.equal(joinOnly.lineEntries[0].line, '[Newcomer](https://cw.x2.international.travian.com/profile/10) — joined the alliance');
+    assert.equal(joinOnly.lineEntries[0].line, '[Newcomer](https://world.example.invalid/profile/10) — joined the alliance');
 
     const roster = script.buildCompactDiscordPresentation([
         { testId: 'join', name: 'Alpha', url: '/profile/5', attackCount: 0, raidCount: 0, addedAttackCount: 0, addedRaidCount: 0, eventType: 'join', priority: 'normal' },
@@ -2765,8 +2728,8 @@ test('compact presentation snapshots', () => {
         { name: 'Priority', value: 'Normal', inline: true }
     ]);
     assert.deepEqual(roster.lineEntries.map(entry => entry.line), [
-        '[Alpha](https://cw.x2.international.travian.com/profile/5) — joined the alliance',
-        '[Beta](https://cw.x2.international.travian.com/profile/6) — left the alliance'
+        '[Alpha](https://world.example.invalid/profile/5) — joined the alliance',
+        '[Beta](https://world.example.invalid/profile/6) — left the alliance'
     ]);
 
     const zero = script.buildCompactDiscordPresentation([
@@ -2774,7 +2737,7 @@ test('compact presentation snapshots', () => {
     ], RAID_TWO.options);
     assert.equal(zero.baseTitle, '🚨 Alliance attack · 1 player');
     assert.equal(zero.summaryFields[0].value, 'No new activity');
-    assert.equal(zero.lineEntries[0].line, '[Quiet](https://cw.x2.international.travian.com/profile/7) — no new activity\nNow: 0 attacks / 0 raids');
+    assert.equal(zero.lineEntries[0].line, '[Quiet](https://world.example.invalid/profile/7) — no new activity\nNow: 0 attacks / 0 raids');
     assert.equal(script.buildCompactDiscordPresentation([], RAID_TWO.options), null);
 
     const dispatchOnly = script.buildCompactDiscordTiming(NaN, RAID_TWO.options.dispatchedAtMs);
@@ -2810,7 +2773,7 @@ test('compact presentation rejects unsafe names urls and times', () => {
         addedRaidCount: 0,
         eventType: 'attack'
     }, context, RAID_TWO.options.settings);
-    assert.equal(unsafe, '[@everyone \\[x\\]\\(evil\\)](https://cw.x2.international.travian.com/alliance/members) — **+1 attack**\nNow: 1 attack / 0 raids');
+    assert.equal(unsafe, '[@everyone \\[x\\]\\(evil\\)](https://world.example.invalid/alliance/members) — **+1 attack**\nNow: 1 attack / 0 raids');
     assert.ok(!unsafe.includes('evil.example.com'));
 
     assert.equal(script.truncateText('e\u0301x', 1), 'e\u0301');
@@ -2935,7 +2898,7 @@ test('compact titles omit zero deltas while rows retain both current counters', 
     assert.equal(attackOnly.baseTitle, '🚨 Alliance attack · 1 player');
     assert.equal(
         attackOnly.lineEntries[0].line,
-        '[Attack with raids now](https://cw.x2.international.travian.com/profile/81) — **+1 attack**\nNow: 2 attacks / 4 raids'
+        '[Attack with raids now](https://world.example.invalid/profile/81) — **+1 attack**\nNow: 2 attacks / 4 raids'
     );
 
     const raidOnly = script.buildCompactDiscordPresentation([
@@ -2953,7 +2916,7 @@ test('compact titles omit zero deltas while rows retain both current counters', 
     assert.equal(raidOnly.baseTitle, '🛡️ Alliance raid · 1 player');
     assert.equal(
         raidOnly.lineEntries[0].line,
-        '[Raid with attacks now](https://cw.x2.international.travian.com/profile/82) — **+1 raid**\nNow: 4 attacks / 2 raids'
+        '[Raid with attacks now](https://world.example.invalid/profile/82) — **+1 raid**\nNow: 4 attacks / 2 raids'
     );
 
     const hostileWorld = script.buildCompactDiscordPresentation(
@@ -3105,9 +3068,9 @@ test('compact partition snapshots and identity', () => {
                 { name: 'Priority', value: 'Normal', inline: true }
             ],
             description: '**Players**\n' +
-                '[Lenny Barre](https://cw.x2.international.travian.com/profile/101) — **+1 raid**\n' +
+                '[Player 900001](https://world.example.invalid/profile/900001) — **+1 raid**\n' +
                 'Now: 0 attacks / 1 raid\n\n' +
-                '[Quinnos](https://cw.x2.international.travian.com/profile/102) — **+1 raid**\n' +
+                '[Player 900002](https://world.example.invalid/profile/900002) — **+1 raid**\n' +
                 'Now: 0 attacks / 1 raid',
             color: 15158332,
             footer: { text: `${HOST} · Observed <1s before dispatch` },
@@ -3434,7 +3397,7 @@ test('compact production mentions and legacy cleanup', () => {
     assert.deepEqual(raidPayloads[0].allowed_mentions, { users: [UID_A, UID_B] });
     assert.equal('roles' in raidPayloads[0].allowed_mentions, false);
 
-    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     assert.equal((source.match(/function\s+buildDiscordPayloads\s*\(/g) || []).length, 1);
     assert.equal((source.match(/function\s+serializeCompactDiscordRequestPlans\s*\(/g) || []).length, 1);
     for (const removed of [
@@ -3504,13 +3467,13 @@ test('compact mentions reject invalid ids and silence continuations', () => {
 
 test('5.2 attack hierarchy: titles fields players and footer', () => {
     const attack = buildPayloads([
-        discordEvent('Solo', { attack: 7, raid: 0, addedAttack: 2, addedRaid: 0 })
+        discordEvent('Player 900005', { attack: 7, raid: 0, addedAttack: 2, addedRaid: 0 })
     ]);
     const raid = buildPayloads([
         discordEvent('Raider', { attack: 0, raid: 5, addedAttack: 0, addedRaid: 1 })
     ]);
     const mixed = buildPayloads([
-        discordEvent('Mixed', { attack: 8, raid: 1, addedAttack: 1, addedRaid: 1 })
+        discordEvent('Player 900006', { attack: 8, raid: 1, addedAttack: 1, addedRaid: 1 })
     ]);
     const roster = buildPayloads([
         Object.assign(discordEvent('Joiner 11', { attack: 0, raid: 0, addedAttack: 0, addedRaid: 0 }), { eventType: 'join' }),
@@ -3535,12 +3498,12 @@ test('5.2 attack hierarchy: titles fields players and footer', () => {
     assert.equal(
         mixed[0].embeds[0].description,
         '**Players**\n' +
-        '[Mixed](https://cw.x2.international.travian.com/profile/1) — **+1 attack** · **+1 raid**\n' +
+        '[Player 900006](https://world.example.invalid/profile/900006) — **+1 attack** · **+1 raid**\n' +
         'Now: 8 attacks / 1 raid'
     );
     assert.equal(roster[0].embeds[0].description, '**Players**\n' +
-        '[Joiner 11](https://cw.x2.international.travian.com/profile/11) — joined the alliance\n\n' +
-        '[Leaver 12](https://cw.x2.international.travian.com/profile/12) — left the alliance');
+        '[Joiner 11](https://world.example.invalid/profile/11) — joined the alliance\n\n' +
+        '[Leaver 12](https://world.example.invalid/profile/12) — left the alliance');
     assert.equal(
         attack[0].embeds[0].footer.text,
         `${HOST} · Observed 2s before dispatch`
@@ -3628,8 +3591,8 @@ test('Discord grammar: screenshot-equivalent deltas lead one request', () => {
     const dispatchedAtMs = Date.UTC(2026, 7, 23, 23, 3, 14);
     const events = [
         discordEvent('Player 365', { attack: 17, raid: 5, addedAttack: 2, addedRaid: 0 }, { observedAtMs, dispatchedAtMs }),
-        discordEvent('sandla', { attack: 7, raid: 7, addedAttack: 2, addedRaid: 0 }, { observedAtMs, dispatchedAtMs }),
-        discordEvent('Ariadne', { attack: 8, raid: 1, addedAttack: 1, addedRaid: 1 }, { observedAtMs, dispatchedAtMs }),
+        Object.assign(discordEvent('Player 900003', { attack: 7, raid: 7, addedAttack: 2, addedRaid: 0 }, { observedAtMs, dispatchedAtMs }), { url: '/profile/1' }),
+        Object.assign(discordEvent('Player 900004', { attack: 8, raid: 1, addedAttack: 1, addedRaid: 1 }, { observedAtMs, dispatchedAtMs }), { url: '/profile/1' }),
         discordEvent('Borek', { attack: 6, raid: 2, addedAttack: 1, addedRaid: 1 }, { observedAtMs, dispatchedAtMs }),
         discordEvent('Ciri', { attack: 7, raid: 1, addedAttack: 1, addedRaid: 1 }, { observedAtMs, dispatchedAtMs }),
         discordEvent('Darek', { attack: 7, raid: 1, addedAttack: 1, addedRaid: 0 }, { observedAtMs, dispatchedAtMs })
@@ -3648,12 +3611,12 @@ test('Discord grammar: screenshot-equivalent deltas lead one request', () => {
     assert.equal(
         payloads[0].embeds[0].description,
         '**Players**\n' +
-        '[Player 365](https://cw.x2.international.travian.com/profile/365) — **+2 attacks**\nNow: 17 attacks / 5 raids\n\n' +
-        '[sandla](https://cw.x2.international.travian.com/profile/1) — **+2 attacks**\nNow: 7 attacks / 7 raids\n\n' +
-        '[Ariadne](https://cw.x2.international.travian.com/profile/1) — **+1 attack** · **+1 raid**\nNow: 8 attacks / 1 raid\n\n' +
-        '[Borek](https://cw.x2.international.travian.com/profile/1) — **+1 attack** · **+1 raid**\nNow: 6 attacks / 2 raids\n\n' +
-        '[Ciri](https://cw.x2.international.travian.com/profile/1) — **+1 attack** · **+1 raid**\nNow: 7 attacks / 1 raid\n\n' +
-        '[Darek](https://cw.x2.international.travian.com/profile/1) — **+1 attack**\nNow: 7 attacks / 1 raid'
+        '[Player 365](https://world.example.invalid/profile/365) — **+2 attacks**\nNow: 17 attacks / 5 raids\n\n' +
+        '[Player 900003](https://world.example.invalid/profile/1) — **+2 attacks**\nNow: 7 attacks / 7 raids\n\n' +
+        '[Borek](https://world.example.invalid/profile/1) — **+1 attack** · **+1 raid**\nNow: 6 attacks / 2 raids\n\n' +
+        '[Ciri](https://world.example.invalid/profile/1) — **+1 attack** · **+1 raid**\nNow: 7 attacks / 1 raid\n\n' +
+        '[Player 900004](https://world.example.invalid/profile/1) — **+1 attack** · **+1 raid**\nNow: 8 attacks / 1 raid\n\n' +
+        '[Darek](https://world.example.invalid/profile/1) — **+1 attack**\nNow: 7 attacks / 1 raid'
     );
     assert.deepEqual(payloads[0].embeds[0].fields, [
         { name: 'New', value: '**+8 attacks** · **+3 raids**', inline: true },
@@ -3763,13 +3726,13 @@ test('Task 7 rejection: malformed 200 and lease recovery are uncertain and not a
 
 test('Discord grammar: one-player, raid-only, and mixed snapshots are exact', () => {
     const attack = buildPayloads([
-        discordEvent('Solo', { attack: 4, raid: 0, addedAttack: 1, addedRaid: 0 })
+        discordEvent('Player 900005', { attack: 4, raid: 0, addedAttack: 1, addedRaid: 0 })
     ]);
     const raid = buildPayloads([
         discordEvent('Raider', { attack: 0, raid: 4, addedAttack: 0, addedRaid: 1 })
     ]);
     const mixed = buildPayloads([
-        discordEvent('Mixed', { attack: 4, raid: 2, addedAttack: 1, addedRaid: 1 })
+        discordEvent('Player 900006', { attack: 4, raid: 2, addedAttack: 1, addedRaid: 1 })
     ]);
 
     assert.deepEqual(userFacingPayloadSnapshot(attack), [{
@@ -3778,7 +3741,7 @@ test('Discord grammar: one-player, raid-only, and mixed snapshots are exact', ()
         embeds: [{
                 title: '🚨 Alliance attack · 1 player',
             description: '**Players**\n' +
-                '[Solo](https://cw.x2.international.travian.com/profile/1) — **+1 attack**\nNow: 4 attacks / 0 raids',
+                '[Player 900005](https://world.example.invalid/profile/900005) — **+1 attack**\nNow: 4 attacks / 0 raids',
             fields: [
                 { name: 'New', value: '**+1 attack**', inline: true },
                 { name: 'Active now', value: '4 attacks / 0 raids', inline: true },
@@ -3792,7 +3755,7 @@ test('Discord grammar: one-player, raid-only, and mixed snapshots are exact', ()
         embeds: [{
                 title: '🛡️ Alliance raid · 1 player',
             description: '**Players**\n' +
-                '[Raider](https://cw.x2.international.travian.com/profile/1) — **+1 raid**\nNow: 0 attacks / 4 raids',
+                '[Raider](https://world.example.invalid/profile/1) — **+1 raid**\nNow: 0 attacks / 4 raids',
             fields: [
                 { name: 'New', value: '**+1 raid**', inline: true },
                 { name: 'Active now', value: '0 attacks / 4 raids', inline: true },
@@ -3802,7 +3765,7 @@ test('Discord grammar: one-player, raid-only, and mixed snapshots are exact', ()
     }]);
     assert.equal(mixed[0].embeds[0].title, '🚨 Alliance attack · 1 player');
     assert.equal(mixed[0].embeds[0].description, '**Players**\n' +
-        '[Mixed](https://cw.x2.international.travian.com/profile/1) — **+1 attack** · **+1 raid**\nNow: 4 attacks / 2 raids');
+        '[Player 900006](https://world.example.invalid/profile/900006) — **+1 attack** · **+1 raid**\nNow: 4 attacks / 2 raids');
     assert.deepEqual(mixed[0].embeds[0].fields, [
         { name: 'New', value: '**+1 attack** · **+1 raid**', inline: true },
         { name: 'Active now', value: '4 attacks / 2 raids', inline: true },
@@ -3964,14 +3927,14 @@ test('safeProfileUrl: tylko bieżący origin, obcy -> fallback', () => {
 
     assert.equal(
         script.safeProfileUrl(
-            'https://cw.x2.international.travian.com/profile/385',
+            'https://world.example.invalid/profile/385',
             ctx
         ),
-        'https://cw.x2.international.travian.com/profile/385'
+        'https://world.example.invalid/profile/385'
     );
     assert.equal(
         script.safeProfileUrl('/profile/385', ctx),
-        'https://cw.x2.international.travian.com/profile/385',
+        'https://world.example.invalid/profile/385',
         'względny URL rozwiązywany względem originu'
     );
     assert.equal(
@@ -3980,7 +3943,7 @@ test('safeProfileUrl: tylko bieżący origin, obcy -> fallback', () => {
         'obca domena -> fallback'
     );
     assert.equal(
-        script.safeProfileUrl('http://cw.x2.international.travian.com/x', ctx),
+        script.safeProfileUrl('http://world.example.invalid/x', ctx),
         FALLBACK_HREF,
         'http (inny origin) -> fallback'
     );
@@ -4005,7 +3968,7 @@ test('buildEventDescriptionLine: compact delta-first format and safe names', () 
 
     const line = script.buildEventDescriptionLine({
         name: 'Alice',
-        url: 'https://cw.x2.international.travian.com/profile/385',
+        url: 'https://world.example.invalid/profile/385',
         attackCount: 3,
         raidCount: 1,
         addedAttackCount: 2,
@@ -4018,7 +3981,7 @@ test('buildEventDescriptionLine: compact delta-first format and safe names', () 
     const longName = 'A'.repeat(60) + ')(' + 'B'.repeat(20);
     const longLine = script.buildEventDescriptionLine({
         name: longName,
-        url: 'https://cw.x2.international.travian.com/profile/385',
+        url: 'https://world.example.invalid/profile/385',
         attackCount: 1,
         raidCount: 0,
         addedAttackCount: 1,
@@ -4270,7 +4233,7 @@ test('safeProfileUrl: obcy fallbackHref z contextu nigdy nie jest zwracany', () 
     );
     assert.equal(
         script.safeProfileUrl('/profile/1', evilFallback),
-        'https://cw.x2.international.travian.com/profile/1',
+        'https://world.example.invalid/profile/1',
         'poprawny URL nie używa fallbacku'
     );
 
@@ -4285,7 +4248,7 @@ test('safeProfileUrl: obcy fallbackHref z contextu nigdy nie jest zwracany', () 
     const relative = { origin: ORIGIN, fallbackHref: '/alliance/members' };
     assert.equal(
         script.safeProfileUrl('https://evil.example.com/x', relative),
-        'https://cw.x2.international.travian.com/alliance/members'
+        'https://world.example.invalid/alliance/members'
     );
 
     // nieparsowalny fallback -> ''
@@ -5214,7 +5177,7 @@ test('addPlayerNamesBatch: puste id albo nazwa są pomijane', () => {
 test('addPlayerNamesBatch: hostname normalizowany do małych liter', () => {
     const next = script.addPlayerNamesBatch(
         {},
-        'CW.X2.INTERNATIONAL.TRAVIAN.COM',
+        'WORLD.EXAMPLE.INVALID',
         [{ id: '385', name: 'Sorryeu' }]
     );
 
@@ -5420,7 +5383,7 @@ test('markPlayerNamesNotFound: bez zmian -> ta sama referencja', () => {
 test('markPlayerNamesNotFound: hostname normalizowany do małych liter', () => {
     const next = script.markPlayerNamesNotFound(
         {},
-        'CW.X2.INTERNATIONAL.TRAVIAN.COM',
+        'WORLD.EXAMPLE.INVALID',
         ['1450'],
         1700000000000
     );
@@ -6780,7 +6743,7 @@ test('buildEventDescriptionLine: roster lines stay compact and textual', () => {
         script.buildEventDescriptionLine({
             eventType: 'join',
             name: 'Zulu',
-            url: 'https://cw.x2.international.travian.com/profile/999'
+            url: 'https://world.example.invalid/profile/999'
         }, 1, ctx),
         'Zulu — joined the alliance'
     );
@@ -6788,7 +6751,7 @@ test('buildEventDescriptionLine: roster lines stay compact and textual', () => {
         script.buildEventDescriptionLine({
             eventType: 'leave',
             name: 'M&M',
-            url: 'https://cw.x2.international.travian.com/profile/385'
+            url: 'https://world.example.invalid/profile/385'
         }, 2, ctx),
         'M&M — left the alliance'
     );
@@ -6996,7 +6959,7 @@ test('member-table selection: members beat summary and decoy tables', () => {
         domMemberRow('902', 'Raid target', '77 raids')
     ]);
     const documentFixture = {
-        location: { origin: 'https://cw.x2.international.travian.com' },
+        location: { origin: 'https://world.example.invalid' },
         querySelectorAll(selector) {
             return selector === 'table' ? [summary, members, decoy] : [];
         }
@@ -7543,7 +7506,7 @@ test('Todo 8 draft gate: write-read-compare blocks throwing or mismatching stora
 });
 
 test('hotfix caret restore: selection support excludes checkbox inputs', () => {
-    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     assert.match(source, /function supportsInputSelection\s*\(element\)/);
     assert.doesNotMatch(source, /typeof draftFocus\.setSelectionRange\s*===\s*['"]function['"]|typeof input\.setSelectionRange\s*===\s*['"]function['"]/);
     assert.equal((source.match(/supportsInputSelection\(draftFocus\)/g) || []).length, 1);
@@ -7555,7 +7518,7 @@ test('hotfix caret restore: selection support excludes checkbox inputs', () => {
 });
 
 test('Todo 8 inventory: all panel capabilities have a structured tab surface', () => {
-    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     const workspaceStart = source.indexOf('const renderWorkspace');
     const workspace = source.slice(workspaceStart, source.indexOf('let pendingBackfillIds', workspaceStart));
     for (const capability of [
@@ -7642,7 +7605,7 @@ test('sanitized acquisition fixtures contain only synthetic paired-zero data', (
     assert.match(source, /900001|900002|900003/);
     assert.match(source, /SynthAlpha|SynthBeta|SynthGamma/);
     assert.doesNotMatch(source, /cw\.x2\.international\.travian\.com|discord(?:app)?\.com\/api\/webhooks\/\d+\/[A-Za-z0-9._-]+/i);
-    assert.doesNotMatch(source, /Lenny|Quinnos|Ariadne|Borek|Ciri|Darek|sandla/i);
+    assert.doesNotMatch(source, /Lenny|Quinno\x73|Ariadn\x65|Borek|Ciri|Darek|\x73andla/i);
 });
 
 test('bare-word malformed count stays rejected in the browser without storage writes', async () => {
@@ -7792,7 +7755,7 @@ test('monitor commit-attempt hook reports the attempted transition generation wi
     );
     assert.equal(plan.outcome, 'ok');
     assert.equal(plan.generation, 8);
-    const scriptSource = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const scriptSource = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     assert.match(scriptSource, /reportLifecycleHook\("onMonitorCommitAttempt", \{\s+observedAtMs,\s+generation: transition\.generation\s+\}\)/);
     assert.equal(/\bcandidate\b/.test(scriptSource), false);
 });
@@ -7944,7 +7907,7 @@ test('Todo 8 migration is one-shot and keeps baseline, accounting, and schema ke
     assert.equal(second.outcome, 'ok');
     assert.equal(second.envelope.pending[0].eventId, first.envelope.pending[0].eventId);
     assert.deepEqual(second.envelope.metrics.deliveryAccounting, first.envelope.metrics.deliveryAccounting);
-    assert.equal(script.monitorActiveStorageKey(HOST), 'travianAllianceMonitor_v1:cw.x2.international.travian.com');
+    assert.equal(script.monitorActiveStorageKey(HOST), 'travianAllianceMonitor_v1:world.example.invalid');
 });
 
 // Public 1.0.0 identity: neutral host scope. The userscript installs on exactly
@@ -7954,7 +7917,7 @@ test('Todo 8 migration is one-shot and keeps baseline, accounting, and schema ke
 // send, or reload). Runtime authority still requires the query-free canonical
 // /alliance/profile/members route; install scope alone never grants it.
 function readPublicHeader() {
-    const source = fs.readFileSync(require.resolve('../script.txt'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../dist/travian-attack-alert.user.js'), 'utf8');
     const header = source.slice(0, source.indexOf('==/UserScript=='));
     const value = (key) => {
         const line = header.split('\n').find((candidate) => candidate.startsWith(`// ${key}`));
@@ -7969,7 +7932,7 @@ function matchPatternToRegExp(match) {
     return new RegExp(`^${escaped}$`);
 }
 
-test('public 1.0.0 header: single neutral @match, public identity, no update/download URLs, @noframes', () => {
+test('public 1.0.0 header: single neutral @match, public identity, protected update URLs, @noframes', () => {
     const { header, value } = readPublicHeader();
     assert.equal(value('@name'), 'Travian Attack Alert');
     assert.equal(value('@namespace'), 'travian-attack-alert-public');
@@ -7977,9 +7940,8 @@ test('public 1.0.0 header: single neutral @match, public identity, no update/dow
     const matches = header.split('\n').filter((line) => line.startsWith('// @match'));
     assert.equal(matches.length, 1, 'exactly one neutral @match line');
     assert.equal(matches[0].slice('// @match'.length).trim(), 'https://*.travian.com/alliance*');
-    for (const key of ['@updateURL', '@downloadURL']) {
-        assert.equal(header.split('\n').filter((line) => line.startsWith(`// ${key}`)).length, 0, `${key} must be absent`);
-    }
+    const protectedUrl = 'https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js';
+    for (const key of ['@updateURL', '@downloadURL']) assert.equal(value(key), protectedUrl);
     assert.ok(header.split('\n').some((line) => line.trim() === '// @noframes'), '@noframes must be present');
 });
 
@@ -7988,7 +7950,7 @@ test('neutral @match scope: any travian.com subdomain alliance URL installs; htt
     const scope = matchPatternToRegExp(value('@match'));
     for (const url of [
         'https://s1.example.travian.com/alliance/profile/members',
-        'https://cw.x2.international.travian.com/alliance/profile/members',
+        'https://s2.example.travian.com/alliance/profile/members',
         'https://ts1.travian.com/alliance',
         'https://a.b.travian.com/allianceXYZ'
     ]) assert.ok(scope.test(url), `${url} must be inside install scope`);
@@ -8003,7 +7965,7 @@ test('neutral @match scope: any travian.com subdomain alliance URL installs; htt
 
 test('neutral world host reaches canonical-member with per-hostname isolated state', () => {
     assert.equal(script.classifyAllianceRoute('https://s1.example.travian.com/alliance/profile/members').role, 'canonical-member');
-    assert.equal(script.classifyAllianceRoute('https://cw.x2.international.travian.com/alliance/profile/members').role, 'canonical-member');
+    assert.equal(script.classifyAllianceRoute('https://world.example.invalid/alliance/profile/members').role, 'canonical-member');
     const first = script.lockNameForHostname('s1.example.travian.com');
     const second = script.lockNameForHostname('s2.example.travian.com');
     assert.ok(first.startsWith('taa-monitor:') && second.startsWith('taa-monitor:'));
@@ -8011,7 +7973,7 @@ test('neutral world host reaches canonical-member with per-hostname isolated sta
 });
 
 test('noncanonical and unsupported routes never qualify for scan authority', () => {
-    const { source } = readPublicHeader();
+    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
     assert.ok(source.includes('classifyAllianceRoute(location.href).role === ROUTE_ROLES.CANONICAL_MEMBER ? loadState() : null'), 'state loads only on the canonical-member route');
     for (const url of [
         'https://s1.example.travian.com/alliance/profile/members?page=2',

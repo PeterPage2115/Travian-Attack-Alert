@@ -5,7 +5,7 @@
  * Offline release quality gate runner (plan Todo 6).
  *
  * Runs every offline gate in order:
- *   syntax-script -> syntax-dist -> unit -> tools-tests -> artifact-matrix ->
+ *   syntax-runtime -> syntax-dist -> unit -> tools-tests -> artifact-matrix ->
  *   build -> versions -> artifact -> types -> quality -> static-format -> e2e
  *
  * Each gate is captured as { name, cmd, exitCode, verdict, reason } where
@@ -226,7 +226,7 @@ function runE2EGate() {
 
 function main() {
   const gates = [];
-  gates.push(runGate('syntax-script', [process.execPath, '-e', "new Function(require('fs').readFileSync('script.txt','utf8'))"], 'script.txt parses'));
+  gates.push(runGate('syntax-runtime', [process.execPath, '-e', "new Function(require('fs').readFileSync('src/runtime.js','utf8'))"], 'src runtime authority parses'));
   gates.push(runGate('syntax-dist', [process.execPath, '-e', "new Function(require('fs').readFileSync('dist/travian-attack-alert.user.js','utf8'))"], 'dist artifact parses'));
   gates.push(runGate('unit', ['npm', 'test'], 'core + parity suites green'));
   gates.push(runGate('tools-tests', [process.execPath, '--test', ...toolsTestFiles()], 'tools suites green'));
@@ -236,7 +236,7 @@ function main() {
   gates.push(runGate('artifact', ['npm', 'run', 'check:artifact'], 'artifact checks green'));
   gates.push(runGate('types', ['npm', 'run', 'check:types'], 'tsc --noEmit clean'));
   gates.push(runGate('quality', ['npm', 'run', 'quality'], 'quality gate PASS'));
-  gates.push(runGate('static-format', [process.execPath, 'test/fixtures/discord/static-format-audit.cjs', '--file', 'script.txt', '--readme', 'README.md'], 'static format audit PASS'));
+  gates.push(runGate('static-format', [process.execPath, 'test/fixtures/discord/static-format-audit.cjs', '--file', 'src/runtime.js', '--readme', 'README.md'], 'static format audit PASS'));
   gates.push(runE2EGate());
 
   const failed = gates.filter((g) => g.verdict === 'FAIL');

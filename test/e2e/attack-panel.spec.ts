@@ -57,7 +57,7 @@ test.describe('attack panel — 6.0.0 attack-only', () => {
       const wrapCheck = await page.evaluate(() => {
         const probe = document.createElement('div');
         probe.style.cssText = 'overflow-wrap:anywhere;word-break:break-word;max-width:10px';
-        probe.textContent = 'https://cw.x2.international.travian.com/profile/12345678901234567890';
+        probe.textContent = 'https://world.example.invalid/profile/12345678901234567890';
         document.body.appendChild(probe);
         const wraps = probe.scrollWidth <= 20 || getComputedStyle(probe).overflowWrap === 'anywhere';
         probe.remove();
@@ -71,7 +71,10 @@ test.describe('attack panel — 6.0.0 attack-only', () => {
       }
 
       // Standby/leader banner exists, Diagnostics/Alerts feedback reachable
-      const banner = page.locator('[data-taa-standby-banner="true"]');
+      // (#taa-standby-status is the real standby indicator created by
+      // setStandbyVisibility; [data-taa-standby-banner] is only queried,
+      // never created, so it can never match.)
+      const banner = page.locator('#taa-standby-status');
       if (await banner.count() > 0) {
         await expect(banner.first()).toBeVisible();
       }
@@ -270,7 +273,7 @@ test.describe('attack panel — 6.0.0 attack-only', () => {
       // script tag, so inject the exact artifact bytes like route-lease does.
       // The canonical route then owns the lease and alert mutations run.
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await page.addScriptTag({ content: await page.evaluate(async () => await (await fetch('/script.txt')).text()) });
+      await page.addScriptTag({ content: await page.evaluate(async () => await (await fetch('/dist/travian-attack-alert.user.js')).text()) });
       await page.getByRole('button', { name: /Alert monitor|Open monitor/i }).click({ force: true });
       await page.getByRole('tab', { name: 'Alerts' }).click({ force: true });
       const role = page.locator('#taa-alert-role');
@@ -294,7 +297,7 @@ test.describe('attack panel — 6.0.0 attack-only', () => {
       await page.getByRole('button', { name: /Alert monitor|Open monitor/i }).click({ force: true });
       const overlay = page.locator('#taa-panel-overlay');
       await expect(overlay).toBeVisible({ timeout: 5000 });
-      const banners = page.locator('[data-taa-standby-banner]');
+      const banners = page.locator('#taa-standby-status');
       await expect(banners).toHaveCount(1);
       await expect(banners.first()).toBeVisible();
       await expect(banners.first()).toContainText(/Standby|read-only/i);

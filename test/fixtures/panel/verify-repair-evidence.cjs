@@ -24,7 +24,7 @@ function check(options) {
         const visual = JSON.parse(fs.readFileSync(path.join(options.attempt, 'visual-input-repair-launcher-panel-and-discord-alerts.json'), 'utf8'));
         add('visual-input-shape', Array.isArray(visual.panel) && Array.isArray(visual.discord));
     }
-    const parse = command('node -e "new Function(require(\'fs\').readFileSync(\'script.txt\',\'utf8\'))"', repo); const nodeTest = command('node --test test/script.test.cjs', repo); const npmTest = command('npm test', repo);
+    const parse = command('node -e "new Function(require(\'fs\').readFileSync(\'dist/travian-attack-alert.user.js\',\'utf8\'))"', repo); const nodeTest = command('node --test test/script.test.cjs', repo); const npmTest = command('npm test', repo);
     for (const item of [parse, nodeTest, npmTest]) { commands.push(item); add(item.command.includes('new Function') ? 'cmd-parse' : item.command === 'npm test' ? 'cmd-npm-test' : 'cmd-node-test', item.exitCode === 0); }
     const recorded = []; for (let n = 1; n <= 8; n += 1) { const file = path.join(options.attempt, `task-${n}-${SLUG}.json`); if (!fs.existsSync(file)) continue; try { const value = JSON.parse(fs.readFileSync(file, 'utf8')); if (Array.isArray(value.commands)) for (const item of value.commands) if (typeof item.command === 'string' && typeof item.exitCode === 'number') recorded.push(item); } catch { add(`todo-${n}-json-valid`, false); } }
     for (const item of recorded) { const id = item.command.includes('npm test') ? 'cmd-npm-test' : item.command.includes('node --test') ? 'cmd-node-test' : item.command.includes('new Function') ? 'cmd-parse' : null; if (id && item.exitCode !== 0) add(id, false); }

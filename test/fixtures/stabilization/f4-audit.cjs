@@ -32,7 +32,7 @@ function historicalHashes() {
 }
 
 function scopeAudit() {
-    const sourceFiles = ['script.txt', ...filesUnder(path.join(ROOT, 'src')).filter(file => file.endsWith('.js'))];
+    const sourceFiles = ['src/runtime.js', ...filesUnder(path.join(ROOT, 'src')).filter(file => file.endsWith('.js'))];
     const forbidden = [
         ['alliance fetch', /\bfetch\s*\(\s*["'`][^"'`]*\/alliance/i],
         ['background monitor', /serviceWorker|background\.js|chrome\.alarms/i],
@@ -54,13 +54,13 @@ function scopeAudit() {
     const fixtureFiles = filesUnder(path.join(ROOT, 'test/fixtures')).filter(file => file.includes('stabilization'));
     const evidenceFiles = filesUnder(EVIDENCE);
     const rawCapture = [...fixtureFiles, ...evidenceFiles].filter(file => path.extname(file) === '.dane' || /\.dane(?:\b|\/)/i.test(path.relative(ROOT, file)));
-    const distributables = filesUnder(ROOT).filter(file => /(?:\.user\.js|userscript\.js)$/i.test(file) || path.basename(file) === 'script.txt');
-    if (distributables.length !== 1 || path.basename(distributables[0]) !== 'script.txt') findings.push({ label: 'distributable count', files: distributables.map(file => path.relative(ROOT, file)) });
+    const distributables = filesUnder(ROOT).filter(file => /(?:\.user\.js|userscript\.js)$/i.test(file) || path.basename(file) === 'travian-attack-alert.user.js');
+    if (distributables.length !== 1 || path.basename(distributables[0]) !== 'travian-attack-alert.user.js') findings.push({ label: 'distributable count', files: distributables.map(file => path.relative(ROOT, file)) });
     return { findings, rawCapture: rawCapture.map(file => path.relative(ROOT, file)), distributables: distributables.map(file => path.relative(ROOT, file)) };
 }
 
 function documentationContract() {
-    const runtime = require(path.join(ROOT, 'script.txt'));
+    const runtime = require(path.join(ROOT, 'src', 'runtime.js'));
     const readme = read('README.md');
     const design = read('DESIGN.md');
     const roles = Object.values(runtime.ROUTE_ROLES);
@@ -77,7 +77,7 @@ function documentationContract() {
 
 function commandAudit() {
     const commands = [
-        [process.execPath, ['-e', "new Function(require('fs').readFileSync('script.txt','utf8'))"], 'syntax'],
+        [process.execPath, ['-e', "new Function(require('fs').readFileSync('dist/travian-attack-alert.user.js','utf8'))"], 'syntax'],
         [process.execPath, ['--test', 'test/script.test.cjs'], 'node-test'],
         ['npm', ['test'], 'npm-test'],
         ['npm', ['run', 'build'], 'build-1'],
@@ -85,11 +85,11 @@ function commandAudit() {
         ['npm', ['run', 'check:artifact'], 'artifact'],
         ['npm', ['run', 'check:types'], 'types'],
         ['npm', ['run', 'quality', '--', '--gate', 'todo14-final'], 'quality'],
-        ['node', ['test/fixtures/discord/static-format-audit.cjs', '--file', 'script.txt', '--readme', 'README.md'], 'static-audit']
+        ['node', ['test/fixtures/discord/static-format-audit.cjs', '--file', 'src/runtime.js', '--readme', 'README.md'], 'static-audit']
     ];
     const outcomes = commands.map(([command, args, name]) => ({ name, command: [command, ...args], exitCode: run(command, args).status }));
     assert.ok(outcomes.every(item => item.exitCode === 0), JSON.stringify(outcomes));
-    assert.equal(digest(path.join(ROOT, 'script.txt')), JSON.parse(read('metadata.json')).artifact.sha256, 'artifact metadata drift');
+    assert.equal(digest(path.join(ROOT, 'dist', 'travian-attack-alert.user.js')), JSON.parse(read('metadata.json')).artifact.sha256, 'artifact metadata drift');
     return outcomes;
 }
 
@@ -104,7 +104,7 @@ function compatibilityAudit() {
 }
 
 function staleArtifactNegative() {
-    const file = path.join(ROOT, 'script.txt');
+    const file = path.join(ROOT, 'dist', 'travian-attack-alert.user.js');
     const original = fs.readFileSync(file);
     try {
         fs.writeFileSync(file, Buffer.concat([original, Buffer.from('\n// stale artifact sentinel\n')]));

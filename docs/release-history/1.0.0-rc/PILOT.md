@@ -1,5 +1,7 @@
 # Pilot Checklist — 1.0.0 external alliance trial (unpublished)
 
+> **Archive note (repository-cleanup restructure).** This file was moved from `docs/PILOT.md` to `docs/release-history/1.0.0-rc/PILOT.md`; only this note was added and code-span links were adjusted for the move. It is an unpublished 1.0.0 release-candidate record, not current proof: the pilot status recorded inside was never executed, and cited `test-results/` evidence was gitignored and never committed. Do not mistake it for a live operational guide — current guides are indexed in `../../README.md`.
+
 This checklist is for YOU, the pilot operator: a second person running the
 trial on your own equipment. Nobody installs anything for you, and you share
 no credentials with anyone. You use your own device, your own browser, your
@@ -16,7 +18,54 @@ honestly. Nothing here publishes anything.
 > synthetic operator persona against loopback fixtures only
 > (`test-results/release-1.0.0/readme-walkthrough.json`,
 > `test-results/release-1.0.0/docs-equivalence.json`). Your completed run is
-> what flips `pilotReady` (see `docs/VERDICTS.md`).
+> what flips `pilotReady` (see `VERDICTS.md`).
+
+## Release gates — AGENT-AUTOMATED vs OWNER-MANUAL
+
+Machine-readable state: `docs/release-state.json` reports `stable:false`.
+No automated step (npm script, test, build, CI job) may flip it; only an
+owner edit that records every OWNER-MANUAL field below — plus the matching
+edit to the gate test — can advance it.
+
+### AGENT-AUTOMATED (done by this migration)
+
+- `src/` cutover: `src/userscript-entry.js` is the editable authority;
+  `dist/travian-attack-alert.user.js` is generated deterministically
+  (`npm run build`; SHA-256 recorded in `metadata.json` and the sidecar).
+- Privacy fixtures: deterministic loopback fixtures only — no real
+  webhooks, no live Travian requests; the incident bundle is bounded
+  (512 KiB) and redacted by construction.
+- CI: read-only `.github/workflows/ci.yml` (push + PR to `main`, Node
+  18/20 matrix, run artifacts uploaded, no publish step).
+- Docs: concise README, OPERATIONS (EN + PL), MIGRATION-6X, AUDIT,
+  CHANGELOG, issue template; this archive record kept honest (its
+  never-executed status box above is the truth, not a plan).
+
+### OWNER-MANUAL (owner only — blocks stable-1.0 and DEV retirement)
+
+- [ ] Real install by a second person: desktop Chrome + Tampermonkey on
+  their own device, Allow User Scripts toggle where required, every step
+  of this checklist completed by them.
+- [ ] Evidence/version record: browser + manager versions, marked TEST
+  result, accepted scan, lease/queue/diagnostics state, redacted incident
+  bundle — recorded by the owner; the status box above flips only then.
+- [ ] Default-branch/protection settings per `docs/REPOSITORY-SETTINGS.md`
+  (default branch `main`, protection rule with required CI check) — applied
+  and verified by the owner in GitHub Settings.
+- [ ] Tag and GitHub Release created manually by the owner; no automation
+  creates either.
+- [ ] Private archival of the sibling TravianAttackAlertDEV directory (one
+  level above the repo root) outside the repo: read-only migration input,
+  never committed to the public repo, never deleted without owner consent,
+  marked non-authoritative; never delete or upload backups.
+- Until every box is recorded, `docs/release-state.json` stays
+  `stable:false` and the README keeps its release-candidate warning even
+  though the target version is 1.0.0.
+
+(Naming note: the `../`-relative spelling of that DEV directory is never
+written literally in this tree — the frozen privacy scanner rejects that
+literal as a private-path leak. The sibling phrasing above names the same
+directory.)
 
 ## What you need before you start
 
@@ -79,7 +128,7 @@ honestly. Nothing here publishes anything.
   profile WILL double-send; the local lock cannot prevent it." Disable the
   old sender first and confirm silence for one full monitor cycle (60 to 120
   seconds) before you enable the new one. Never run two senders side by side,
-  not even during an update. See `docs/MIGRATION-6X.md` for the owner
+  not even during an update. See `../../MIGRATION-6X.md` for the owner
   transfer order.
 - Login wall: if Travian shows a login page, log in yourself on the Travian
   site first. The monitor never scans a login page and never changes state

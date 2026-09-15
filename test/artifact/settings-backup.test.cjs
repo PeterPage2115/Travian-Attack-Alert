@@ -4,8 +4,8 @@
  * Settings-backup privacy matrix for public release 1.0.0 (plan Todo 8).
  *
  * Loads the BUILT ARTIFACT (dist/travian-attack-alert.user.js) via require —
- * dist is the byte-identical committed copy of the runtime authority
- * (script.txt), so pre-rebuild runs below exercise the UNCHANGED runtime and
+ * dist is the generated installable bundled from the src/ runtime authority,
+ * so pre-rebuild runs below exercise the UNCHANGED runtime and
  * must show RED on the new default-omit / opt-in-warning expectations, while
  * post-rebuild runs must go GREEN without touching any other behavior.
  *
@@ -37,7 +37,7 @@ const T0 = 1700000000000;
 const WEBHOOK_KEY = runtime.WEBHOOK_STORAGE_KEY;
 const SETTINGS_KEY = runtime.SETTINGS_STORAGE_KEY;
 // NOTE: MAPPING_STORAGE_KEY is intentionally not part of the runtime export
-// surface, so the literal storage key is used here (matches script.txt).
+// surface, so the literal storage key is used here (matches the runtime authority).
 const MAPPINGS_KEY = 'travianAlliancePlayerMappings_v1';
 
 // ---------------------------------------------------------------------------

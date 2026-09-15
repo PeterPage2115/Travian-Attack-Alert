@@ -1,7 +1,7 @@
 // Todo 10 — artifact dispatch + transport recovery through the FINAL bytes.
 //
-// Proves, against dist/travian-attack-alert.user.js (NOT script.txt, NOT a
-// manual fetch), that real artifact dispatch to the loopback sink:
+// Proves, against dist/travian-attack-alert.user.js (the generated installable,
+// NOT a manual fetch), that real artifact dispatch to the loopback sink:
 //   T1 (matrix a / QA happy): 429 with retry_after:1 then 200+ID gives exactly
 //      2 wire attempts ~1000 ms apart and one acknowledged ledger entry.
 //   T2 (matrix f): a queued batch survives a page restart with an identical

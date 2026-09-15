@@ -6,7 +6,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 
 const ROOT = __dirname;
-const SCRIPT = fs.readFileSync(path.resolve(ROOT, '..', '..', '..', 'script.txt'), 'utf8');
+const SCRIPT = fs.readFileSync(path.resolve(ROOT, '..', '..', '..', 'src', 'runtime.js'), 'utf8');
 const REASONS = Object.freeze([
     'no-member-table', 'multiple-member-tables', 'pagination-or-filter',
     'missing-player-id', 'duplicate-player-id', 'conflicting-tooltip',

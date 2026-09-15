@@ -1,0 +1,25 @@
+{
+  "name": "Travian Attack Alert",
+  "namespace": "travian-attack-alert-public",
+  "description": "Notifies on Discord about new attacks on alliance members",
+  "match": [
+    "https://*.travian.com/alliance*"
+  ],
+  "grant": [
+    "GM_xmlhttpRequest",
+    "GM_registerMenuCommand",
+    "GM_getValue",
+    "GM_setValue",
+    "GM_deleteValue"
+  ],
+  "connect": [
+    "discord.com"
+  ],
+  "run-at": "document-idle",
+  "noframes": true,
+  "license": "MIT",
+  "homepageURL": "https://github.com/PeterPage2115/Travian-Attack-Alert",
+  "supportURL": "https://github.com/PeterPage2115/Travian-Attack-Alert/issues",
+  "updateURL": "https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js",
+  "downloadURL": "https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js"
+}

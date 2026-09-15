@@ -13,7 +13,7 @@ test('fixture page loads marker text with the checked-in artifact and stays loop
   expect(hosts.every(origin => origin === new URL(page.url()).origin)).toBeTruthy();
   fs.mkdirSync(path.join('test-results', 'release-1.0.0'), { recursive: true });
   const packageVersion = JSON.parse(fs.readFileSync('package.json', 'utf8')).version as string;
-  const artifactBytes = fs.readFileSync('script.txt');
+  const artifactBytes = fs.readFileSync('dist/travian-attack-alert.user.js');
   const crypto = await import('node:crypto');
   const fixtureLog = await page.evaluate(async () => await (await fetch('/e2e-log')).json());
   const evidencePath = path.join('test-results', 'release-1.0.0', 'e2e-evidence-f3-browser-qa.json');

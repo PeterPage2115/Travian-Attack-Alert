@@ -4,7 +4,7 @@ Procedura operatorska dla `Travian Attack Alert` w wersji `1.0.0` (ID wydania `t
 
 > Uwaga: to jest polski odpowiednik strony `docs/OPERATIONS.md`. Angielska strona `README.md` pozostaje głównym dokumentem. W razie rozbieżności obowiązuje tekst angielski.
 
-Ta strona opisuje codzienną pracę. Konfiguracja, instalacja i fakty o pierwszym skanie znajdują się w `README.md` (po angielsku) i `README.pl.md` (po polsku).
+Ta strona opisuje codzienną pracę. Konfiguracja, instalacja i fakty o pierwszym skanie znajdują się w angielskim `README.md` (indeks dokumentów: `docs/README.md`).
 
 ## Poranna procedura
 
@@ -74,9 +74,9 @@ Nieudane znaczy trwale odrzucone (zwykłe 4xx), zachowane do ręcznego rozliczen
 
 Każdy, kto przenosi prywatny profil 6.2.1 (historyczny rozwój wewnętrzny) do publicznego 1.0.0, postępuje według `docs/MIGRATION-6X.md`. Cytowana kolejność, niepowielona tutaj: wyeksportuj prywatną kopię ustawień na starym nadawcy, wyłącz skrypt 6.x i sprawdź zero wysyłek przez pełny cykl, zainstaluj plik 1.0.0 jako nowy skrypt, zaimportuj plik kopii albo wpisz webhook ręcznie, sprawdź kolejkę, linię bazową i konfigurację w Diagnostics i dopiero wtedy włącz monitorowanie. Podczas przenoszenia nigdy nie czyść danych stron; nigdy nie kopiuj ciasteczek, profili ani danych logowania. Publiczne `1.0.0` jest liczbowo niższe niż prywatne `6.2.1`, więc żaden menedżer nie zaproponuje go jako aktualizacji. Wycofanie to ponowne zaimportowanie poprzedniego pliku `.user.js`, zachowanie danych stron i przeładowanie trasy kanonicznej.
 
-## Aktualizacje 1.0.1 i 1.1.0
+## Aktualizacje
 
-Aktualizacje to ręczne przeinstalowania z pliku lokalnego. Lokalny plik `.user.js` nie ma kanału aktualizacji, a skrypt nigdy nie aktualizuje się sam. Aby zaktualizować do 1.0.1 lub 1.1.0, gdy się ukażą, powtórz kroki instalacji z pliku lokalnego z `README.md` z nowym plikiem i potwierdź wersję pokazywaną przez menedżera. Podczas aktualizacji nigdy nie włączaj dwóch nadawców naraz.
+Skrypt ma kanał `@updateURL` wskazujący na surowy plik dist chronionego maina, więc menedżery, które go honorują, aktualizują się automatycznie. Nową wersję można też zastosować, powtarzając kroki instalacji z pliku z `README.md` z nowym plikiem i potwierdzając wersję pokazywaną przez menedżera. Podczas aktualizacji nigdy nie włączaj dwóch nadawców naraz.
 
 Jeśli nowa wersja zachowuje się źle, wycofaj: wyłącz nowy skrypt, zaimportuj ponownie poprzedni plik `.user.js` (albo włącz zachowany stary wpis skryptu), zachowaj wszystkie dane stron w całości (nie czyść magazynu: skład, mapowania, linie bazowe i stan kolejki znajdują się tam), przeładuj trasę kanoniczną i sprawdź, czy monitor wznawia pracę z nienaruszoną kolejką.
 

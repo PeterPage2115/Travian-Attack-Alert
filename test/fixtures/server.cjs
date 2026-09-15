@@ -22,7 +22,7 @@ function alliancePage(parsedUrl) {
             ? `<table class="allianceMembers" data-pagination="true"><tbody>${rows}</tbody></table>`
             : '';
     const canonicalize = state === 'standby' ? '' : '<script>history.replaceState(null,"","/alliance/profile/members");</script>';
-    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alliance loopback</title></head><body><main><h1>Alliance</h1>${table}<p id="panel-state-marker" data-panel-state="${state}" hidden>${state}</p></main><script>window.__TAA_TEST_ALLOW_PANEL__=true;window.__TAA_TEST_PANEL_STATE__=${JSON.stringify(state)};window.__TAA_GM_VALUES__=Object.create(null);window.GM_registerMenuCommand=()=>{};window.GM_getValue=(key,fallback)=>Object.prototype.hasOwnProperty.call(window.__TAA_GM_VALUES__,key)?window.__TAA_GM_VALUES__[key]:fallback;window.GM_setValue=(key,value)=>{window.__TAA_GM_VALUES__[key]=value};window.GM_deleteValue=(key)=>{delete window.__TAA_GM_VALUES__[key]};window.GM_xmlhttpRequest=(options)=>{if(new URL(options.url,location.href).origin!==location.origin)throw new Error('loopback-only');setTimeout(()=>options.onload?.({status:200,responseText:JSON.stringify({id:'fixture-message-id'})}),0)};</script>${canonicalize}<script src="/script.txt"></script></body></html>`;
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alliance loopback</title></head><body><main><h1>Alliance</h1>${table}<p id="panel-state-marker" data-panel-state="${state}" hidden>${state}</p></main><script>window.__TAA_TEST_ALLOW_PANEL__=true;window.__TAA_TEST_PANEL_STATE__=${JSON.stringify(state)};window.__TAA_GM_VALUES__=Object.create(null);window.GM_registerMenuCommand=()=>{};window.GM_getValue=(key,fallback)=>Object.prototype.hasOwnProperty.call(window.__TAA_GM_VALUES__,key)?window.__TAA_GM_VALUES__[key]:fallback;window.GM_setValue=(key,value)=>{window.__TAA_GM_VALUES__[key]=value};window.GM_deleteValue=(key)=>{delete window.__TAA_GM_VALUES__[key]};window.GM_xmlhttpRequest=(options)=>{if(new URL(options.url,location.href).origin!==location.origin)throw new Error('loopback-only');setTimeout(()=>options.onload?.({status:200,responseText:JSON.stringify({id:'fixture-message-id'})}),0)};</script>${canonicalize}<script src="/dist/travian-attack-alert.user.js"></script></body></html>`;
 }
 
 function contentType(filePath) {
@@ -46,8 +46,8 @@ const server = http.createServer((request, response) => {
         response.end(alliancePage(parsedUrl));
         return;
     }
-    const filePath = pathname === '/script.txt'
-        ? path.join(root, 'script.txt')
+    const filePath = pathname === '/dist/travian-attack-alert.user.js'
+        ? path.join(root, 'dist', 'travian-attack-alert.user.js')
         : pathname === '/alliance/profile' && fixtureName
             ? path.join(fixtures, fixtureName)
             : path.join(fixtures, pathname.replace(/^\/+/, ''));

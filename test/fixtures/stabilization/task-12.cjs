@@ -11,7 +11,8 @@ const run = (args) => spawnSync(process.execPath, args, { cwd: ROOT, shell: fals
 const pureLines = file => fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(line => line.trim() && !/^\s*\/\//.test(line)).length;
 
 function assertHappy() {
-    const legacy = require(path.join(ROOT, 'src', 'legacy-bridge.js')).loadLegacy();
+    const runtime = require(path.join(ROOT, 'src', 'runtime.js'));
+    const legacy = Object.fromEntries(Object.entries(runtime).filter(([name]) => name !== 'startBrowserRuntime'));
     const surface = Object.assign({}, ...names.map(name => require(path.join(ROOT, 'src', `${name}.js`))));
     const missing = Object.keys(legacy).filter(name => !(name in surface));
     if (missing.length) throw new Error(`T12-E001 missing exports: ${missing.join(',')}`);
@@ -25,7 +26,7 @@ function assertHappy() {
 function assertFailures() {
     const checks = {};
     const manifest = path.join(ROOT, 'module-manifest.json');
-    const artifact = path.join(ROOT, 'script.txt');
+    const artifact = path.join(ROOT, 'dist', 'travian-attack-alert.user.js');
     const route = path.join(ROOT, 'src', 'route.js');
     const original = new Map([[manifest, fs.readFileSync(manifest)], [artifact, fs.readFileSync(artifact)], [route, fs.readFileSync(route)]]);
     try {

@@ -2,7 +2,7 @@
 
 Operator routine for `Travian Attack Alert` version `1.0.0` (release ID `taa-1.0.0`).
 
-This page covers daily use. Setup, install, and first-scan facts live in `README.md`; the Polish equivalent of this page is `docs/OPERATIONS.pl.md` and the Polish guide is `README.pl.md`. The English `README.md` stays primary.
+This page covers daily use. Setup, install, and first-scan facts live in `README.md`; the Polish equivalent of this page is `docs/pl/OPERATIONS.md`. The English `README.md` stays primary.
 
 ## Morning routine
 
@@ -72,9 +72,9 @@ Failed means a permanent rejection (ordinary 4xx) kept for manual recovery. Unce
 
 Anyone moving a private 6.2.1 profile (historical internal development) to public 1.0.0 follows `docs/MIGRATION-6X.md`. Quoted order, not duplicated here: export a private settings backup on the old sender, disable the 6.x script and verify zero sends for a full cycle, install the 1.0.0 file as a new script, import the backup file or re-enter the webhook by hand, verify queue/baseline/config in Diagnostics, and only then enable monitoring. Never clear site data during the transfer; never copy cookies, profiles, or credentials. Public `1.0.0` is numerically lower than private `6.2.1`, so no manager offers it as an update. Rollback is re-importing the prior `.user.js` file, keeping site data, and reloading the canonical route.
 
-## Updates 1.0.1 and 1.1.0
+## Updates
 
-Updates are manual local-file reinstalls. The local `.user.js` file has no update channel, and the script never auto-updates. To update to 1.0.1 or 1.1.0 when published, repeat the install-from-local-file steps from `README.md` with the new file and confirm the version shown by the manager. Never enable two senders at once during an update.
+The script carries an `@updateURL` channel pointing at the protected-main raw dist file, so managers that honor it update automatically. A new version can also be applied by repeating the install-from-file steps from `README.md` with the new file and confirming the version shown by the manager. Never enable two senders at once during an update.
 
 If the new version misbehaves, roll back: disable the new script, re-import the prior `.user.js` file (or re-enable the kept old script entry), keep all site data untouched (do not clear storage: roster, mappings, baselines, and queue state live there), reload the canonical route, and verify the monitor resumes with its queue intact.
 

@@ -126,8 +126,8 @@ const server = http.createServer((request, response) => {
         return;
     }
 
-    const filePath = parsed.pathname === '/script.txt'
-        ? path.join(root, 'script.txt')
+    const filePath = parsed.pathname === '/dist/travian-attack-alert.user.js'
+        ? path.join(root, 'dist', 'travian-attack-alert.user.js')
         : parsed.pathname === '/alliance/profile'
             ? path.join(__dirname, 'profile.html')
             : null;
