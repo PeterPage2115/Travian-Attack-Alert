@@ -30,6 +30,11 @@ jobs:
       - name: Install (locked dependencies)
         run: npm ci
 
+      # A subset of unit tests (DOM snapshot harness in test/script.test.cjs)
+      # drives a real Chromium via Playwright, so the browser must exist.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Type gate (non-blocking; pre-existing monolith typings, see F2 review)
         continue-on-error: true
         run: npm run check:types
