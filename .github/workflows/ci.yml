@@ -70,6 +70,10 @@ jobs:
 
       - name: Privacy / secrets scan
         run: |
+          # The auditor forbids node_modules/ in the public copy (denylist covers
+          # the tree as committed, i.e. before `npm ci`). Remove the install tree
+          # before scanning; no later step needs it (evidence upload uses files).
+          rm -rf node_modules
           node tools/audit-public-tree.cjs --root . --baseline . --out test-results/privacy-scan.json
           node -e "const r=require('./test-results/privacy-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r,null,2));process.exit(1);} console.log('privacy scan verdict: PASS');"
           hits=$(grep -rEn "discord\\.com/api/webhooks/[0-9]+/[A-Za-z0-9_\\-]{32,}" --exclude-dir=node_modules --exclude-dir=.git . || true)
