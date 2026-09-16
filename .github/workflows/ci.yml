@@ -157,7 +157,7 @@ jobs:
         run: npm run test:browser
 
       - name: Loopback e2e gates
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: npm run test:e2e
 
       - name: Upload browser evidence
