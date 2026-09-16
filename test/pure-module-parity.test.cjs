@@ -19,6 +19,7 @@ const envelope = require(path.join(root, 'src', 'envelope.js'));
 const dispatch = require(path.join(root, 'src', 'dispatch.js'));
 const conservation = require(path.join(root, 'src', 'conservation.js'));
 const diagnostics = require(path.join(root, 'src', 'diagnostics.js'));
+const panel = require(path.join(root, 'src', 'panel.js'));
 
 const MIGRATION_CONTRACT = [
     'LEGACY_CANONICAL_EVENT_FIELDS', 'canonicalLegacyEventFields',
@@ -63,6 +64,24 @@ const DIAGNOSTICS_CONTRACT = [
     'monotonicDurationMs', 'recordDuration', 'createVisibilityDriftTracker',
     'updateVisibilityDriftTracker', 'buildScanSummaryLog', 'recordFailure'
 ];
+const PANEL_CONTRACT = [
+    'computeUnmappedPlayers', 'buildPlayerWorkspaceModel',
+    'paginatePlayerWorkspaceRows', 'collectUnknownIds', 'buildHistoryPanelRows',
+    'buildStatsPanelModel', 'buildDiagnosticsPanelModel',
+    'buildStatusPanelModel', 'createAdminDraftState', 'isAdminDraftEmpty',
+    'supportsInputSelection', 'readSessionStorageSafely', 'persistAdminDraft',
+    'restoreAdminDraft', 'gateAdminDraftReload', 'resolvePanelExit',
+    'createNameBackfillPlan', 'isPanelAsyncResultCurrent',
+    'patchPlayerNameNodes', 'applyPanelLeaseState',
+    'buildCountReconciliationPanelModel', 'buildIncidentBundle'
+];
+const PANEL_KERNEL = [
+    'createAdminDraftState', 'isAdminDraftEmpty',
+    'supportsInputSelection', 'readSessionStorageSafely', 'persistAdminDraft',
+    'restoreAdminDraft', 'gateAdminDraftReload', 'resolvePanelExit',
+    'createNameBackfillPlan', 'isPanelAsyncResultCurrent',
+    'patchPlayerNameNodes', 'applyPanelLeaseState'
+];
 
 function selected(names) {
     return runtimeApi.select('pure-module-parity', names);
@@ -81,7 +100,8 @@ test('pure seams preserve the legacy public names and fixture outputs', () => {
         ['envelope', envelope, ENVELOPE_CONTRACT],
         ['dispatch', dispatch, DISPATCH_CONTRACT],
         ['conservation', conservation, CONSERVATION_CONTRACT],
-        ['diagnostics', diagnostics, DIAGNOSTICS_CONTRACT]
+        ['diagnostics', diagnostics, DIAGNOSTICS_CONTRACT],
+        ['panel', panel, PANEL_CONTRACT]
     ];
     for (const [name, actual, names] of contracts) {
         assert.deepEqual(Object.keys(actual).sort(), names.slice().sort(), `${name} export mismatch`);
@@ -224,6 +244,22 @@ test('diagnostics preserves bounded redaction and facade references', () => {
     assert.equal(diagnostics.appendDiagnosticRecordV2, diagnostics.appendDiagnosticTraceV2);
     assert.equal(diagnostics.serializeDiagnosticConsoleV2, diagnostics.serializeDiagnosticsConsoleV2);
     assert.equal(diagnostics.serializeDiagnosticExportV2, diagnostics.serializeDiagnosticsExportV2);
+});
+
+test('panel preserves session-draft kernel and facade references', () => {
+    assert.deepEqual(Object.keys(panel).sort(), [...PANEL_CONTRACT].sort());
+    const legacyPanel = selected(PANEL_CONTRACT);
+    const draftArgs = ['players', { nickname: 'Ala', webhookUrl: 'https://x' }, { id: 'a', start: 0, end: 1 }, { query: 'q', filters: { mapped: true }, page: 2, activeEditorId: null, selection: ['7'] }];
+    assert.deepEqual(panel.createAdminDraftState(...draftArgs), legacyPanel.createAdminDraftState(...draftArgs));
+    assert.deepEqual(panel.isAdminDraftEmpty({ fields: { a: '' } }), legacyPanel.isAdminDraftEmpty({ fields: { a: '' } }));
+    assert.deepEqual(panel.resolvePanelExit('reload', true, { ok: false }), legacyPanel.resolvePanelExit('reload', true, { ok: false }));
+    assert.deepEqual(panel.createNameBackfillPlan(['a', 'b'], ['b'], 1), legacyPanel.createNameBackfillPlan(['a', 'b'], ['b'], 1));
+    assert.deepEqual(panel.buildStatsPanelModel({ total: 2 }), legacyPanel.buildStatsPanelModel({ total: 2 }));
+    assert.deepEqual(panel.buildStatusPanelModel(null, null, 0), legacyPanel.buildStatusPanelModel(null, null, 0));
+    const panelImpl = require(path.join(root, 'src', 'panel-impl.js'));
+    for (const name of PANEL_KERNEL) {
+        assert.equal(panelImpl[name], panel[name], `${name} must re-export panel-impl without duplicate logic`);
+    }
 });
 
 test('export-name mismatch is a hard parity failure', () => {
