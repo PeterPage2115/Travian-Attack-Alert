@@ -150,5 +150,10 @@ This page documents the Tampermonkey **1.0.0** userscript, identified by release
 - Daily operations (Polish): `docs/pl/OPERATIONS.md`.
 - Migration from the 6.x line: `docs/MIGRATION-6X.md`.
 - Detector behavior audit: `docs/AUDIT.md`.
+- Module graph (post-extraction): `docs/architecture.md` §10.
 - Release history (archived 1.0.0 candidate records): `docs/release-history/1.0.0-rc/`.
 - Changelog: `CHANGELOG.md`.
+
+## Source layout
+
+`src/` is the editable authority; `dist/travian-attack-alert.user.js` is generated (`npm run build`) and never hand-edited. The runtime is 13 domain modules (`storage`, `lease`, `parser`, `snapshot`, `envelope`, `migration`, `discord`, `transport`, `dispatch`, `conservation`, `diagnostics`, `panel`, `acquisition`): each `X.js` facade re-exports its `X-impl.js` contract by reference (`storage` spans 12 sub-modules), while `constants`/`text`/`route` are pure modules covered by `pure-module-parity`. `src/runtime-api.js` is a thin aggregator over the 13 facades (reference-equal, no `select()` indirection) and does not depend on the legacy authority. Mutable lifecycle state has a single owner, `src/lifecycle.js` (`createLifecycleController`), fed through the seven-factory seam in `src/adapters.js`; `src/runtime.js` remains the legacy authority (325 exports, release ID `taa-1.0.0`) and production wiring is unchanged. Boundaries are enforced by `test/tools/module-architecture.test.cjs`; the panel-vs-menu boundary on this page is enforced by `test/tools/readme-runtime-contract.test.cjs`.

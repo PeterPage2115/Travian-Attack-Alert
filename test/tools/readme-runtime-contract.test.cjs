@@ -16,7 +16,12 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+const agents = fs.readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8');
+const architecture = fs.readFileSync(path.join(ROOT, 'docs', 'architecture.md'), 'utf8');
+const operations = fs.readFileSync(path.join(ROOT, 'docs', 'OPERATIONS.md'), 'utf8');
+const operationsPl = fs.readFileSync(path.join(ROOT, 'docs', 'pl', 'OPERATIONS.md'), 'utf8');
 const runtime = fs.readFileSync(path.join(ROOT, 'dist', 'travian-attack-alert.user.js'), 'utf8');
+const runtimeApiSource = fs.readFileSync(path.join(ROOT, 'src', 'runtime-api.js'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
 const VERSION = String(pkg.version);
@@ -25,6 +30,28 @@ const RELEASE_ID = `taa-${VERSION}`;
 assert.match(VERSION, /^\d+\.\d+\.\d+$/, 'package.json version must be semver');
 
 const EXPECTED_TABS = ['overview', 'players', 'alerts', 'diagnostics'];
+
+// Post-extraction module graph (plan task 20): the 13 domain facades that
+// src/runtime-api.js aggregates reference-equal with no select() indirection.
+const EXPECTED_DOMAINS = [
+  'storage', 'lease', 'parser', 'snapshot', 'envelope', 'migration',
+  'discord', 'transport', 'dispatch', 'conservation', 'diagnostics',
+  'panel', 'acquisition',
+];
+
+const EXPECTED_ADAPTERS = [
+  'createStorageAdapter', 'createClockAdapter', 'createSleepAdapter',
+  'createGmRequestAdapter', 'createDocumentLocationAdapter',
+  'createWebLocksAdapter', 'createSessionStorageAdapter',
+];
+
+// Stale pre-cutover claims: the select() indirection was removed, so docs
+// must never present contract selection through runtime-api as current.
+const STALE_SELECT_PATTERNS = [
+  /selektor\w* kontraktu przez [`'"]?runtime-api/i,
+  /select (their|the) contract through [`'"]?[^`'"]*runtime-api/i,
+  /contract selectors? (via|through) [`'"]?runtime-api/i,
+];
 
 // Recovery menu labels that must exist as Tampermonkey menu commands.
 const MENU_LABELS = [
@@ -207,5 +234,75 @@ describe('readme-runtime contract (Panel vs menu recovery boundary)', () => {
       .map((match) => match[1])
       .filter((token) => !/^(<[^>]*>|FAKE|PLACEHOLDER|example)$/i.test(token));
     assert.deepEqual(suspicious, [], 'README must not contain a real webhook token');
+  });
+});
+
+describe('readme-runtime contract (post-extraction module graph)', () => {
+  it('aggregates exactly the 13 domain facades with no select() indirection', () => {
+    const api = require(path.join(ROOT, 'src', 'runtime-api.js'));
+    assert.deepEqual(Object.keys(api).sort(), [...EXPECTED_DOMAINS].sort());
+    assert.equal(typeof api.select, 'undefined', 'runtime-api.select must stay removed');
+    assert.doesNotMatch(runtimeApiSource, /function select\(/);
+    assert.ok(
+      !runtimeApiSource.includes("require('./runtime.js')") &&
+        !runtimeApiSource.includes('require("./runtime.js")'),
+      'runtime-api must not depend on the legacy authority',
+    );
+    for (const domain of EXPECTED_DOMAINS) {
+      const facade = require(path.join(ROOT, 'src', `${domain}.js`));
+      assert.equal(api[domain], facade, `runtime-api.${domain} must be the facade itself`);
+    }
+  });
+
+  it('owns lifecycle state and adapters behind the fixed seams', () => {
+    const lifecycle = require(path.join(ROOT, 'src', 'lifecycle.js'));
+    assert.deepEqual(Object.keys(lifecycle), ['createLifecycleController']);
+    const adapters = require(path.join(ROOT, 'src', 'adapters.js'));
+    assert.deepEqual(Object.keys(adapters).sort(), [...EXPECTED_ADAPTERS].sort());
+  });
+
+  it('documents the 13 domains, lifecycle, adapters, and aggregator in README', () => {
+    for (const domain of EXPECTED_DOMAINS) {
+      assert.ok(readme.includes(`\`${domain}\``), `README must name the domain module \`${domain}\``);
+    }
+    for (const token of ['src/lifecycle.js', 'src/adapters.js', 'src/runtime-api.js', 'src/runtime.js']) {
+      assert.ok(readme.includes(token), `README must reference ${token}`);
+    }
+    assert.match(readme, /no [`']?select\(\)[`']? indirection/, 'README must state the select() indirection is gone');
+    assert.match(readme, /aggregator/, 'README must name the aggregator pattern');
+  });
+
+  it('documents the post-extraction graph in AGENTS.md and architecture.md', () => {
+    for (const doc of [agents, architecture]) {
+      for (const domain of EXPECTED_DOMAINS) {
+        assert.ok(doc.includes(domain), 'module docs must name every domain module');
+      }
+      for (const token of ['lifecycle.js', 'adapters.js', 'runtime-api.js', 'runtime.js']) {
+        assert.ok(doc.includes(token), `module docs must reference ${token}`);
+      }
+    }
+    assert.match(agents, /agregator/i, 'AGENTS.md must name the aggregator pattern');
+    assert.match(architecture, /aggregator/, 'architecture.md must name the aggregator pattern');
+    assert.match(architecture, /createLifecycleController/, 'architecture.md must name the lifecycle owner');
+    for (const factory of EXPECTED_ADAPTERS) {
+      assert.ok(architecture.includes(factory), `architecture.md must name the adapter factory ${factory}`);
+    }
+  });
+
+  it('maps the implementation in both operations pages without stale claims', () => {
+    for (const [label, doc] of [['OPERATIONS.md', operations], ['pl/OPERATIONS.md', operationsPl]]) {
+      assert.ok(doc.includes('src/runtime-api.js'), `${label} must reference the aggregator`);
+      assert.ok(doc.includes('src/lifecycle.js'), `${label} must reference the lifecycle owner`);
+      assert.ok(doc.includes('src/adapters.js'), `${label} must reference the adapter seam`);
+    }
+    for (const [label, doc] of [
+      ['README.md', readme], ['AGENTS.md', agents],
+      ['docs/architecture.md', architecture],
+      ['docs/OPERATIONS.md', operations], ['docs/pl/OPERATIONS.md', operationsPl],
+    ]) {
+      for (const pattern of STALE_SELECT_PATTERNS) {
+        assert.ok(!pattern.test(doc), `${label} must not contain the stale select-indirection claim ${pattern}`);
+      }
+    }
   });
 });

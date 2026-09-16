@@ -35,7 +35,9 @@ Userscript Tampermonkey, moduly `src/` budowane do `dist/` (`npm run build`). Te
 
 ## 6. Architektura
 
-- `src/` to edytowalny autorytet runtime (entry `src/userscript-entry.js`); `dist/` jest generowany przez `npm run build` i nigdy nie jest edytowany recznie.
-- `src/` to moduly domenowe: czesc (`constants`/`text`/`route`) ma niezalezne implementacje weryfikowane testem `pure-module-parity`, reszta to selektory kontraktu przez `runtime-api`; runtime autorytetem jest `src/runtime.js` (release ID `taa-1.0.0`).
+- `src/` to edytowalny autorytet runtime (entry `src/userscript-entry.js` → `src/runtime.js`); `dist/` jest generowany przez `npm run build` i nigdy nie jest edytowany ręcznie.
+- `src/` to 13 modułów domenowych (`storage`, `lease`, `parser`, `snapshot`, `envelope`, `migration`, `discord`, `transport`, `dispatch`, `conservation`, `diagnostics`, `panel`, `acquisition`): każda fasada `X.js` re-eksportuje kontrakt `X-impl.js` przez referencję (`storage` ma 12 podmodułów: `storage-impl` + 11 siblings); `constants`/`text`/`route` to czyste moduły weryfikowane testem `pure-module-parity`.
+- `src/runtime-api.js` to cienki agregator: bezpośrednie re-eksporty 13 fasad (identyczność referencyjna, brak `select()`), bez zależności od `src/runtime.js`.
+- `src/lifecycle.js` (`createLifecycleController`) jest jedynym właścicielem mutowalnych singletonów cyklu życia; `src/adapters.js` to 7 fabryk seamu (storage, clock, sleep, gmRequest, docLoc, webLocks, sessionStore). `src/runtime.js` pozostaje legacy autorytetem (325 eksportów, release ID `taa-1.0.0`); produkcyjne wiring bez zmian. Granice wymusza `test/tools/module-architecture.test.cjs`.
 - Zakaz nowych zaleznosci runtime bez pytania. Dev: esbuild, playwright, typescript tylko dla narzedzi/testow.
 - Tokeny designu (kolory, komponenty panelu): `docs/architecture.md`.
