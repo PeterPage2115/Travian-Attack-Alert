@@ -51,10 +51,10 @@ jobs:
 
       - name: Privacy / secrets scan
         run: |
-          # The auditor forbids node_modules/ in the public copy (denylist covers
-          # the tree as committed, i.e. before `npm ci`). Remove the install tree
-          # before scanning; no later step needs it (evidence upload uses files).
-          rm -rf node_modules
+          # The auditor forbids node_modules/, backups/, test-results/, .omo/
+          # in the public copy (denylist covers the tree as committed, i.e.
+          # before `npm ci`). Remove transient dirs before scanning.
+          rm -rf node_modules backups test-results .omo
           node tools/audit-public-tree.cjs --root . --baseline . --out test-results/privacy-scan.json
           node -e "const r=require('./test-results/privacy-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r,null,2));process.exit(1);} console.log('privacy scan verdict: PASS');"
           # Single-source secret shapes: no duplicated grep regexes — the
@@ -112,7 +112,7 @@ jobs:
 
       - name: Privacy / secrets scan
         run: |
-          rm -rf node_modules
+          rm -rf node_modules backups test-results .omo
           node tools/audit-public-tree.cjs --root . --baseline . --out test-results/privacy-scan.json
           node -e "const r=require('./test-results/privacy-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r,null,2));process.exit(1);} console.log('privacy scan verdict: PASS');"
           # Single-source secret shapes: no duplicated grep regexes — the
