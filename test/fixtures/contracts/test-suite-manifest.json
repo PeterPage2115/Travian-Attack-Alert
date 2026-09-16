@@ -72,6 +72,17 @@
       ]
     },
     {
+      "id": "suite:test/characterization/lease-fence-matrix.test.cjs",
+      "path": "test/characterization/lease-fence-matrix.test.cjs",
+      "classification": "offline",
+      "expectedExecutionCount": 17,
+      "coverage": [
+        "lease-contract",
+        "lease-fencing",
+        "web-locks-capability"
+      ]
+    },
+    {
       "id": "suite:test/characterization/storage-roundtrip.test.cjs",
       "path": "test/characterization/storage-roundtrip.test.cjs",
       "classification": "offline",
