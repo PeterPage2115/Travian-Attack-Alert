@@ -223,6 +223,18 @@
       ]
     },
     {
+      "id": "suite:test/tools/build-determinism.test.cjs",
+      "path": "test/tools/build-determinism.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 4,
+      "coverage": [
+        "repository-tooling",
+        "build-determinism",
+        "generated-output-ownership",
+        "read-only-checks"
+      ]
+    },
+    {
       "id": "suite:test/tools/final-review-receipts.test.cjs",
       "path": "test/tools/final-review-receipts.test.cjs",
       "classification": "tool",
@@ -325,8 +337,8 @@
   ],
   "relocations": [],
   "totals": {
-    "suiteCount": 31,
-    "expectedExecutionCount": 864,
+    "suiteCount": 32,
+    "expectedExecutionCount": 868,
     "byClassification": {
       "browser": {
         "suiteCount": 11,
@@ -345,8 +357,8 @@
         "expectedExecutionCount": 358
       },
       "tool": {
-        "suiteCount": 11,
-        "expectedExecutionCount": 109
+        "suiteCount": 12,
+        "expectedExecutionCount": 113
       }
     }
   },

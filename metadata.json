@@ -19,6 +19,6 @@
   "toolchain": {
     "esbuild": "0.25.9",
     "typescript": "5.9.2",
-    "node": "22.22.0"
+    "nodeMajor": 18
   }
 }

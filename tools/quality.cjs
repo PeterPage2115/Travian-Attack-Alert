@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = process.env.TAA_ROOT ? path.resolve(process.env.TAA_ROOT) : path.resolve(__dirname, '..');
 const LIMIT = 250;
 function hash(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
 function files(directory) { return fs.readdirSync(directory, { withFileTypes: true }).flatMap(item => item.isDirectory() ? files(path.join(directory, item.name)) : [path.join(directory, item.name)]); }
@@ -24,7 +24,9 @@ function hasCycle(graph) {
     return [...graph.keys()].some(visit);
 }
 function check(gate) {
-    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'module-manifest.json'), 'utf8'));
+    const manifestPath = path.join(ROOT, 'module-manifest.json');
+    if (!fs.existsSync(manifestPath)) throw new Error('quality check failed: module-manifest.json is missing; run npm run build');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     const exceptions = manifest.temporaryExceptions || [];
     const failures = [];
     if (manifest.schemaVersion !== 1 || manifest.maxPureLines !== LIMIT) failures.push('module manifest schema drift');
