@@ -17,6 +17,8 @@ const DIST_FILE = path.join(DIST_DIR, DIST_BASENAME);
 const DIST_SIDECAR = `${DIST_FILE}.sha256`;
 const FALLBACK_VERSION = '1.0.0';
 
+// Sole generated-output owner: dist runtime, sidecar, metadata.json, and the
+// generated-and-ignored root module-manifest.json are written only here.
 // This is the canonical metadata order. Version is build-owned and is always
 // inserted after namespace; array values retain their order from the config.
 const METADATA_FIELDS = [
@@ -33,15 +35,25 @@ function portable(file) { return path.relative(ROOT, file).split(path.sep).join(
 function fsyncFile(file) { const fd = fs.openSync(file, 'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
 function fsyncDir(dir) { const fd = fs.openSync(dir, 'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
 function atomicWrite(file, value) {
+    const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    if (fs.existsSync(file) && fs.readFileSync(file).equals(bytes)) return false;
     const temporary = `${file}.${process.pid}.tmp`;
     try {
-        fs.writeFileSync(temporary, value, { flag: 'wx' });
+        fs.writeFileSync(temporary, bytes, { flag: 'wx' });
         fsyncFile(temporary);
         fs.renameSync(temporary, file);
         fsyncDir(path.dirname(file));
     } finally {
         fs.rmSync(temporary, { force: true });
     }
+    return true;
+}
+
+function supportedNodeMajor(packageJson) {
+    const engine = packageJson.engines?.node;
+    const match = /^>=\s*(\d+)$/.exec(engine || '');
+    if (!match) throw new Error(`unsupported package.json engines.node contract: ${engine ?? '<missing>'}`);
+    return Number(match[1]);
 }
 
 function metadataBlock(config, version) {
@@ -64,6 +76,9 @@ function metadataBlock(config, version) {
 
 function generateArtifact() {
     const packageJson = readJson(PACKAGE);
+    const esbuildPin = packageJson.devDependencies?.esbuild;
+    if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(esbuildPin || '')) throw new Error('esbuild must be exactly pinned in package.json');
+    if (esbuild.version !== esbuildPin) throw new Error(`installed esbuild ${esbuild.version} does not match package.json pin ${esbuildPin}`);
     const version = packageJson.version || FALLBACK_VERSION;
     const result = esbuild.buildSync({
         absWorkingDir: ROOT,
@@ -124,7 +139,7 @@ function build() {
         toolchain: {
             esbuild: generated.packageJson.devDependencies.esbuild,
             typescript: generated.packageJson.devDependencies.typescript,
-            node: process.version.startsWith('v') ? process.version.slice(1) : process.version
+            nodeMajor: supportedNodeMajor(generated.packageJson)
         }
     };
 
@@ -137,4 +152,4 @@ function build() {
 }
 
 if (require.main === module) build();
-module.exports = { build, digest, generateArtifact };
+module.exports = { build, digest, generateArtifact, supportedNodeMajor };

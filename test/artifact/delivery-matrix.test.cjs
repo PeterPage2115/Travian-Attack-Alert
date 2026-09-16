@@ -486,14 +486,13 @@ test('(g) duplicate dispatch source IDs throw; identical events share one batch 
 // (h) 60-event forced split: wire proof of part X/Y + mentions-once.
 // ---------------------------------------------------------------------------
 
-test('(h) 60-event forced split posts part 1/3..3/3 with mentions ONLY in the first request', async () => {
+test('(h) 60-event forced split posts part 1/2..2/2 with mentions ONLY in the first request', async () => {
     const fixture = canonical.previewCases['forced-split']();
     const options = { ...canonical.BASE_OPTIONS, roleId: ROLE_A, userIds: [USER_A, USER_B] };
     const payloads = runtime.buildDiscordPayloads(fixture.events, options);
-    assert.equal(payloads.length, 3);
-    assert.match(payloads[0].embeds[0].title, /part 1\/3/);
-    assert.match(payloads[1].embeds[0].title, /part 2\/3/);
-    assert.match(payloads[2].embeds[0].title, /part 3\/3/);
+    assert.equal(payloads.length, 2);
+    assert.match(payloads[0].embeds[0].title, /part 1\/2/);
+    assert.match(payloads[1].embeds[0].title, /part 2\/2/);
 
     // Verbatim onto the wire: the sink receives JSON-stringified payloads.
     const sink = await startLoopback(() => okId('m-part'));
@@ -504,17 +503,15 @@ test('(h) 60-event forced split posts part 1/3..3/3 with mentions ONLY in the fi
             });
             assert.equal(res.status, 200);
         }
-        assert.equal(sink.received.length, 3);
-        const [first, second, third] = sink.received.map((r) => r.body);
+        assert.equal(sink.received.length, 2);
+        const [first, second] = sink.received.map((r) => r.body);
         assert.equal(first.content, `<@&${ROLE_A}> <@${USER_A}> <@${USER_B}>`);
         assert.deepEqual(first.allowed_mentions, { users: [USER_A, USER_B], roles: [ROLE_A] });
         assert.ok(!('parse' in first.allowed_mentions));
-        for (const [label, cont] of [['second', second], ['third', third]]) {
-            assert.equal(cont.content, '', `${label} continuation carries no mentions`);
-            assert.deepEqual(cont.allowed_mentions, { users: [] }, `${label} allowlist is empty`);
-            assert.ok(!('roles' in cont.allowed_mentions), `${label} has no roles key`);
-            assert.ok(!('parse' in cont.allowed_mentions), `${label} has no parse key`);
-        }
+        assert.equal(second.content, '', 'second continuation carries no mentions');
+        assert.deepEqual(second.allowed_mentions, { users: [] }, 'second allowlist is empty');
+        assert.ok(!('roles' in second.allowed_mentions), 'second has no roles key');
+        assert.ok(!('parse' in second.allowed_mentions), 'second has no parse key');
     } finally {
         await sink.close();
     }

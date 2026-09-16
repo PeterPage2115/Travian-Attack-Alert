@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { digest, generateArtifact } = require('./build.cjs');
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = process.env.TAA_ROOT ? path.resolve(process.env.TAA_ROOT) : path.resolve(__dirname, '..');
 const DIST_BASENAME = 'travian-attack-alert.user.js';
 const distPath = process.env.TAA_DIST ? path.resolve(process.env.TAA_DIST) : path.join(ROOT, 'dist', DIST_BASENAME);
 const sidecarPath = process.env.TAA_SIDECAR ? path.resolve(process.env.TAA_SIDECAR) : `${distPath}.sha256`;
@@ -16,8 +16,9 @@ function countMarker(text, marker) { return (text.match(new RegExp(`^${marker}$`
 function hasModuleSyntax(text) { return /\brequire\s*\(|^\s*(?:import|export)(?:\s|\()/m.test(text); }
 
 function check() {
-    if (!fs.existsSync(distPath)) throw new Error('artifact check failed: dist file is missing');
-    if (!fs.existsSync(sidecarPath)) throw new Error('artifact check failed: dist sidecar is missing');
+    const generated = [distPath, sidecarPath, path.join(ROOT, 'metadata.json'), path.join(ROOT, 'module-manifest.json')];
+    const missing = generated.find(file => !fs.existsSync(file));
+    if (missing) throw new Error(`artifact check failed: ${path.relative(ROOT, missing)} is missing; run npm run build`);
     const expectedBytes = generateArtifact().bytes;
     const distBytes = fs.readFileSync(distPath);
     const expectedHash = digest(expectedBytes);

@@ -6,20 +6,110 @@ const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const runtimeApi = require(path.join(root, 'src', 'runtime-api.js'));
+const runtime = require(path.join(root, 'src', 'runtime.js'));
 const constants = require(path.join(root, 'src', 'constants.js'));
+const parser = require(path.join(root, 'src', 'parser.js'));
 const text = require(path.join(root, 'src', 'text.js'));
 const route = require(path.join(root, 'src', 'route.js'));
+const transport = require(path.join(root, 'src', 'transport.js'));
+const snapshot = require(path.join(root, 'src', 'snapshot.js'));
+const discord = require(path.join(root, 'src', 'discord.js'));
+const migration = require(path.join(root, 'src', 'migration.js'));
+const envelope = require(path.join(root, 'src', 'envelope.js'));
+const dispatch = require(path.join(root, 'src', 'dispatch.js'));
+const conservation = require(path.join(root, 'src', 'conservation.js'));
+const diagnostics = require(path.join(root, 'src', 'diagnostics.js'));
+const panel = require(path.join(root, 'src', 'panel.js'));
+const acquisition = require(path.join(root, 'src', 'acquisition.js'));
+
+const MIGRATION_CONTRACT = [
+    'LEGACY_CANONICAL_EVENT_FIELDS', 'canonicalLegacyEventFields',
+    'canonicalizeLegacyActiveEvent', 'canonicalizeLegacyHistoryRecord',
+    'decodeLegacyIdentity', 'planMonitorLegacyMigration',
+    'migrateLegacyMonitorStateV1', 'loadOrMigrateMonitorEnvelopeV1',
+    'encodeSourceTuple', 'sourceEventIdFromTuple', 'sourceEventTuple',
+    'decodeSourceEventId'
+];
+const ENVELOPE_CONTRACT = [
+    'canonicalSerializeMonitorValue', 'checksumMonitorCanonicalValue',
+    'createMonitorEnvelopeV1', 'serializeMonitorEnvelopeV1',
+    'parseMonitorEnvelopeV1', 'compareMonitorGenerations',
+    'isMonitorGenerationFenced', 'monitorActiveStorageKey',
+    'monitorBackupStorageKey', 'monitorQuarantineStorageKey',
+    'quarantineMonitorRawV1', 'loadMonitorEnvelopeV1',
+    'coalesceMonitorPendingEvents', 'planAcceptedScanTransition',
+    'commitMonitorEnvelope', 'commitMonitorEnvelopeV1',
+    'applyMonitorQueueTransitionV1', 'commitMonitorQueueTransitionV1',
+    'compactDeliveryAccountingV1', 'prepareTerminalCompactionV1',
+    'resumeTerminalCompactionV1', 'createMonitorQueueEvent',
+    'computeQueueAge', 'addInFlightChunk', 'getInFlightChunks',
+    'dropInFlightHead', 'replaceInFlightHeadAttempt'
+];
+const DISPATCH_CONTRACT = [
+    'buildDispatchPlanV1', 'buildDispatchRequestV1',
+    'ackHashForDiscordMessageId', 'applyDispatchPlanTransitionV1',
+    'createDispatchPlanInAccountingV1', 'commitDispatchPlanTransitionV1'
+];
+const CONSERVATION_CONTRACT = [
+    'sourceEventIdFromTuple', 'sourceEventTuple',
+    'createMonitorQueueEvent', 'coalesceMonitorPendingEvents',
+    'compactDeliveryAccountingV1', 'prepareTerminalCompactionV1',
+    'resumeTerminalCompactionV1'
+];
+const DIAGNOSTICS_CONTRACT = [
+    'createDiagnosticsWorldV2', 'appendDiagnosticTraceV2',
+    'serializeDiagnosticsConsoleV2', 'serializeDiagnosticsExportV2',
+    'recordDiagnosticTraceV2', 'createDiagnosticWorldV2',
+    'appendDiagnosticRecordV2', 'serializeDiagnosticConsoleV2',
+    'serializeDiagnosticExportV2', 'boundedDiagnosticRecords',
+    'monotonicDurationMs', 'recordDuration', 'createVisibilityDriftTracker',
+    'updateVisibilityDriftTracker', 'buildScanSummaryLog', 'recordFailure'
+];
+const PANEL_CONTRACT = [
+    'computeUnmappedPlayers', 'buildPlayerWorkspaceModel',
+    'paginatePlayerWorkspaceRows', 'collectUnknownIds', 'buildHistoryPanelRows',
+    'buildStatsPanelModel', 'buildDiagnosticsPanelModel',
+    'buildStatusPanelModel', 'createAdminDraftState', 'isAdminDraftEmpty',
+    'supportsInputSelection', 'readSessionStorageSafely', 'persistAdminDraft',
+    'restoreAdminDraft', 'gateAdminDraftReload', 'resolvePanelExit',
+    'createNameBackfillPlan', 'isPanelAsyncResultCurrent',
+    'patchPlayerNameNodes', 'applyPanelLeaseState',
+    'buildCountReconciliationPanelModel', 'buildIncidentBundle'
+];
+const PANEL_KERNEL = [
+    'createAdminDraftState', 'isAdminDraftEmpty',
+    'supportsInputSelection', 'readSessionStorageSafely', 'persistAdminDraft',
+    'restoreAdminDraft', 'gateAdminDraftReload', 'resolvePanelExit',
+    'createNameBackfillPlan', 'isPanelAsyncResultCurrent',
+    'patchPlayerNameNodes', 'applyPanelLeaseState'
+];
+const ACQUISITION_CONTRACT = [
+    'getStartupAcquisitionJitterMs', 'createDocumentScanState',
+    'shouldAttemptDocumentScan', 'markDocumentScanAttempted',
+    'resetDocumentScanState', 'runAttackLifecycleForDocument',
+    'monitorStorageAdapter', 'shouldKeepWaitingForDrain'
+];
 
 function selected(names) {
-    return runtimeApi.select('pure-module-parity', names);
+    return Object.fromEntries(names.map(n => [n, runtime[n]]));
 }
 
 test('pure seams preserve the legacy public names and fixture outputs', () => {
     const contracts = [
         ['constants', constants, Object.keys(constants)],
+        ['parser', parser, Object.keys(parser)],
         ['text', text, Object.keys(text)],
-        ['route', route, Object.keys(route)]
+        ['route', route, Object.keys(route)],
+        ['transport', transport, Object.keys(transport)],
+        ['snapshot', snapshot, Object.keys(snapshot)],
+        ['discord', discord, Object.keys(discord)],
+        ['migration', migration, MIGRATION_CONTRACT],
+        ['envelope', envelope, ENVELOPE_CONTRACT],
+        ['dispatch', dispatch, DISPATCH_CONTRACT],
+        ['conservation', conservation, CONSERVATION_CONTRACT],
+        ['diagnostics', diagnostics, DIAGNOSTICS_CONTRACT],
+        ['panel', panel, PANEL_CONTRACT],
+        ['acquisition', acquisition, ACQUISITION_CONTRACT]
     ];
     for (const [name, actual, names] of contracts) {
         assert.deepEqual(Object.keys(actual).sort(), names.slice().sort(), `${name} export mismatch`);
@@ -76,12 +166,132 @@ test('pure seams load when runtime resolution is blocked', () => {
             if (request.endsWith('/runtime.js') || request === '../runtime.js') throw new Error('runtime blocked');
             return original.call(this, request, parent, isMain, options);
         };
-        for (const name of ['constants', 'text', 'route']) {
+        for (const name of ['constants', 'parser', 'text', 'route', 'transport', 'snapshot', 'discord', 'migration', 'envelope', 'dispatch', 'conservation', 'acquisition']) {
             const value = require(${JSON.stringify(path.join(root, 'src'))} + '/' + name + '.js');
             if (!value || Object.keys(value).length === 0) throw new Error(name + ' did not load');
         }
     `;
     assert.doesNotThrow(() => execFileSync(process.execPath, ['-e', probe], { encoding: 'utf8' }));
+});
+
+test('migration and envelope preserve codec identities and representative transitions', () => {
+    assert.deepEqual(Object.keys(migration).sort(), [...MIGRATION_CONTRACT].sort());
+    assert.deepEqual(Object.keys(envelope).sort(), [...ENVELOPE_CONTRACT].sort());
+    const tuple = {
+        world: 'S1.Example', playerId: '42', eventType: 'attack',
+        acceptedGeneration: 3, scanSequence: 7, attackDelta: 1, raidDelta: 0
+    };
+    const legacyMigration = selected(MIGRATION_CONTRACT);
+    const legacyEnvelope = selected(ENVELOPE_CONTRACT);
+    const sourceId = migration.sourceEventIdFromTuple(tuple);
+    assert.equal(sourceId, legacyMigration.sourceEventIdFromTuple(tuple));
+    assert.deepEqual(migration.decodeSourceEventId(sourceId), legacyMigration.decodeSourceEventId(sourceId));
+    assert.deepEqual(migration.sourceEventTuple(tuple), legacyMigration.sourceEventTuple(tuple));
+    assert.deepEqual(
+        migration.canonicalLegacyEventFields({ name: 'Alpha', attackCount: 2, observedAtMs: 17 }),
+        legacyMigration.canonicalLegacyEventFields({ name: 'Alpha', attackCount: 2, observedAtMs: 17 })
+    );
+    assert.equal(envelope.canonicalSerializeMonitorValue({ z: 1, a: [2, 3] }), legacyEnvelope.canonicalSerializeMonitorValue({ z: 1, a: [2, 3] }));
+    assert.deepEqual(envelope.createMonitorEnvelopeV1('S1.Example', { nowMs: 10 }), legacyEnvelope.createMonitorEnvelopeV1('S1.Example', { nowMs: 10 }));
+    assert.deepEqual(envelope.coalesceMonitorPendingEvents([], 2, 10), legacyEnvelope.coalesceMonitorPendingEvents([], 2, 10));
+    assert.equal(envelope.resumeTerminalCompactionV1, envelope.compactDeliveryAccountingV1);
+});
+
+test('dispatch and conservation preserve plan identities and facade references', () => {
+    assert.deepEqual(Object.keys(dispatch).sort(), [...DISPATCH_CONTRACT].sort());
+    assert.deepEqual(Object.keys(conservation).sort(), [...CONSERVATION_CONTRACT].sort());
+    const legacyDispatch = selected(DISPATCH_CONTRACT);
+    const legacyConservation = selected(CONSERVATION_CONTRACT);
+    const plan = dispatch.buildDispatchPlanV1([], { chunkSize: 2, generation: 1 });
+    assert.deepEqual(plan, legacyDispatch.buildDispatchPlanV1([], { chunkSize: 2, generation: 1 }));
+    assert.equal(dispatch.ackHashForDiscordMessageId('message-9'), legacyDispatch.ackHashForDiscordMessageId('message-9'));
+    assert.equal(dispatch.applyDispatchPlanTransitionV1(plan, { type: 'bogus' }), null);
+    const tuple = {
+        world: 'S1.Example', playerId: '42', eventType: 'raid',
+        acceptedGeneration: 2, scanSequence: 4, attackDelta: 0, raidDelta: 1
+    };
+    assert.equal(conservation.sourceEventIdFromTuple(tuple), legacyConservation.sourceEventIdFromTuple(tuple));
+    assert.deepEqual(conservation.coalesceMonitorPendingEvents([], 2, 10), legacyConservation.coalesceMonitorPendingEvents([], 2, 10));
+    assert.equal(conservation.resumeTerminalCompactionV1, conservation.compactDeliveryAccountingV1);
+    const envelopeImpl = require(path.join(root, 'src', 'envelope-impl.js'));
+    const migrationImpl = require(path.join(root, 'src', 'migration-impl.js'));
+    const conservationImpl = require(path.join(root, 'src', 'conservation-impl.js'));
+    for (const name of ['coalesceMonitorPendingEvents', 'compactDeliveryAccountingV1', 'prepareTerminalCompactionV1', 'resumeTerminalCompactionV1', 'createMonitorQueueEvent']) {
+        assert.equal(conservationImpl[name], envelopeImpl[name], `${name} must re-export envelope-impl without duplicate logic`);
+    }
+    for (const name of ['sourceEventIdFromTuple', 'sourceEventTuple']) {
+        assert.equal(conservationImpl[name], migrationImpl[name], `${name} must re-export migration-impl without duplicate logic`);
+    }
+});
+
+test('diagnostics preserves bounded redaction and facade references', () => {
+    assert.deepEqual(Object.keys(diagnostics).sort(), [...DIAGNOSTICS_CONTRACT].sort());
+    const legacyDiagnostics = selected(DIAGNOSTICS_CONTRACT);
+    const world = diagnostics.createDiagnosticsWorldV2('parity.test');
+    assert.deepEqual(world, legacyDiagnostics.createDiagnosticsWorldV2('parity.test'));
+    assert.deepEqual(
+        diagnostics.appendDiagnosticTraceV2(world, { stage: 'snapshot', status: 'ok', reason: 'probe' }),
+        legacyDiagnostics.appendDiagnosticTraceV2(world, { stage: 'snapshot', status: 'ok', reason: 'probe' })
+    );
+    assert.equal(diagnostics.serializeDiagnosticsConsoleV2(world), legacyDiagnostics.serializeDiagnosticsConsoleV2(world));
+    assert.equal(diagnostics.serializeDiagnosticsExportV2('parity.test', world), legacyDiagnostics.serializeDiagnosticsExportV2('parity.test', world));
+    assert.deepEqual(diagnostics.boundedDiagnosticRecords(world.records, {}), legacyDiagnostics.boundedDiagnosticRecords(world.records, {}));
+    assert.deepEqual(diagnostics.recordFailure({}, 'parity.test', 1700000000000, 'probe', 1, 'no-member-table', { memberRows: 2 }), legacyDiagnostics.recordFailure({}, 'parity.test', 1700000000000, 'probe', 1, 'no-member-table', { memberRows: 2 }));
+    const diagnosticsImpl = require(path.join(root, 'src', 'diagnostics-impl.js'));
+    const kernel = [
+        'createDiagnosticsWorldV2', 'appendDiagnosticTraceV2',
+        'serializeDiagnosticsConsoleV2', 'serializeDiagnosticsExportV2',
+        'recordDiagnosticTraceV2', 'createDiagnosticWorldV2',
+        'appendDiagnosticRecordV2', 'serializeDiagnosticConsoleV2',
+        'serializeDiagnosticExportV2',
+    ];
+    for (const name of kernel) {
+        assert.equal(diagnosticsImpl[name], diagnostics[name], `${name} must re-export diagnostics-impl without duplicate logic`);
+    }
+    assert.equal(diagnostics.createDiagnosticWorldV2, diagnostics.createDiagnosticsWorldV2);
+    assert.equal(diagnostics.appendDiagnosticRecordV2, diagnostics.appendDiagnosticTraceV2);
+    assert.equal(diagnostics.serializeDiagnosticConsoleV2, diagnostics.serializeDiagnosticsConsoleV2);
+    assert.equal(diagnostics.serializeDiagnosticExportV2, diagnostics.serializeDiagnosticsExportV2);
+});
+
+test('panel preserves session-draft kernel and facade references', () => {
+    assert.deepEqual(Object.keys(panel).sort(), [...PANEL_CONTRACT].sort());
+    const legacyPanel = selected(PANEL_CONTRACT);
+    const draftArgs = ['players', { nickname: 'Ala', webhookUrl: 'https://x' }, { id: 'a', start: 0, end: 1 }, { query: 'q', filters: { mapped: true }, page: 2, activeEditorId: null, selection: ['7'] }];
+    assert.deepEqual(panel.createAdminDraftState(...draftArgs), legacyPanel.createAdminDraftState(...draftArgs));
+    assert.deepEqual(panel.isAdminDraftEmpty({ fields: { a: '' } }), legacyPanel.isAdminDraftEmpty({ fields: { a: '' } }));
+    assert.deepEqual(panel.resolvePanelExit('reload', true, { ok: false }), legacyPanel.resolvePanelExit('reload', true, { ok: false }));
+    assert.deepEqual(panel.createNameBackfillPlan(['a', 'b'], ['b'], 1), legacyPanel.createNameBackfillPlan(['a', 'b'], ['b'], 1));
+    assert.deepEqual(panel.buildStatsPanelModel({ total: 2 }), legacyPanel.buildStatsPanelModel({ total: 2 }));
+    assert.deepEqual(panel.buildStatusPanelModel(null, null, 0), legacyPanel.buildStatusPanelModel(null, null, 0));
+    const panelImpl = require(path.join(root, 'src', 'panel-impl.js'));
+    for (const name of PANEL_KERNEL) {
+        assert.equal(panelImpl[name], panel[name], `${name} must re-export panel-impl without duplicate logic`);
+    }
+});
+
+test('acquisition preserves the lifecycle kernel and facade references', () => {
+    assert.deepEqual(Object.keys(acquisition).sort(), [...ACQUISITION_CONTRACT].sort());
+    const legacyAcquisition = selected(ACQUISITION_CONTRACT);
+    assert.equal(acquisition.getStartupAcquisitionJitterMs(0.5), legacyAcquisition.getStartupAcquisitionJitterMs(0.5));
+    assert.equal(acquisition.getStartupAcquisitionJitterMs(0), 25);
+    assert.deepEqual(acquisition.createDocumentScanState(), legacyAcquisition.createDocumentScanState());
+    assert.equal(acquisition.shouldAttemptDocumentScan(acquisition.createDocumentScanState()), true);
+    assert.deepEqual(acquisition.markDocumentScanAttempted(acquisition.createDocumentScanState()), { scanAttemptedForDocument: true });
+    assert.deepEqual(acquisition.resetDocumentScanState(), legacyAcquisition.resetDocumentScanState());
+    assert.equal(acquisition.shouldKeepWaitingForDrain(true, 10, 50), legacyAcquisition.shouldKeepWaitingForDrain(true, 10, 50));
+    assert.equal(acquisition.shouldKeepWaitingForDrain(true, 50, 50), false);
+    const store = new Map();
+    const getSet = {
+        get: (key) => (store.has(String(key)) ? store.get(String(key)) : undefined),
+        set: (key, value) => { store.set(String(key), value); },
+        delete: (key) => { store.delete(String(key)); },
+    };
+    assert.equal(acquisition.monitorStorageAdapter(getSet), getSet);
+    const acquisitionImpl = require(path.join(root, 'src', 'acquisition-impl.js'));
+    for (const name of ACQUISITION_CONTRACT) {
+        assert.equal(acquisitionImpl[name], acquisition[name], `${name} must re-export acquisition-impl without duplicate logic`);
+    }
 });
 
 test('export-name mismatch is a hard parity failure', () => {

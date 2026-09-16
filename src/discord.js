@@ -1,4 +1,15 @@
 'use strict';
 
-/** Pure Discord limits, presentation, partitioning, and mention contracts. */
-module.exports = require('./runtime-api.js').discord;
+const impl = require('./discord-impl.js');
+
+const CONTRACT = [
+  'filterMutedEvents', 'buildMentionContent', 'buildAllowedMentions',
+  'buildCompactDiscordTitle', 'buildCompactDiscordPlayerLine',
+  'buildCompactDiscordSummaryFields', 'buildCompactDiscordTiming',
+  'buildCompactDiscordPresentation', 'isValidDiscordTime',
+  'measureDiscordEmbedText', 'partitionCompactDiscordEntries',
+  'selectMentions', 'buildEventDescriptionLine', 'buildDiscordPayloads',
+  'buildProfileLink', 'chunkEventsForDiscord',
+];
+
+module.exports = Object.fromEntries(CONTRACT.map((name) => [name, impl[name]]));

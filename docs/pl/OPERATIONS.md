@@ -126,3 +126,7 @@ Skopiuj te pola do zgłoszenia. Załącz zredagowany pakiet incydentu. NIGDY nie
 ## Uwaga o wersji
 
 Ta strona dokumentuje `1.0.0` (`taa-1.0.0`). Wcześniejsze zachowanie z ery 6.2.1 (historyczny rozwój wewnętrzny) nie jest częścią kontraktu tego kandydata.
+
+## Mapa implementacji
+
+Opisane wyżej zachowanie implementuje 13 modułów domenowych w `src/` (każdy to fasada `X.js` nad kontraktem `X-impl.js`; `storage` obejmuje 12 podmodułów), agregowanych przez referencję w `src/runtime-api.js` bez indirection `select()`. Mutowalny stan cyklu życia ma jedynego właściciela, `src/lifecycle.js`, zasilanego przez siedem fabryk z `src/adapters.js`; `src/runtime.js` pozostaje autorytetem legacy (`taa-1.0.0`), a produkcyjne wiring jest bez zmian. Autorytatywna mapa to `docs/architecture.md` §10, wymuszana przez `test/tools/module-architecture.test.cjs`. Nic tu nie zmienia obsługi: podział panel/menu, trasy i kroki odzyskiwania powyżej są dokładnie takie, jak podano.

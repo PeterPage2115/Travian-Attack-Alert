@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "scope": "Legacy monolith size debt in src/runtime.js only. Every other src/ module must satisfy the new-module limit.",
+  "newModuleMaxPureLines": 250,
+  "monolith": {
+    "path": "src/runtime.js",
+    "maxPureLines": 10455,
+    "note": "Strictly decreasing budget: actual pure lines must be <= maxPureLines. Any increase fails the gate."
+  }
+}

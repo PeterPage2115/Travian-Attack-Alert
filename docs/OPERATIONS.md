@@ -124,3 +124,7 @@ Copy these fields into the issue. Attach the redacted incident bundle. NEVER inc
 ## Version note
 
 This page documents `1.0.0` (`taa-1.0.0`). Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
+
+## Implementation map
+
+The behavior above is implemented by 13 domain modules under `src/` (each an `X.js` facade over its `X-impl.js` contract; `storage` spans 12 sub-modules), aggregated reference-equal by `src/runtime-api.js` with no `select()` indirection. Mutable lifecycle state is owned solely by `src/lifecycle.js` and fed through the seven factories in `src/adapters.js`; `src/runtime.js` remains the legacy authority (`taa-1.0.0`) and production wiring is unchanged. The authoritative map is `docs/architecture.md` §10, enforced by `test/tools/module-architecture.test.cjs`. Nothing here changes operations: the panel/menu split, routes, and recovery steps above are exactly as stated.

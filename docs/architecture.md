@@ -202,3 +202,36 @@ The approved Discord hierarchy is the source of truth: titles, player counts, at
 ### Panel lifecycle and accessibility contract
 
 The panel is the existing `Monitor views` tablist with exactly four tabs — `Overview`, `Players`, `Alerts`, `Diagnostics` — and no News tab. Each `tabpanel` contains its native labelled inputs, buttons, feedback, and status. States are default, hover, active/selected, focus, disabled, loading, empty, error, and standby/read-only. The `__TAA_TEST_ALLOW_PANEL__` bypass exists only for loopback harness verification and is not a production affordance. All controls are native labelled elements with visible focus rings and truthful `aria-selected`, `aria-controls`, `aria-invalid`, `aria-busy`, and live status semantics. Validation/storage errors are assertive; successful transitions are polite. Reading-order keyboard navigation, Escape/backdrop/Close focus restoration, 375 px/768 px/1280 px reflow, 200% zoom, reduced motion, forced colors, and unbroken URL wrapping are required. Status is never color-only and the overlay remains the sole scroll owner.
+
+## 10. Module graph (post-extraction reality)
+
+This section pins the executable module graph after the Wave 3 extraction (Todos 7–17, aggregator cutover). It is verified by `test/tools/module-architecture.test.cjs`, `test/characterization/aggregator-cutover.test.cjs`, and `test/tools/readme-runtime-contract.test.cjs`; prose here must agree with those tests, never the reverse.
+
+### 10.1 Domain modules
+
+`src/` holds exactly 13 domain modules. Each domain is a `X.js` facade re-exporting its `X-impl.js` kernel contract by reference (never a copied subset):
+
+| Domain | Facade | Kernel | Contract |
+|---|---|---|---|
+| `storage` | `src/storage.js` | 12 sub-modules (`storage-impl.js` + `storage-identity/webhook/mappings/provenance/mutes/roster/settings/history/queue/failed/diagnostics`) | 60 symbols |
+| `lease` | `src/lease.js` | `src/lease-impl.js` (fencing behind adapters) | 17 symbols |
+| `parser` | `src/parser.js` | `src/parser-impl.js` (boundary) | 17 symbols |
+| `snapshot` | `src/snapshot.js` | `src/snapshot-impl.js` (presentation) | 15 symbols |
+| `envelope` | `src/envelope.js` | `src/envelope-impl.js` (codec) | 27 symbols |
+| `migration` | `src/migration.js` | `src/migration-impl.js` (codec) | 12 symbols |
+| `discord` | `src/discord.js` | `src/discord-impl.js` (presentation) | 16 symbols |
+| `transport` | `src/transport.js` | `src/transport-impl.js` (boundary) | 7 symbols |
+| `dispatch` | `src/dispatch.js` | `src/dispatch-impl.js` | 6 symbols |
+| `conservation` | `src/conservation.js` | `src/conservation-impl.js` (reference aliases into `envelope-impl`/`migration-impl`, no independent logic) | 7 symbols |
+| `diagnostics` | `src/diagnostics.js` | `src/diagnostics-impl.js` (redaction) + legacy tail on the frozen authority | 16 symbols |
+| `panel` | `src/panel.js` | `src/panel-impl.js` (session-draft models) + legacy tail on the frozen authority | 22 symbols |
+| `acquisition` | `src/acquisition.js` | `src/acquisition-impl.js` (lifecycle owner) | 8 symbols |
+
+Pure modules `constants`/`text`/`route` keep independent implementations verified by `pure-module-parity`. The `src/` dependency graph is acyclic inside the allowed-dependency map in `module-architecture.test.cjs`; only `src/userscript-entry.js` and `src/runtime.js` may name host capabilities.
+
+### 10.2 Aggregator, lifecycle, adapters, authority
+
+- `src/runtime-api.js` is a thin aggregator: direct re-exports of the 13 domain facades. Every domain object IS the facade module itself (reference-equal), never a copied subset. The legacy `select()` indirection is removed and `runtime-api.js` does not depend on `src/runtime.js`.
+- `src/lifecycle.js` is the sole owner of mutable lifecycle state (`createLifecycleController` is its only export; 13 named singletons + 10 timer/listener handles live exactly once here). All other domains receive the controller object and never retain copies of its fields.
+- `src/adapters.js` is the seven-factory extraction seam (`createStorageAdapter`, `createClockAdapter`, `createSleepAdapter`, `createGmRequestAdapter`, `createDocumentLocationAdapter`, `createWebLocksAdapter`, `createSessionStorageAdapter`); domain modules never name host globals directly.
+- `src/runtime.js` remains the legacy authority: 325 exports pinned by the frozen `runtime-contract.json` oracle, release ID `taa-1.0.0`. Production wiring is unchanged (`src/userscript-entry.js` → `src/runtime.js` → `startBrowserRuntime`); `dist/*.user.js` is generated output, never hand-edited.
