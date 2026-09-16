@@ -50,6 +50,7 @@ const ALLOWLIST = [
   '.node-version',
   'AGENTS.md',
   'CHANGELOG.md',
+  'CONTRIBUTING.md',
   'README.md',
   'config/',
   'dist/',
