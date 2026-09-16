@@ -139,6 +139,8 @@ The superseded 5.2.6-era contract is historical; the 1.0.0 contract above is the
 
 Include the script version (`1.0.0`), your browser and userscript manager versions, steps to reproduce, what you expected, and what happened instead. Attach the redacted incident bundle. NEVER include a webhook URL or token, cookies, passwords, raw page HTML, or player data beyond what the bundle already contains in redacted form.
 
+To file a report, use the issue templates: [bug report](.github/ISSUE_TEMPLATE/bug_report.yml) or [feature request](.github/ISSUE_TEMPLATE/feature_request.yml). Please follow [CONTRIBUTING.md](CONTRIBUTING.md) and the [security policy](SECURITY.md) (synthetic/redacted data only, no secrets).
+
 Support for this project is entirely voluntary and optional. It has no influence on features, priorities, or fix timelines. There is no paid tier and nothing is locked behind support. The destination for voluntary support will be added by the maintainer.
 
 This page documents the Tampermonkey **1.0.0** userscript, identified by release ID `taa-1.0.0`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
@@ -153,6 +155,9 @@ This page documents the Tampermonkey **1.0.0** userscript, identified by release
 - Module graph (post-extraction): `docs/architecture.md` §10.
 - Release history (archived 1.0.0 candidate records): `docs/release-history/1.0.0-rc/`.
 - Changelog: `CHANGELOG.md`.
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md) (workflow, tests, backup, PR checklist).
+- Pull request template: [.github/pull_request_template.md](.github/pull_request_template.md).
+- Security policy: [SECURITY.md](SECURITY.md). License: [LICENSE](LICENSE).
 
 ## Source layout
 

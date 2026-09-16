@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest an idea for Travian Attack Alert 1.0.0 (release candidate)
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the idea. Fill in every field with synthetic or redacted data only — never paste webhook URLs, tokens, cookies, passwords, raw HTML, or full settings files.
+  - type: input
+    id: script-version
+    attributes:
+      label: Script version and release ID
+      description: Version you are running (from the installed script header or Overview tab)
+      placeholder: "1.0.0 / taa-1.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem should this feature solve? Who is affected?
+      placeholder: "As an alliance monitor, I need ... so that ..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should happen, step by step
+      placeholder: "1. On the canonical page ... 2. The panel shows ... 3. Discord receives ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Panel vs menu placement
+      description: Panel is daily work, Tampermonkey menu is setup + recovery
+      options:
+        - Panel (Overview / Players / Alerts / Diagnostics)
+        - Tampermonkey menu (setup + recovery)
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you considered
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How do we know the feature works (offline, deterministic fixtures, no real webhooks)?
+      placeholder: "Given ... when ... then ..."
+    validations:
+      required: false
