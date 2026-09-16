@@ -72,6 +72,16 @@
       ]
     },
     {
+      "id": "suite:test/characterization/storage-roundtrip.test.cjs",
+      "path": "test/characterization/storage-roundtrip.test.cjs",
+      "classification": "offline",
+      "expectedExecutionCount": 17,
+      "coverage": [
+        "storage-contract",
+        "storage-roundtrip"
+      ]
+    },
+    {
       "id": "suite:test/e2e/attack-panel.spec.ts",
       "path": "test/e2e/attack-panel.spec.ts",
       "classification": "browser",
@@ -363,8 +373,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 34,
-    "expectedExecutionCount": 887,
+    "suiteCount": 35,
+    "expectedExecutionCount": 904,
     "byClassification": {
       "browser": {
         "suiteCount": 12,
@@ -375,8 +385,8 @@
         "expectedExecutionCount": 60
       },
       "offline": {
-        "suiteCount": 1,
-        "expectedExecutionCount": 1
+        "suiteCount": 2,
+        "expectedExecutionCount": 18
       },
       "source-artifact": {
         "suiteCount": 2,
