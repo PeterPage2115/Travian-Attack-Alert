@@ -8,7 +8,7 @@
 // (the full domain exceeds the frozen 250-line new-module gate). Every symbol
 // is re-exported by reference, never copied.
 const impl = require('./panel-impl.js');
-const legacy = require('./runtime-api.js').panel;
+const legacy = require('./runtime.js');
 
 const IMPL_CONTRACT = [
   'createAdminDraftState', 'isAdminDraftEmpty',

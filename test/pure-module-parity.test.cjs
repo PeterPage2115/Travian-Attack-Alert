@@ -6,7 +6,7 @@ const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const runtimeApi = require(path.join(root, 'src', 'runtime-api.js'));
+const runtime = require(path.join(root, 'src', 'runtime.js'));
 const constants = require(path.join(root, 'src', 'constants.js'));
 const parser = require(path.join(root, 'src', 'parser.js'));
 const text = require(path.join(root, 'src', 'text.js'));
@@ -91,7 +91,7 @@ const ACQUISITION_CONTRACT = [
 ];
 
 function selected(names) {
-    return runtimeApi.select('pure-module-parity', names);
+    return Object.fromEntries(names.map(n => [n, runtime[n]]));
 }
 
 test('pure seams preserve the legacy public names and fixture outputs', () => {
