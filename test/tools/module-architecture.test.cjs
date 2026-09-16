@@ -70,8 +70,8 @@ const TIMER_HANDLE_SINGLETONS = [
 // Exact src inventory: any extra file is a dormant entry and fails.
 const SRC_ALLOWLIST = [
   'src/acquisition.js', 'src/adapters.js', 'src/boot.js',
-  'src/browser-entry.js', 'src/conservation-impl.js', 'src/conservation.js', 'src/constants.js',
-  'src/diagnostics.js', 'src/discord-impl.js', 'src/discord.js', 'src/dispatch-impl.js', 'src/dispatch.js',
+  'src/browser-entry.js',   'src/conservation-impl.js', 'src/conservation.js', 'src/constants.js',
+  'src/diagnostics-impl.js', 'src/diagnostics.js', 'src/discord-impl.js', 'src/discord.js', 'src/dispatch-impl.js', 'src/dispatch.js',
   'src/envelope-impl.js', 'src/envelope.js', 'src/lease-impl.js', 'src/lease.js', 'src/lifecycle.js',
   'src/migration-impl.js', 'src/migration.js', 'src/panel.js', 'src/parser-impl.js', 'src/parser.js', 'src/route.js',
   'src/runtime-api.js', 'src/runtime.js', 'src/snapshot-impl.js', 'src/snapshot.js',
@@ -93,7 +93,8 @@ const ALLOWED_DEPS = {
   'src/conservation.js': ['src/conservation-impl.js'],
   'src/conservation-impl.js': ['src/envelope-impl.js', 'src/migration-impl.js'],
   'src/constants.js': [],
-  'src/diagnostics.js': ['src/runtime-api.js'],
+  'src/diagnostics.js': ['src/diagnostics-impl.js', 'src/runtime-api.js'],
+  'src/diagnostics-impl.js': ['src/adapters.js', 'src/constants.js'],
   'src/discord-impl.js': ['src/constants.js', 'src/snapshot-impl.js', 'src/text.js'],
   'src/discord.js': ['src/discord-impl.js'],
   'src/dispatch.js': ['src/dispatch-impl.js'],

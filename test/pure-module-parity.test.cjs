@@ -18,6 +18,7 @@ const migration = require(path.join(root, 'src', 'migration.js'));
 const envelope = require(path.join(root, 'src', 'envelope.js'));
 const dispatch = require(path.join(root, 'src', 'dispatch.js'));
 const conservation = require(path.join(root, 'src', 'conservation.js'));
+const diagnostics = require(path.join(root, 'src', 'diagnostics.js'));
 
 const MIGRATION_CONTRACT = [
     'LEGACY_CANONICAL_EVENT_FIELDS', 'canonicalLegacyEventFields',
@@ -53,6 +54,15 @@ const CONSERVATION_CONTRACT = [
     'compactDeliveryAccountingV1', 'prepareTerminalCompactionV1',
     'resumeTerminalCompactionV1'
 ];
+const DIAGNOSTICS_CONTRACT = [
+    'createDiagnosticsWorldV2', 'appendDiagnosticTraceV2',
+    'serializeDiagnosticsConsoleV2', 'serializeDiagnosticsExportV2',
+    'recordDiagnosticTraceV2', 'createDiagnosticWorldV2',
+    'appendDiagnosticRecordV2', 'serializeDiagnosticConsoleV2',
+    'serializeDiagnosticExportV2', 'boundedDiagnosticRecords',
+    'monotonicDurationMs', 'recordDuration', 'createVisibilityDriftTracker',
+    'updateVisibilityDriftTracker', 'buildScanSummaryLog', 'recordFailure'
+];
 
 function selected(names) {
     return runtimeApi.select('pure-module-parity', names);
@@ -70,7 +80,8 @@ test('pure seams preserve the legacy public names and fixture outputs', () => {
         ['migration', migration, MIGRATION_CONTRACT],
         ['envelope', envelope, ENVELOPE_CONTRACT],
         ['dispatch', dispatch, DISPATCH_CONTRACT],
-        ['conservation', conservation, CONSERVATION_CONTRACT]
+        ['conservation', conservation, CONSERVATION_CONTRACT],
+        ['diagnostics', diagnostics, DIAGNOSTICS_CONTRACT]
     ];
     for (const [name, actual, names] of contracts) {
         assert.deepEqual(Object.keys(actual).sort(), names.slice().sort(), `${name} export mismatch`);
@@ -183,6 +194,36 @@ test('dispatch and conservation preserve plan identities and facade references',
     for (const name of ['sourceEventIdFromTuple', 'sourceEventTuple']) {
         assert.equal(conservationImpl[name], migrationImpl[name], `${name} must re-export migration-impl without duplicate logic`);
     }
+});
+
+test('diagnostics preserves bounded redaction and facade references', () => {
+    assert.deepEqual(Object.keys(diagnostics).sort(), [...DIAGNOSTICS_CONTRACT].sort());
+    const legacyDiagnostics = selected(DIAGNOSTICS_CONTRACT);
+    const world = diagnostics.createDiagnosticsWorldV2('parity.test');
+    assert.deepEqual(world, legacyDiagnostics.createDiagnosticsWorldV2('parity.test'));
+    assert.deepEqual(
+        diagnostics.appendDiagnosticTraceV2(world, { stage: 'snapshot', status: 'ok', reason: 'probe' }),
+        legacyDiagnostics.appendDiagnosticTraceV2(world, { stage: 'snapshot', status: 'ok', reason: 'probe' })
+    );
+    assert.equal(diagnostics.serializeDiagnosticsConsoleV2(world), legacyDiagnostics.serializeDiagnosticsConsoleV2(world));
+    assert.equal(diagnostics.serializeDiagnosticsExportV2('parity.test', world), legacyDiagnostics.serializeDiagnosticsExportV2('parity.test', world));
+    assert.deepEqual(diagnostics.boundedDiagnosticRecords(world.records, {}), legacyDiagnostics.boundedDiagnosticRecords(world.records, {}));
+    assert.deepEqual(diagnostics.recordFailure({}, 'parity.test', 1700000000000, 'probe', 1, 'no-member-table', { memberRows: 2 }), legacyDiagnostics.recordFailure({}, 'parity.test', 1700000000000, 'probe', 1, 'no-member-table', { memberRows: 2 }));
+    const diagnosticsImpl = require(path.join(root, 'src', 'diagnostics-impl.js'));
+    const kernel = [
+        'createDiagnosticsWorldV2', 'appendDiagnosticTraceV2',
+        'serializeDiagnosticsConsoleV2', 'serializeDiagnosticsExportV2',
+        'recordDiagnosticTraceV2', 'createDiagnosticWorldV2',
+        'appendDiagnosticRecordV2', 'serializeDiagnosticConsoleV2',
+        'serializeDiagnosticExportV2',
+    ];
+    for (const name of kernel) {
+        assert.equal(diagnosticsImpl[name], diagnostics[name], `${name} must re-export diagnostics-impl without duplicate logic`);
+    }
+    assert.equal(diagnostics.createDiagnosticWorldV2, diagnostics.createDiagnosticsWorldV2);
+    assert.equal(diagnostics.appendDiagnosticRecordV2, diagnostics.appendDiagnosticTraceV2);
+    assert.equal(diagnostics.serializeDiagnosticConsoleV2, diagnostics.serializeDiagnosticsConsoleV2);
+    assert.equal(diagnostics.serializeDiagnosticExportV2, diagnostics.serializeDiagnosticsExportV2);
 });
 
 test('export-name mismatch is a hard parity failure', () => {
