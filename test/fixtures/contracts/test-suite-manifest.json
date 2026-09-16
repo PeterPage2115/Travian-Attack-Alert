@@ -72,9 +72,54 @@
       ]
     },
     {
+      "id": "suite:test/characterization/acquisition-extract.test.cjs",
+      "path": "test/characterization/acquisition-extract.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 1,
+      "coverage": [
+        "test-characterization-acquisition-extract"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/aggregator-cutover.test.cjs",
+      "path": "test/characterization/aggregator-cutover.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 1,
+      "coverage": [
+        "test-characterization-aggregator-cutover"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/diagnostics-redaction.test.cjs",
+      "path": "test/characterization/diagnostics-redaction.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 1,
+      "coverage": [
+        "test-characterization-diagnostics-redaction"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/discord-presentation.test.cjs",
+      "path": "test/characterization/discord-presentation.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 1,
+      "coverage": [
+        "test-characterization-discord-presentation"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/dispatch-conservation.test.cjs",
+      "path": "test/characterization/dispatch-conservation.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 1,
+      "coverage": [
+        "test-characterization-dispatch-conservation"
+      ]
+    },
+    {
       "id": "suite:test/characterization/lease-fence-matrix.test.cjs",
       "path": "test/characterization/lease-fence-matrix.test.cjs",
-      "classification": "offline",
+      "classification": "source-artifact",
       "expectedExecutionCount": 17,
       "coverage": [
         "lease-contract",
@@ -83,9 +128,18 @@
       ]
     },
     {
+      "id": "suite:test/characterization/panel-session.test.cjs",
+      "path": "test/characterization/panel-session.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 1,
+      "coverage": [
+        "test-characterization-panel-session"
+      ]
+    },
+    {
       "id": "suite:test/characterization/parser-rejection-table.test.cjs",
       "path": "test/characterization/parser-rejection-table.test.cjs",
-      "classification": "offline",
+      "classification": "source-artifact",
       "expectedExecutionCount": 10,
       "coverage": [
         "parser-contract",
@@ -94,9 +148,18 @@
       ]
     },
     {
+      "id": "suite:test/characterization/snapshot-differencing.test.cjs",
+      "path": "test/characterization/snapshot-differencing.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 1,
+      "coverage": [
+        "test-characterization-snapshot-differencing"
+      ]
+    },
+    {
       "id": "suite:test/characterization/storage-roundtrip.test.cjs",
       "path": "test/characterization/storage-roundtrip.test.cjs",
-      "classification": "offline",
+      "classification": "source-artifact",
       "expectedExecutionCount": 17,
       "coverage": [
         "storage-contract",
@@ -106,7 +169,7 @@
     {
       "id": "suite:test/characterization/transport-retry.test.cjs",
       "path": "test/characterization/transport-retry.test.cjs",
-      "classification": "offline",
+      "classification": "source-artifact",
       "expectedExecutionCount": 11,
       "coverage": [
         "transport-contract",
@@ -227,10 +290,19 @@
     {
       "id": "suite:test/fixtures/performance/server.test.cjs",
       "path": "test/fixtures/performance/server.test.cjs",
-      "classification": "offline",
+      "classification": "source-artifact",
       "expectedExecutionCount": 1,
       "coverage": [
         "offline-fixture"
+      ]
+    },
+    {
+      "id": "suite:test/offline/script.test.cjs",
+      "path": "test/offline/script.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 354,
+      "coverage": [
+        "offline-runtime-behavior"
       ]
     },
     {
@@ -245,7 +317,7 @@
     {
       "id": "suite:test/runtime-parity.test.cjs",
       "path": "test/runtime-parity.test.cjs",
-      "classification": "dist-artifact",
+      "classification": "source-artifact",
       "expectedExecutionCount": 2,
       "coverage": [
         "runtime-api-exports",
@@ -254,15 +326,6 @@
         "route-fixtures",
         "boot-effects",
         "release-identity"
-      ]
-    },
-    {
-      "id": "suite:test/script.test.cjs",
-      "path": "test/offline/script.test.cjs",
-      "classification": "source-artifact",
-      "expectedExecutionCount": 354,
-      "coverage": [
-        "offline-runtime-behavior"
       ]
     },
     {
@@ -406,24 +469,20 @@
     }
   ],
   "totals": {
-    "suiteCount": 35,
-    "expectedExecutionCount": 904,
+    "suiteCount": 45,
+    "expectedExecutionCount": 949,
     "byClassification": {
+      "dist-artifact": {
+        "suiteCount": 5,
+        "expectedExecutionCount": 58
+      },
       "browser": {
         "suiteCount": 12,
         "expectedExecutionCount": 341
       },
-      "dist-artifact": {
-        "suiteCount": 6,
-        "expectedExecutionCount": 60
-      },
-      "offline": {
-        "suiteCount": 2,
-        "expectedExecutionCount": 18
-      },
       "source-artifact": {
-        "suiteCount": 2,
-        "expectedExecutionCount": 358
+        "suiteCount": 15,
+        "expectedExecutionCount": 423
       },
       "tool": {
         "suiteCount": 13,
