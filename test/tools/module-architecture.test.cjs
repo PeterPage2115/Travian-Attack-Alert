@@ -69,7 +69,7 @@ const TIMER_HANDLE_SINGLETONS = [
 
 // Exact src inventory: any extra file is a dormant entry and fails.
 const SRC_ALLOWLIST = [
-  'src/acquisition.js', 'src/adapters.js', 'src/boot.js',
+  'src/acquisition.js', 'src/acquisition-impl.js', 'src/adapters.js', 'src/boot.js',
   'src/browser-entry.js',   'src/conservation-impl.js', 'src/conservation.js', 'src/constants.js',
   'src/diagnostics-impl.js', 'src/diagnostics.js', 'src/discord-impl.js', 'src/discord.js', 'src/dispatch-impl.js', 'src/dispatch.js',
   'src/envelope-impl.js', 'src/envelope.js', 'src/lease-impl.js', 'src/lease.js', 'src/lifecycle.js',
@@ -86,7 +86,8 @@ const SRC_ALLOWLIST = [
 
 // Acyclic allowed-dependency map: relative src path -> allowed relative deps.
 const ALLOWED_DEPS = {
-  'src/acquisition.js': ['src/runtime-api.js'],
+  'src/acquisition.js': ['src/acquisition-impl.js'],
+  'src/acquisition-impl.js': ['src/adapters.js', 'src/constants.js'],
   'src/adapters.js': [],
   'src/boot.js': ['src/route.js'],
   'src/browser-entry.js': ['src/boot.js'],

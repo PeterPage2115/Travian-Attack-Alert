@@ -20,6 +20,7 @@ const dispatch = require(path.join(root, 'src', 'dispatch.js'));
 const conservation = require(path.join(root, 'src', 'conservation.js'));
 const diagnostics = require(path.join(root, 'src', 'diagnostics.js'));
 const panel = require(path.join(root, 'src', 'panel.js'));
+const acquisition = require(path.join(root, 'src', 'acquisition.js'));
 
 const MIGRATION_CONTRACT = [
     'LEGACY_CANONICAL_EVENT_FIELDS', 'canonicalLegacyEventFields',
@@ -82,6 +83,12 @@ const PANEL_KERNEL = [
     'createNameBackfillPlan', 'isPanelAsyncResultCurrent',
     'patchPlayerNameNodes', 'applyPanelLeaseState'
 ];
+const ACQUISITION_CONTRACT = [
+    'getStartupAcquisitionJitterMs', 'createDocumentScanState',
+    'shouldAttemptDocumentScan', 'markDocumentScanAttempted',
+    'resetDocumentScanState', 'runAttackLifecycleForDocument',
+    'monitorStorageAdapter', 'shouldKeepWaitingForDrain'
+];
 
 function selected(names) {
     return runtimeApi.select('pure-module-parity', names);
@@ -101,7 +108,8 @@ test('pure seams preserve the legacy public names and fixture outputs', () => {
         ['dispatch', dispatch, DISPATCH_CONTRACT],
         ['conservation', conservation, CONSERVATION_CONTRACT],
         ['diagnostics', diagnostics, DIAGNOSTICS_CONTRACT],
-        ['panel', panel, PANEL_CONTRACT]
+        ['panel', panel, PANEL_CONTRACT],
+        ['acquisition', acquisition, ACQUISITION_CONTRACT]
     ];
     for (const [name, actual, names] of contracts) {
         assert.deepEqual(Object.keys(actual).sort(), names.slice().sort(), `${name} export mismatch`);
@@ -158,7 +166,7 @@ test('pure seams load when runtime resolution is blocked', () => {
             if (request.endsWith('/runtime.js') || request === '../runtime.js') throw new Error('runtime blocked');
             return original.call(this, request, parent, isMain, options);
         };
-        for (const name of ['constants', 'parser', 'text', 'route', 'transport', 'snapshot', 'discord', 'migration', 'envelope', 'dispatch', 'conservation']) {
+        for (const name of ['constants', 'parser', 'text', 'route', 'transport', 'snapshot', 'discord', 'migration', 'envelope', 'dispatch', 'conservation', 'acquisition']) {
             const value = require(${JSON.stringify(path.join(root, 'src'))} + '/' + name + '.js');
             if (!value || Object.keys(value).length === 0) throw new Error(name + ' did not load');
         }
@@ -259,6 +267,30 @@ test('panel preserves session-draft kernel and facade references', () => {
     const panelImpl = require(path.join(root, 'src', 'panel-impl.js'));
     for (const name of PANEL_KERNEL) {
         assert.equal(panelImpl[name], panel[name], `${name} must re-export panel-impl without duplicate logic`);
+    }
+});
+
+test('acquisition preserves the lifecycle kernel and facade references', () => {
+    assert.deepEqual(Object.keys(acquisition).sort(), [...ACQUISITION_CONTRACT].sort());
+    const legacyAcquisition = selected(ACQUISITION_CONTRACT);
+    assert.equal(acquisition.getStartupAcquisitionJitterMs(0.5), legacyAcquisition.getStartupAcquisitionJitterMs(0.5));
+    assert.equal(acquisition.getStartupAcquisitionJitterMs(0), 25);
+    assert.deepEqual(acquisition.createDocumentScanState(), legacyAcquisition.createDocumentScanState());
+    assert.equal(acquisition.shouldAttemptDocumentScan(acquisition.createDocumentScanState()), true);
+    assert.deepEqual(acquisition.markDocumentScanAttempted(acquisition.createDocumentScanState()), { scanAttemptedForDocument: true });
+    assert.deepEqual(acquisition.resetDocumentScanState(), legacyAcquisition.resetDocumentScanState());
+    assert.equal(acquisition.shouldKeepWaitingForDrain(true, 10, 50), legacyAcquisition.shouldKeepWaitingForDrain(true, 10, 50));
+    assert.equal(acquisition.shouldKeepWaitingForDrain(true, 50, 50), false);
+    const store = new Map();
+    const getSet = {
+        get: (key) => (store.has(String(key)) ? store.get(String(key)) : undefined),
+        set: (key, value) => { store.set(String(key), value); },
+        delete: (key) => { store.delete(String(key)); },
+    };
+    assert.equal(acquisition.monitorStorageAdapter(getSet), getSet);
+    const acquisitionImpl = require(path.join(root, 'src', 'acquisition-impl.js'));
+    for (const name of ACQUISITION_CONTRACT) {
+        assert.equal(acquisitionImpl[name], acquisition[name], `${name} must re-export acquisition-impl without duplicate logic`);
     }
 });
 
