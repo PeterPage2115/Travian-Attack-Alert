@@ -4,6 +4,12 @@ Owner-only checklist for protecting the userscript update channel. All items
 refer to https://github.com/PeterPage2115/Travian-Attack-Alert. Apply in
 Settings; verify from a clean clone.
 
+Live-state note (verified through the GitHub API on 2026-09-16): the default
+branch is `release/public-1.0.0`; it is not yet protected; no repository
+ruleset is installed; repository description, homepage, and topics are unset;
+and the default Actions workflow permission is read-only. Unchecked items below
+are owner actions, not claims about the current remote state.
+
 ## 0. Gate ownership — AGENT-AUTOMATED vs OWNER-MANUAL
 
 ### AGENT-AUTOMATED (done by this migration)
@@ -22,20 +28,23 @@ Settings; verify from a clean clone.
   `docs/release-state.json` stays `stable:false` and the README keeps its
   release-candidate warning even though the target version is 1.0.0.
 
-## 1. Default branch `main`
+## 1. Branch and update-channel identity
 
-- [ ] Default branch is `main` (Settings → General → Default branch).
-- [ ] No `master` branch exists or remains default.
-- [ ] `config/userscript.json` `updateURL` and `downloadURL` both point at
+- [x] Default branch remains `release/public-1.0.0` (Settings → General →
+      Default branch).
+- [x] No `main` or `master` branch currently exists on the public remote.
+- [x] `config/userscript.json` `updateURL` and `downloadURL` both point at
       the protected-`main` artifact URL exactly:
 
       `https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js`
 
-## 2. Branch protection for `main`
+## 2. Branch protection for `release/public-1.0.0`
 
-- [ ] Branch protection rule targets `main` (Settings → Branches → Add rule).
-- [ ] Require status checks to pass before merging; required check: `CI`
-      (`verify` job, Node 18 and 20 matrix from `.github/workflows/ci.yml`).
+- [ ] Branch protection rule targets `release/public-1.0.0` (Settings →
+      Branches → Add rule).
+- [ ] Require status checks to pass before merging; the four exact required
+      checks from `.github/workflows/ci.yml` are `offline-node-18`,
+      `offline-node-20`, `browser-node-20`, and `cross-node-determinism`.
 - [ ] Require a pull request before merging (at least 1 approving review;
       dismiss stale approvals on new commits).
 - [ ] Block force pushes (`Do not allow force pushes`) and deletions
@@ -45,14 +54,18 @@ Settings; verify from a clean clone.
 
 ## 3. CI is required and read-only
 
-- [ ] `.github/workflows/ci.yml` runs on push to `main` and PRs to `main`.
-- [ ] Workflow permissions are read-only (`contents: read`); no
+- [x] `.github/workflows/ci.yml` is named `CI` and runs on push to
+      `release/public-1.0.0` and PRs targeting `release/public-1.0.0`.
+- [x] Repository Actions default workflow permissions are read-only.
+- [x] Workflow permissions are read-only (`contents: read`); no
       `permissions: write`, no release/publish step — CI uploads
-      `test-results/`, `dist/`, and `metadata.json` as run artifacts only.
+      fixed 14-day `determinism-node-18`, `determinism-node-20`,
+      `browser-node-20-evidence`, and `ci-identity` run artifacts only.
 - [ ] A PR cannot merge while CI is failing (covered by §2 required check).
 
 ## 4. Repository presentation
 
+- Current API state: description and homepage are `null`; topics are empty.
 - [ ] Description set (Settings → General → About), e.g.:
       "Tampermonkey userscript: Travian alliance attack alerts to Discord".
 - [ ] Website points at the repository or docs.
