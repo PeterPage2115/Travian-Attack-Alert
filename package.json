@@ -18,7 +18,7 @@
     "check:versions": "node tools/check-versions.cjs",
     "check:artifact": "node tools/check-artifact.cjs",
     "check:test-inventory": "node test/tools/test-inventory.cjs",
-    "check:types": "tsc --noEmit",
+    "check:types": "node tools/check-types-ratchet.cjs",
     "quality": "node tools/quality.cjs"
   },
   "devDependencies": {

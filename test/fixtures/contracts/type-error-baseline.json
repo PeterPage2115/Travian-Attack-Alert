@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "scope": "Legacy monolith debt in src/runtime.js only. Every other src/ and tools/ file must be diagnostic-free.",
+  "tsc": "tsc --noEmit (allowJs/checkJs, strict off, ES2022/CommonJS)",
+  "verified": {
+    "preDeclarationTotal": 130,
+    "preDeclarationRuntime": 127,
+    "ambientFix": "src/tampermonkey-globals.d.ts resolves 53 GM_* TS2304 + 6 __TAA_TEST_HOOK__ TS2339; tools/audit-public-tree.cjs repaired to 0",
+    "legacyTotal": 68
+  },
+  "legacy": [
+    {
+      "label": "untyped-object-props",
+      "file": "src/runtime.js",
+      "code": "TS2339",
+      "pattern": "does not exist on type 'object'",
+      "count": 56
+    },
+    {
+      "label": "dom-element-narrowing-htmlelement",
+      "file": "src/runtime.js",
+      "code": "TS2339",
+      "pattern": "does not exist on type 'HTMLElement'",
+      "count": 5
+    },
+    {
+      "label": "dom-element-narrowing-element",
+      "file": "src/runtime.js",
+      "code": "TS2339",
+      "pattern": "does not exist on type 'Element'",
+      "count": 4
+    },
+    {
+      "label": "arity-mismatch",
+      "file": "src/runtime.js",
+      "code": "TS2554",
+      "pattern": "Expected 0-1 arguments, but got 2",
+      "count": 2
+    },
+    {
+      "label": "union-property-suggestion",
+      "file": "src/runtime.js",
+      "code": "TS2551",
+      "pattern": "Did you mean",
+      "count": 1
+    }
+  ]
+}

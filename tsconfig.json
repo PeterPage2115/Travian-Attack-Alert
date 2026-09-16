@@ -9,6 +9,6 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.js", "tools/**/*.cjs"],
+  "include": ["src/**/*.js", "src/tampermonkey-globals.d.ts", "tools/**/*.cjs"],
   "exclude": ["tools/parity.cjs", "test"]
 }

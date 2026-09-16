@@ -764,13 +764,17 @@ async function createOcrEngine(tesseract, modelDir) {
   });
   await new Promise((resolve, reject) => {
     server.on('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
+    server.listen(0, '127.0.0.1', () => resolve());
   });
-  const langPath = `http://127.0.0.1:${server.address().port}`;
+  const serverAddress = server.address();
+  if (serverAddress === null || typeof serverAddress === 'string') {
+    throw new Error('ocr-failure: loopback model server address is unavailable');
+  }
+  const langPath = `http://127.0.0.1:${serverAddress.port}`;
   let worker = null;
   try {
     worker = await withTimeout(
-      tesseract.createWorker('eng', 1, {
+      tesseract.createWorker('eng', tesseract.OEM.LSTM_ONLY, {
         langPath,
         gzip: true,
         cacheMethod: 'none',
@@ -834,6 +838,7 @@ async function mainEvidence(root, outAbs) {
 
   const deps = lazyRequireEvidenceDeps();
   const account = { expandedBytes: 0, files: 0 };
+  /** @type {{ recognize: (png: Buffer) => Promise<string>, close: () => Promise<void> } | null} */
   let ocr = null;
   const ocrModelDir = path.dirname(modelInfo.modelAbs);
   const ensureOcr = async () => {
