@@ -16,6 +16,8 @@ const snapshot = require(path.join(root, 'src', 'snapshot.js'));
 const discord = require(path.join(root, 'src', 'discord.js'));
 const migration = require(path.join(root, 'src', 'migration.js'));
 const envelope = require(path.join(root, 'src', 'envelope.js'));
+const dispatch = require(path.join(root, 'src', 'dispatch.js'));
+const conservation = require(path.join(root, 'src', 'conservation.js'));
 
 const MIGRATION_CONTRACT = [
     'LEGACY_CANONICAL_EVENT_FIELDS', 'canonicalLegacyEventFields',
@@ -40,6 +42,17 @@ const ENVELOPE_CONTRACT = [
     'computeQueueAge', 'addInFlightChunk', 'getInFlightChunks',
     'dropInFlightHead', 'replaceInFlightHeadAttempt'
 ];
+const DISPATCH_CONTRACT = [
+    'buildDispatchPlanV1', 'buildDispatchRequestV1',
+    'ackHashForDiscordMessageId', 'applyDispatchPlanTransitionV1',
+    'createDispatchPlanInAccountingV1', 'commitDispatchPlanTransitionV1'
+];
+const CONSERVATION_CONTRACT = [
+    'sourceEventIdFromTuple', 'sourceEventTuple',
+    'createMonitorQueueEvent', 'coalesceMonitorPendingEvents',
+    'compactDeliveryAccountingV1', 'prepareTerminalCompactionV1',
+    'resumeTerminalCompactionV1'
+];
 
 function selected(names) {
     return runtimeApi.select('pure-module-parity', names);
@@ -55,7 +68,9 @@ test('pure seams preserve the legacy public names and fixture outputs', () => {
         ['snapshot', snapshot, Object.keys(snapshot)],
         ['discord', discord, Object.keys(discord)],
         ['migration', migration, MIGRATION_CONTRACT],
-        ['envelope', envelope, ENVELOPE_CONTRACT]
+        ['envelope', envelope, ENVELOPE_CONTRACT],
+        ['dispatch', dispatch, DISPATCH_CONTRACT],
+        ['conservation', conservation, CONSERVATION_CONTRACT]
     ];
     for (const [name, actual, names] of contracts) {
         assert.deepEqual(Object.keys(actual).sort(), names.slice().sort(), `${name} export mismatch`);
@@ -112,7 +127,7 @@ test('pure seams load when runtime resolution is blocked', () => {
             if (request.endsWith('/runtime.js') || request === '../runtime.js') throw new Error('runtime blocked');
             return original.call(this, request, parent, isMain, options);
         };
-        for (const name of ['constants', 'parser', 'text', 'route', 'transport', 'snapshot', 'discord', 'migration', 'envelope']) {
+        for (const name of ['constants', 'parser', 'text', 'route', 'transport', 'snapshot', 'discord', 'migration', 'envelope', 'dispatch', 'conservation']) {
             const value = require(${JSON.stringify(path.join(root, 'src'))} + '/' + name + '.js');
             if (!value || Object.keys(value).length === 0) throw new Error(name + ' did not load');
         }
@@ -141,6 +156,33 @@ test('migration and envelope preserve codec identities and representative transi
     assert.deepEqual(envelope.createMonitorEnvelopeV1('S1.Example', { nowMs: 10 }), legacyEnvelope.createMonitorEnvelopeV1('S1.Example', { nowMs: 10 }));
     assert.deepEqual(envelope.coalesceMonitorPendingEvents([], 2, 10), legacyEnvelope.coalesceMonitorPendingEvents([], 2, 10));
     assert.equal(envelope.resumeTerminalCompactionV1, envelope.compactDeliveryAccountingV1);
+});
+
+test('dispatch and conservation preserve plan identities and facade references', () => {
+    assert.deepEqual(Object.keys(dispatch).sort(), [...DISPATCH_CONTRACT].sort());
+    assert.deepEqual(Object.keys(conservation).sort(), [...CONSERVATION_CONTRACT].sort());
+    const legacyDispatch = selected(DISPATCH_CONTRACT);
+    const legacyConservation = selected(CONSERVATION_CONTRACT);
+    const plan = dispatch.buildDispatchPlanV1([], { chunkSize: 2, generation: 1 });
+    assert.deepEqual(plan, legacyDispatch.buildDispatchPlanV1([], { chunkSize: 2, generation: 1 }));
+    assert.equal(dispatch.ackHashForDiscordMessageId('message-9'), legacyDispatch.ackHashForDiscordMessageId('message-9'));
+    assert.equal(dispatch.applyDispatchPlanTransitionV1(plan, { type: 'bogus' }), null);
+    const tuple = {
+        world: 'S1.Example', playerId: '42', eventType: 'raid',
+        acceptedGeneration: 2, scanSequence: 4, attackDelta: 0, raidDelta: 1
+    };
+    assert.equal(conservation.sourceEventIdFromTuple(tuple), legacyConservation.sourceEventIdFromTuple(tuple));
+    assert.deepEqual(conservation.coalesceMonitorPendingEvents([], 2, 10), legacyConservation.coalesceMonitorPendingEvents([], 2, 10));
+    assert.equal(conservation.resumeTerminalCompactionV1, conservation.compactDeliveryAccountingV1);
+    const envelopeImpl = require(path.join(root, 'src', 'envelope-impl.js'));
+    const migrationImpl = require(path.join(root, 'src', 'migration-impl.js'));
+    const conservationImpl = require(path.join(root, 'src', 'conservation-impl.js'));
+    for (const name of ['coalesceMonitorPendingEvents', 'compactDeliveryAccountingV1', 'prepareTerminalCompactionV1', 'resumeTerminalCompactionV1', 'createMonitorQueueEvent']) {
+        assert.equal(conservationImpl[name], envelopeImpl[name], `${name} must re-export envelope-impl without duplicate logic`);
+    }
+    for (const name of ['sourceEventIdFromTuple', 'sourceEventTuple']) {
+        assert.equal(conservationImpl[name], migrationImpl[name], `${name} must re-export migration-impl without duplicate logic`);
+    }
 });
 
 test('export-name mismatch is a hard parity failure', () => {

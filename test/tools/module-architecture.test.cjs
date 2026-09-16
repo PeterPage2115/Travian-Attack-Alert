@@ -70,8 +70,8 @@ const TIMER_HANDLE_SINGLETONS = [
 // Exact src inventory: any extra file is a dormant entry and fails.
 const SRC_ALLOWLIST = [
   'src/acquisition.js', 'src/adapters.js', 'src/boot.js',
-  'src/browser-entry.js', 'src/conservation.js', 'src/constants.js',
-  'src/diagnostics.js', 'src/discord-impl.js', 'src/discord.js', 'src/dispatch.js',
+  'src/browser-entry.js', 'src/conservation-impl.js', 'src/conservation.js', 'src/constants.js',
+  'src/diagnostics.js', 'src/discord-impl.js', 'src/discord.js', 'src/dispatch-impl.js', 'src/dispatch.js',
   'src/envelope-impl.js', 'src/envelope.js', 'src/lease-impl.js', 'src/lease.js', 'src/lifecycle.js',
   'src/migration-impl.js', 'src/migration.js', 'src/panel.js', 'src/parser-impl.js', 'src/parser.js', 'src/route.js',
   'src/runtime-api.js', 'src/runtime.js', 'src/snapshot-impl.js', 'src/snapshot.js',
@@ -90,12 +90,14 @@ const ALLOWED_DEPS = {
   'src/adapters.js': [],
   'src/boot.js': ['src/route.js'],
   'src/browser-entry.js': ['src/boot.js'],
-  'src/conservation.js': ['src/runtime-api.js'],
+  'src/conservation.js': ['src/conservation-impl.js'],
+  'src/conservation-impl.js': ['src/envelope-impl.js', 'src/migration-impl.js'],
   'src/constants.js': [],
   'src/diagnostics.js': ['src/runtime-api.js'],
   'src/discord-impl.js': ['src/constants.js', 'src/snapshot-impl.js', 'src/text.js'],
   'src/discord.js': ['src/discord-impl.js'],
-  'src/dispatch.js': ['src/runtime-api.js'],
+  'src/dispatch.js': ['src/dispatch-impl.js'],
+  'src/dispatch-impl.js': ['src/constants.js', 'src/envelope-impl.js'],
   'src/envelope-impl.js': ['src/lease-impl.js', 'src/migration-impl.js'],
   'src/envelope.js': ['src/envelope-impl.js'],
   'src/lease-impl.js': ['src/adapters.js', 'src/route.js'],
@@ -235,6 +237,21 @@ test('contracts: every selected symbol resolves and duplicates equal the frozen 
     if (domains.length > 1) actual[symbol] = [...domains].sort();
   }
   assert.deepEqual(actual, KNOWN_DUPLICATE_EXPORTS);
+});
+
+test('dedup: conservation holds no independent logic beyond envelope and migration', () => {
+  const conservationImpl = require(path.join(SRC, 'conservation-impl.js'));
+  const envelopeImpl = require(path.join(SRC, 'envelope-impl.js'));
+  const migrationImpl = require(path.join(SRC, 'migration-impl.js'));
+  assert.deepEqual(
+    Object.keys(conservationImpl).sort(),
+    ['coalesceMonitorPendingEvents', 'compactDeliveryAccountingV1', 'createMonitorQueueEvent', 'prepareTerminalCompactionV1', 'resumeTerminalCompactionV1', 'sourceEventIdFromTuple', 'sourceEventTuple'],
+  );
+  for (const name of Object.keys(conservationImpl)) {
+    const owner = envelopeImpl[name] !== undefined ? envelopeImpl : migrationImpl;
+    assert.equal(conservationImpl[name], owner[name], `${name} must be the identical reference, not a copied duplicate`);
+  }
+  assert.doesNotMatch(readSrc('src/conservation-impl.js'), /\bfunction\b/);
 });
 
 test('lifecycle: module exposes the fixed factory and controller API exactly', () => {

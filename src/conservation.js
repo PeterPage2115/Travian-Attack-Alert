@@ -1,4 +1,12 @@
 'use strict';
 
-/** Count and lineage projections used to audit delivery conservation. */
-module.exports = require('./runtime-api.js').conservation;
+const impl = require('./conservation-impl.js');
+
+const CONTRACT = [
+  'sourceEventIdFromTuple', 'sourceEventTuple',
+  'createMonitorQueueEvent', 'coalesceMonitorPendingEvents',
+  'compactDeliveryAccountingV1', 'prepareTerminalCompactionV1',
+  'resumeTerminalCompactionV1',
+];
+
+module.exports = Object.fromEntries(CONTRACT.map((name) => [name, impl[name]]));
