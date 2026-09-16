@@ -12,6 +12,8 @@ const parser = require(path.join(root, 'src', 'parser.js'));
 const text = require(path.join(root, 'src', 'text.js'));
 const route = require(path.join(root, 'src', 'route.js'));
 const transport = require(path.join(root, 'src', 'transport.js'));
+const snapshot = require(path.join(root, 'src', 'snapshot.js'));
+const discord = require(path.join(root, 'src', 'discord.js'));
 
 function selected(names) {
     return runtimeApi.select('pure-module-parity', names);
@@ -23,7 +25,9 @@ test('pure seams preserve the legacy public names and fixture outputs', () => {
         ['parser', parser, Object.keys(parser)],
         ['text', text, Object.keys(text)],
         ['route', route, Object.keys(route)],
-        ['transport', transport, Object.keys(transport)]
+        ['transport', transport, Object.keys(transport)],
+        ['snapshot', snapshot, Object.keys(snapshot)],
+        ['discord', discord, Object.keys(discord)]
     ];
     for (const [name, actual, names] of contracts) {
         assert.deepEqual(Object.keys(actual).sort(), names.slice().sort(), `${name} export mismatch`);
@@ -80,7 +84,7 @@ test('pure seams load when runtime resolution is blocked', () => {
             if (request.endsWith('/runtime.js') || request === '../runtime.js') throw new Error('runtime blocked');
             return original.call(this, request, parent, isMain, options);
         };
-        for (const name of ['constants', 'parser', 'text', 'route', 'transport']) {
+        for (const name of ['constants', 'parser', 'text', 'route', 'transport', 'snapshot', 'discord']) {
             const value = require(${JSON.stringify(path.join(root, 'src'))} + '/' + name + '.js');
             if (!value || Object.keys(value).length === 0) throw new Error(name + ' did not load');
         }
