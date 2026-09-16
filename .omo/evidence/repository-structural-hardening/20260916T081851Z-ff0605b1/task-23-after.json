@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "task": 23,
+  "attemptId": "20260916T081851Z-ff0605b1",
+  "capturedAt": "2026-09-16T16:26:02Z",
+  "repository": {
+    "fullName": "PeterPage2115/Travian-Attack-Alert",
+    "defaultBranch": "release/public-1.0.0",
+    "description": "Tampermonkey userscript: Travian alliance attack alerts to Discord",
+    "homepage": "https://github.com/PeterPage2115/Travian-Attack-Alert",
+    "topics": ["discord-webhook", "tampermonkey", "travian", "userscript"]
+  },
+  "protection": {
+    "strict": true,
+    "requiredChecks": [
+      {"context": "offline-node-18", "appId": 15368},
+      {"context": "offline-node-20", "appId": 15368},
+      {"context": "browser-node-20", "appId": 15368},
+      {"context": "cross-node-determinism", "appId": 15368}
+    ],
+    "enforceAdmins": true,
+    "requiredApprovingReviewCount": 1,
+    "dismissStaleReviews": true,
+    "requiredConversationResolution": true,
+    "allowForcePushes": false,
+    "allowDeletions": false
+  },
+  "pullRequest": {
+    "number": 2,
+    "url": "https://github.com/PeterPage2115/Travian-Attack-Alert/pull/2",
+    "state": "OPEN",
+    "mergedAt": null,
+    "headSha": "f757f8d784538911ad9ab67954384eb97e05f5f1",
+    "mergeable": "MERGEABLE",
+    "mergeStateStatus": "BLOCKED",
+    "reviewDecision": "REVIEW_REQUIRED",
+    "checks": {
+      "offline-node-18": "FAILURE",
+      "offline-node-20": "FAILURE",
+      "browser-node-20": "FAILURE",
+      "cross-node-determinism": "SKIPPED",
+      "CodeRabbit": "SUCCESS"
+    }
+  }
+}
