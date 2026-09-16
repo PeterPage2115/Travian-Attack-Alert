@@ -83,6 +83,17 @@
       ]
     },
     {
+      "id": "suite:test/characterization/parser-rejection-table.test.cjs",
+      "path": "test/characterization/parser-rejection-table.test.cjs",
+      "classification": "offline",
+      "expectedExecutionCount": 10,
+      "coverage": [
+        "parser-contract",
+        "parser-rejection-table",
+        "utf16-signature"
+      ]
+    },
+    {
       "id": "suite:test/characterization/storage-roundtrip.test.cjs",
       "path": "test/characterization/storage-roundtrip.test.cjs",
       "classification": "offline",
@@ -90,6 +101,17 @@
       "coverage": [
         "storage-contract",
         "storage-roundtrip"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/transport-retry.test.cjs",
+      "path": "test/characterization/transport-retry.test.cjs",
+      "classification": "offline",
+      "expectedExecutionCount": 11,
+      "coverage": [
+        "transport-contract",
+        "retry-classification",
+        "bounded-delivery"
       ]
     },
     {

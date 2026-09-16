@@ -73,14 +73,14 @@ const SRC_ALLOWLIST = [
   'src/browser-entry.js', 'src/conservation.js', 'src/constants.js',
   'src/diagnostics.js', 'src/discord.js', 'src/dispatch.js',
   'src/envelope.js', 'src/lease-impl.js', 'src/lease.js', 'src/lifecycle.js',
-  'src/migration.js', 'src/panel.js', 'src/parser.js', 'src/route.js',
+  'src/migration.js', 'src/panel.js', 'src/parser-impl.js', 'src/parser.js', 'src/route.js',
   'src/runtime-api.js', 'src/runtime.js', 'src/snapshot.js',
   'src/storage-diagnostics.js', 'src/storage-failed.js',
   'src/storage-history.js', 'src/storage-identity.js', 'src/storage-impl.js',
   'src/storage-mappings.js', 'src/storage-mutes.js',
   'src/storage-provenance.js', 'src/storage-queue.js', 'src/storage-roster.js',
   'src/storage-settings.js', 'src/storage-webhook.js',
-  'src/storage.js', 'src/text.js', 'src/transport.js',
+  'src/storage.js', 'src/text.js', 'src/transport-impl.js', 'src/transport.js',
   'src/userscript-entry.js',
 ];
 
@@ -101,7 +101,8 @@ const ALLOWED_DEPS = {
   'src/lifecycle.js': [],
   'src/migration.js': ['src/runtime-api.js'],
   'src/panel.js': ['src/runtime-api.js'],
-  'src/parser.js': ['src/runtime-api.js'],
+  'src/parser-impl.js': ['src/text.js'],
+  'src/parser.js': ['src/parser-impl.js'],
   'src/route.js': [],
   'src/runtime-api.js': ['src/runtime.js'],
   'src/runtime.js': [],
@@ -120,7 +121,8 @@ const ALLOWED_DEPS = {
   'src/storage-failed.js': ['src/storage-impl.js', 'src/storage-queue.js'],
   'src/storage.js': ['src/storage-impl.js', 'src/storage-identity.js', 'src/storage-webhook.js', 'src/storage-mappings.js', 'src/storage-provenance.js', 'src/storage-mutes.js', 'src/storage-roster.js', 'src/storage-settings.js', 'src/storage-history.js', 'src/storage-queue.js', 'src/storage-failed.js', 'src/storage-diagnostics.js'],
   'src/text.js': [],
-  'src/transport.js': ['src/runtime-api.js'],
+  'src/transport-impl.js': ['src/adapters.js', 'src/constants.js', 'src/text.js'],
+  'src/transport.js': ['src/transport-impl.js'],
   'src/userscript-entry.js': ['src/runtime.js'],
 };
 
