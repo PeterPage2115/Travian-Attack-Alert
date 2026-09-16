@@ -255,6 +255,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/module-architecture.test.cjs",
+      "path": "test/tools/module-architecture.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 14,
+      "coverage": [
+        "repository-tooling",
+        "module-architecture"
+      ]
+    },
+    {
       "id": "suite:test/tools/plan-evidence-audit.test.cjs",
       "path": "test/tools/plan-evidence-audit.test.cjs",
       "classification": "tool",
@@ -353,8 +363,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 33,
-    "expectedExecutionCount": 873,
+    "suiteCount": 34,
+    "expectedExecutionCount": 887,
     "byClassification": {
       "browser": {
         "suiteCount": 12,
@@ -373,8 +383,8 @@
         "expectedExecutionCount": 358
       },
       "tool": {
-        "suiteCount": 12,
-        "expectedExecutionCount": 113
+        "suiteCount": 13,
+        "expectedExecutionCount": 127
       }
     }
   },
