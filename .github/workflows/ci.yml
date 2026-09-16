@@ -59,10 +59,10 @@ jobs:
           rm -rf node_modules
           node tools/audit-public-tree.cjs --root . --baseline . --out test-results/privacy-scan.json
           node -e "const r=require('./test-results/privacy-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r,null,2));process.exit(1);} console.log('privacy scan verdict: PASS');"
-          hits=$(grep -rEn "discord\\.com/api/webhooks/[0-9]+/[A-Za-z0-9_\\-]{32,}" --exclude-dir=node_modules --exclude-dir=.git . || true)
-          hits=$(printf '%s\n' "$hits" | grep -viE "FAKE|PLACEHOLDER|example" || true)
-          if [ -n "$hits" ]; then printf '%s\n' "$hits"; echo "secret pattern scan: live webhook token found"; exit 1; fi
-          echo "secret pattern scan: clean"
+          # Single-source secret shapes: no duplicated grep regexes — the
+          # policy lives in tools/audit-public-tree.cjs (--mode secrets).
+          node tools/audit-public-tree.cjs --mode secrets --root . --out test-results/secret-scan.json
+          node -e "const r=require('./test-results/secret-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r.secretHits,null,2));process.exit(1);} console.log('secret pattern scan: clean');"
 
       - name: Upload determinism bundle
         uses: actions/upload-artifact@v4
@@ -119,10 +119,10 @@ jobs:
           rm -rf node_modules
           node tools/audit-public-tree.cjs --root . --baseline . --out test-results/privacy-scan.json
           node -e "const r=require('./test-results/privacy-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r,null,2));process.exit(1);} console.log('privacy scan verdict: PASS');"
-          hits=$(grep -rEn "discord\\.com/api/webhooks/[0-9]+/[A-Za-z0-9_\\-]{32,}" --exclude-dir=node_modules --exclude-dir=.git . || true)
-          hits=$(printf '%s\n' "$hits" | grep -viE "FAKE|PLACEHOLDER|example" || true)
-          if [ -n "$hits" ]; then printf '%s\n' "$hits"; echo "secret pattern scan: live webhook token found"; exit 1; fi
-          echo "secret pattern scan: clean"
+          # Single-source secret shapes: no duplicated grep regexes — the
+          # policy lives in tools/audit-public-tree.cjs (--mode secrets).
+          node tools/audit-public-tree.cjs --mode secrets --root . --out test-results/secret-scan.json
+          node -e "const r=require('./test-results/secret-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r.secretHits,null,2));process.exit(1);} console.log('secret pattern scan: clean');"
 
       - name: Upload determinism bundle
         uses: actions/upload-artifact@v4

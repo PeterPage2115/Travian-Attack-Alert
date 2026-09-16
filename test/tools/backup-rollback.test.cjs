@@ -27,17 +27,16 @@ function fixture() {
     for (const file of TOOL_FILES) fs.copyFileSync(path.join(ROOT, 'tools', file), path.join(project, 'tools', file));
     fs.copyFileSync(path.join(ROOT, 'package.json'), path.join(project, 'package.json'));
     fs.mkdirSync(path.join(project, 'src'), { recursive: true });
-    fs.writeFileSync(path.join(project, 'src', 'runtime.js'), "'use strict';\nmodule.exports = { fixture: true };\n");
-    const runtimeHash = hash(path.join(project, 'src', 'runtime.js'));
+    fs.writeFileSync(path.join(project, 'src', 'runtime.js'), `'use strict';\nmodule.exports = { fixture: true, releaseId: '${RELEASE_ID}' };\n`);
+    fs.writeFileSync(path.join(project, 'src', 'userscript-entry.js'), "'use strict';\nconst runtime = require('./runtime.js');\nif (typeof document !== 'undefined' && typeof location !== 'undefined') runtime.startBrowserRuntime();\nmodule.exports = runtime;\n");
     fs.mkdirSync(path.join(project, 'config'), { recursive: true });
-    fs.writeFileSync(path.join(project, 'config', 'userscript.json'), JSON.stringify({ name: 'Fixture', namespace: 'fixture', description: 'fixture', match: ['https://*.example.test/*'] }) + '\n');
-    fs.writeFileSync(path.join(project, 'metadata.json'), JSON.stringify({ schemaVersion: 1, release: { version: VERSION, releaseId: RELEASE_ID }, artifact: { path: 'dist/travian-attack-alert.user.js', sha256: runtimeHash, source: { path: 'src/userscript-entry.js', sha256: runtimeHash }, dist: { path: 'dist/travian-attack-alert.user.js', sha256: runtimeHash } } }) + '\n');
-    fs.writeFileSync(path.join(project, 'module-manifest.json'), JSON.stringify({ schemaVersion: 1, release: { version: VERSION, releaseId: RELEASE_ID }, modules: [] }) + '\n');
-    // The fixture mirrors an installed project: the generated dist tree exists
-    // on disk but is deliberately NOT part of the backup set.
-    fs.mkdirSync(path.join(project, 'dist'), { recursive: true });
-    fs.copyFileSync(path.join(project, 'src', 'runtime.js'), path.join(project, 'dist', 'travian-attack-alert.user.js'));
-    fs.writeFileSync(path.join(project, 'dist', 'travian-attack-alert.user.js.sha256'), `${runtimeHash}  dist/travian-attack-alert.user.js\n`);
+    fs.copyFileSync(path.join(ROOT, 'config', 'userscript.json'), path.join(project, 'config', 'userscript.json'));
+    // The fixture mirrors an installed project: the generated dist tree plus
+    // metadata/manifest are produced by the real build, so rollback's
+    // post-restore rebuild is byte-identical. dist is deliberately NOT part
+    // of the backup set.
+    const built = run(project, 'build.cjs');
+    assert.equal(built.status, 0, built.stderr);
     return project;
 }
 function liveHashes(project) { return LIVE_FILES.map((file) => hash(path.join(project, file))); }
@@ -47,6 +46,19 @@ function backupSelector(project) {
     return result.stdout.trim();
 }
 function selectorInfo(project) { const digest = backupSelector(project); return { digest, selector: `${VERSION}-${digest.slice(0, 8)}`, dir: path.join(project, 'backups') }; }
+// Legacy-reader proof (Todo 5): the pre-existing tests below pin the
+// schemaVersion-1 restore contract, so they run against a legacy-only
+// snapshot — the additive source/config manifest is stripped after backup
+// to force the preserved legacy manifest/sidecar readers.
+function stripSourceConfigSnapshot(project, selector) {
+    fs.rmSync(path.join(project, 'backups', `backup-${selector}.source-config.manifest.json`), { force: true });
+    fs.rmSync(path.join(project, 'backups', `source-config-${selector}`), { recursive: true, force: true });
+}
+function legacySelectorInfo(project) {
+    const info = selectorInfo(project);
+    stripSourceConfigSnapshot(project, info.selector);
+    return info;
+}
 function payloadName(kind, selector) { return `${kind === 'moduleManifest' ? 'module-manifest' : kind}-${selector}.${kind === 'runtime' ? 'js' : 'json'}`; }
 function unchangedFailure(project, args, extra = {}) { const before = liveHashes(project); const result = run(project, 'rollback.cjs', args, extra); assert.notEqual(result.status, 0, result.stdout); assert.deepEqual(liveHashes(project), before); }
 
@@ -93,7 +105,7 @@ test('Given a valid backup, When rollback selects version-hash, Then it restores
 test('Given a tampered backup, When rollback runs, Then it fails before changing live files', () => {
     const project = fixture();
     try {
-        const digest = backupSelector(project); const selector = `${VERSION}-${digest.slice(0, 8)}`;
+        const { selector } = legacySelectorInfo(project);
         const before = liveHashes(project);
         fs.appendFileSync(path.join(project, 'backups', `runtime-${selector}.js`), 'tamper');
         const result = run(project, 'rollback.cjs', [selector]);
@@ -104,31 +116,31 @@ test('Given a tampered backup, When rollback runs, Then it fails before changing
 for (const kind of ['runtime', 'config', 'metadata', 'moduleManifest']) {
     for (const operation of ['append', 'truncate']) test(`Given a ${kind} payload with ${operation} corruption, When rollback runs, Then live files remain unchanged`, () => {
         const project = fixture();
-        try { const { selector, dir } = selectorInfo(project); const payload = path.join(dir, payloadName(kind, selector)); if (operation === 'append') fs.appendFileSync(payload, 'x'); else fs.writeFileSync(payload, fs.readFileSync(payload).subarray(0, Math.floor(fs.statSync(payload).size / 2))); unchangedFailure(project, [selector]); }
+        try { const { selector, dir } = legacySelectorInfo(project); const payload = path.join(dir, payloadName(kind, selector)); if (operation === 'append') fs.appendFileSync(payload, 'x'); else fs.writeFileSync(payload, fs.readFileSync(payload).subarray(0, Math.floor(fs.statSync(payload).size / 2))); unchangedFailure(project, [selector]); }
         finally { fs.rmSync(project, { recursive: true, force: true }); }
     });
     test(`Given a ${kind} sidecar with bad hex, When rollback runs, Then live files remain unchanged`, () => {
         const project = fixture();
-        try { const { selector, dir } = selectorInfo(project); fs.writeFileSync(path.join(dir, `${payloadName(kind, selector)}.sha256`), `not-a-digest  ${payloadName(kind, selector)}\n`); unchangedFailure(project, [selector]); }
+        try { const { selector, dir } = legacySelectorInfo(project); fs.writeFileSync(path.join(dir, `${payloadName(kind, selector)}.sha256`), `not-a-digest  ${payloadName(kind, selector)}\n`); unchangedFailure(project, [selector]); }
         finally { fs.rmSync(project, { recursive: true, force: true }); }
     });
     test(`Given a ${kind} sidecar with a wrong filename, When rollback runs, Then live files remain unchanged`, () => {
         const project = fixture();
-        try { const { selector, dir } = selectorInfo(project); const sidecar = path.join(dir, `${payloadName(kind, selector)}.sha256`); fs.writeFileSync(sidecar, fs.readFileSync(sidecar, 'utf8').replace(payloadName(kind, selector), 'wrong-name')); unchangedFailure(project, [selector]); }
+        try { const { selector, dir } = legacySelectorInfo(project); const sidecar = path.join(dir, `${payloadName(kind, selector)}.sha256`); fs.writeFileSync(sidecar, fs.readFileSync(sidecar, 'utf8').replace(payloadName(kind, selector), 'wrong-name')); unchangedFailure(project, [selector]); }
         finally { fs.rmSync(project, { recursive: true, force: true }); }
     });
 }
 
 test('Given a missing named sidecar, When rollback runs, Then live files remain unchanged', () => {
     const project = fixture();
-    try { const { selector, dir } = selectorInfo(project); fs.rmSync(path.join(dir, `${payloadName('metadata', selector)}.sha256`)); unchangedFailure(project, [selector]); }
+    try { const { selector, dir } = legacySelectorInfo(project); fs.rmSync(path.join(dir, `${payloadName('metadata', selector)}.sha256`)); unchangedFailure(project, [selector]); }
     finally { fs.rmSync(project, { recursive: true, force: true }); }
 });
 
 for (const mutation of ['schemaVersion', 'version', 'releaseId', 'selector', 'path', 'digest', 'runtimeSha256']) test(`Given a manifest with corrupt ${mutation}, When rollback runs, Then live files remain unchanged`, () => {
     const project = fixture();
     try {
-        const { selector, dir } = selectorInfo(project); const manifestPath = path.join(dir, `backup-${selector}.manifest.json`); const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        const { selector, dir } = legacySelectorInfo(project); const manifestPath = path.join(dir, `backup-${selector}.manifest.json`); const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
         if (mutation === 'schemaVersion') manifest.schemaVersion = 2; else if (mutation === 'version') manifest.version = '6.1.1'; else if (mutation === 'releaseId') manifest.releaseId = 'taa-6.1.1'; else if (mutation === 'selector') manifest.selector = '6.1.1-deadbeef'; else if (mutation === 'path') manifest.files.runtime.path = '../runtime.js'; else if (mutation === 'digest') manifest.files.metadata.sha256 = '0'.repeat(64); else manifest.runtimeSha256 = '0'.repeat(64);
         fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`); unchangedFailure(project, [selector]);
     } finally { fs.rmSync(project, { recursive: true, force: true }); }
@@ -148,14 +160,14 @@ for (const kind of ['runtime', 'config', 'metadata', 'moduleManifest']) {
     });
     test(`Given rollback staged-readback failure for ${kind}, When rollback runs, Then live files remain unchanged`, () => {
         const project = fixture();
-        try { const { selector } = selectorInfo(project); unchangedFailure(project, [selector], { TAA_FAIL_STAGED_READBACK: kind }); }
+        try { const { selector } = legacySelectorInfo(project); unchangedFailure(project, [selector], { TAA_FAIL_STAGED_READBACK: kind }); }
         finally { fs.rmSync(project, { recursive: true, force: true }); }
     });
 }
 
 for (const missing of ['metadata.json', 'src/runtime.js']) test(`Given missing live ${missing}, When rollback runs, Then validated backup restores the complete source set`, () => {
     const project = fixture();
-    try { const { selector, digest, dir } = selectorInfo(project); fs.rmSync(path.join(project, missing)); const result = run(project, 'rollback.cjs', [selector]); assert.equal(result.status, 0, result.stderr); assert.deepEqual(liveHashes(project), [digest, hash(path.join(dir, payloadName('config', selector))), hash(path.join(dir, payloadName('metadata', selector))), hash(path.join(dir, payloadName('moduleManifest', selector)))]); }
+    try { const { selector, digest, dir } = legacySelectorInfo(project); fs.rmSync(path.join(project, missing)); const result = run(project, 'rollback.cjs', [selector]); assert.equal(result.status, 0, result.stderr); assert.deepEqual(liveHashes(project), [digest, hash(path.join(dir, payloadName('config', selector))), hash(path.join(dir, payloadName('metadata', selector))), hash(path.join(dir, payloadName('moduleManifest', selector)))]); }
     finally { fs.rmSync(project, { recursive: true, force: true }); }
 });
 
@@ -164,21 +176,21 @@ for (const failure of [
     { name: 'phase-prepared', env: { TAA_FAIL_PHASE: 'prepared' } }, { name: 'phase-old-moved', env: { TAA_FAIL_PHASE: 'old-moved' } }, { name: 'phase-target-moved', env: { TAA_FAIL_PHASE: 'target-moved' } }
 ]) test(`Given ${failure.name}, When rollback fails, Then startup recovery restores the original source set`, () => {
     const project = fixture();
-    try { const { selector } = selectorInfo(project); const before = liveHashes(project); const failed = run(project, 'rollback.cjs', [selector], failure.env); assert.notEqual(failed.status, 0); const recovered = run(project, 'rollback.cjs', ['bad']); assert.notEqual(recovered.status, 0); assert.deepEqual(liveHashes(project), before); assert.equal(fs.readdirSync(path.join(project, 'backups')).filter((name) => /^\.rollback-journal-/.test(name)).length, 0); }
+    try { const { selector } = legacySelectorInfo(project); const before = liveHashes(project); const failed = run(project, 'rollback.cjs', [selector], failure.env); assert.notEqual(failed.status, 0); const recovered = run(project, 'rollback.cjs', ['bad']); assert.notEqual(recovered.status, 0); assert.deepEqual(liveHashes(project), before); assert.equal(fs.readdirSync(path.join(project, 'backups')).filter((name) => /^\.rollback-journal-/.test(name)).length, 0); }
     finally { fs.rmSync(project, { recursive: true, force: true }); }
 });
 
 test('Given a current-version backup, When rollback receives bare hash8, Then it selects the current package version', () => {
     const project = fixture();
-    try { const { digest } = selectorInfo(project); fs.writeFileSync(path.join(project, 'src', 'runtime.js'), 'changed'); const result = run(project, 'rollback.cjs', [digest.slice(0, 8)]); assert.equal(result.status, 0, result.stderr); assert.equal(hash(path.join(project, 'src', 'runtime.js')), digest); }
+    try { const { digest } = legacySelectorInfo(project); fs.writeFileSync(path.join(project, 'src', 'runtime.js'), 'changed'); const result = run(project, 'rollback.cjs', [digest.slice(0, 8)]); assert.equal(result.status, 0, result.stderr); assert.equal(hash(path.join(project, 'src', 'runtime.js')), digest); }
     finally { fs.rmSync(project, { recursive: true, force: true }); }
 });
 
 test('Given a swap failure, When rollback starts again, Then startup recovery restores the original matching source set', () => {
     const project = fixture();
     try {
-        const digest = backupSelector(project); const before = liveHashes(project);
-        const failed = run(project, 'rollback.cjs', [`${VERSION}-${digest.slice(0, 8)}`], { TAA_FAIL_PHASE: 'target-moved' });
+        const { selector } = legacySelectorInfo(project); const before = liveHashes(project);
+        const failed = run(project, 'rollback.cjs', [selector], { TAA_FAIL_PHASE: 'target-moved' });
         assert.notEqual(failed.status, 0);
         const recovered = run(project, 'rollback.cjs', ['bad']);
         assert.notEqual(recovered.status, 0); assert.deepEqual(liveHashes(project), before);
@@ -189,7 +201,7 @@ test('Given a swap failure, When rollback starts again, Then startup recovery re
 test('Given a crash after one old move, When rollback starts again, Then recovery restores the original source set', () => {
     const project = fixture();
     try {
-        const { selector } = selectorInfo(project); const before = liveHashes(project);
+        const { selector } = legacySelectorInfo(project); const before = liveHashes(project);
         const crashed = run(project, 'rollback.cjs', [selector], { TAA_CRASH_AFTER_OLD_MOVED: '1' }); assert.notEqual(crashed.status, 0);
         const recovered = run(project, 'rollback.cjs', ['bad']); assert.notEqual(recovered.status, 0); assert.deepEqual(liveHashes(project), before); assert.equal(fs.readdirSync(path.join(project, 'backups')).filter((name) => /^\.rollback-journal-/.test(name)).length, 0);
     } finally { fs.rmSync(project, { recursive: true, force: true }); }
@@ -198,7 +210,7 @@ test('Given a crash after one old move, When rollback starts again, Then recover
 test('Given a crash after one target swap, When rollback starts again, Then recovery restores the original source set', () => {
     const project = fixture();
     try {
-        const { selector, digest, dir } = selectorInfo(project); const before = liveHashes(project);
+        const { selector, digest, dir } = legacySelectorInfo(project); const before = liveHashes(project);
         const crashed = run(project, 'rollback.cjs', [selector], { TAA_CRASH_AFTER_SWAP: '1' }); assert.notEqual(crashed.status, 0);
         const recovered = run(project, 'rollback.cjs', [selector]); assert.equal(recovered.status, 0, recovered.stderr);
         assert.deepEqual(liveHashes(project), [digest, hash(path.join(dir, payloadName('config', selector))), hash(path.join(dir, payloadName('metadata', selector))), hash(path.join(dir, payloadName('moduleManifest', selector)))]); assert.equal(fs.readdirSync(dir).filter((name) => /^\.rollback-journal-/.test(name)).length, 0);
@@ -208,7 +220,7 @@ test('Given a crash after one target swap, When rollback starts again, Then reco
 test('Given a missing live metadata file and a crash after one old move, When rollback restarts, Then recovery and retry restore the validated backup source set', () => {
     const project = fixture();
     try {
-        const { selector, digest, dir } = selectorInfo(project); fs.rmSync(path.join(project, 'metadata.json'));
+        const { selector, digest, dir } = legacySelectorInfo(project); fs.rmSync(path.join(project, 'metadata.json'));
         const crashed = run(project, 'rollback.cjs', [selector], { TAA_CRASH_AFTER_OLD_MOVED: '1' }); assert.notEqual(crashed.status, 0);
         const recovered = run(project, 'rollback.cjs', [selector]); assert.equal(recovered.status, 0, recovered.stderr);
         assert.deepEqual(liveHashes(project), [digest, hash(path.join(dir, payloadName('config', selector))), hash(path.join(dir, payloadName('metadata', selector))), hash(path.join(dir, payloadName('moduleManifest', selector)))]); assert.equal(fs.readdirSync(dir).filter((name) => /^\.rollback-journal-/.test(name)).length, 0);
