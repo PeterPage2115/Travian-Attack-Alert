@@ -1,72 +1,55 @@
 name: CI
 
 on:
-  push:
-    branches: [main, release/public-1.0.0]
   pull_request:
-    branches: [main, release/public-1.0.0]
+    branches: [release/public-1.0.0]
+  push:
+    branches: [release/public-1.0.0]
 
 # Read-only CI: verify and upload evidence, never publish or release.
 permissions:
   contents: read
 
 jobs:
-  verify:
+  offline-node-18:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [18, 20]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js 18
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 18
           cache: npm
 
       - name: Install (locked dependencies)
         run: npm ci
 
-      # A subset of unit tests (DOM snapshot harness in test/script.test.cjs)
-      # drives a real Chromium via Playwright, so the browser must exist.
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      # Generated files (dist/*.user.js, metadata.json, module-manifest.json)
+      # are build outputs, so the deterministic build must run first.
+      - name: Build generated artifacts
+        run: npm run build
+
+      - name: Offline unit gates
+        run: npm run test:offline
+
+      - name: Tools gates
+        run: npm run test:tools
+
+      - name: Artifact gates
+        run: npm run test:artifact
+
+      - name: Checks (versions, artifact, inventory)
+        run: npm run check
 
       - name: Type gate (non-blocking; pre-existing monolith typings, see F2 review)
         continue-on-error: true
         run: npm run check:types
 
-      # Unit/tool tests read generated files (dist/*.user.js, metadata.json,
-      # module-manifest.json), so the deterministic build must run first.
-      - name: Build generated artifacts
-        run: npm run build
-
-      - name: Offline unit gates
-        run: npm test
-
-      - name: Tools gates
-        run: npm run test:tools
-
       - name: Quality gate (non-blocking; pre-existing monolith size, see F2 review)
         continue-on-error: true
         run: npm run quality
-
-      - name: Artifact gate (syntax + read-only check + sidecar)
-        run: npm run test:artifact
-
-      - name: Deterministic build (twice) + SHA comparison
-        run: |
-          npm run build
-          sha256sum dist/travian-attack-alert.user.js > /tmp/build-first.sha256
-          cp dist/travian-attack-alert.user.js /tmp/build-first.user.js
-          npm run build
-          sha256sum dist/travian-attack-alert.user.js > /tmp/build-second.sha256
-          cmp /tmp/build-first.user.js dist/travian-attack-alert.user.js
-          diff /tmp/build-first.sha256 /tmp/build-second.sha256
-          sha256sum -c dist/travian-attack-alert.user.js.sha256
 
       - name: Privacy / secrets scan
         run: |
@@ -81,13 +64,198 @@ jobs:
           if [ -n "$hits" ]; then printf '%s\n' "$hits"; echo "secret pattern scan: live webhook token found"; exit 1; fi
           echo "secret pattern scan: clean"
 
-      - name: Upload evidence (no publishing)
+      - name: Upload determinism bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: determinism-node-18
+          path: |
+            dist/travian-attack-alert.user.js
+            dist/travian-attack-alert.user.js.sha256
+            metadata.json
+            module-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+  offline-node-20:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install (locked dependencies)
+        run: npm ci
+
+      - name: Build generated artifacts
+        run: npm run build
+
+      - name: Offline unit gates
+        run: npm run test:offline
+
+      - name: Tools gates
+        run: npm run test:tools
+
+      - name: Artifact gates
+        run: npm run test:artifact
+
+      - name: Checks (versions, artifact, inventory)
+        run: npm run check
+
+      - name: Type gate (non-blocking; pre-existing monolith typings, see F2 review)
+        continue-on-error: true
+        run: npm run check:types
+
+      - name: Quality gate (non-blocking; pre-existing monolith size, see F2 review)
+        continue-on-error: true
+        run: npm run quality
+
+      - name: Privacy / secrets scan
+        run: |
+          rm -rf node_modules
+          node tools/audit-public-tree.cjs --root . --baseline . --out test-results/privacy-scan.json
+          node -e "const r=require('./test-results/privacy-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r,null,2));process.exit(1);} console.log('privacy scan verdict: PASS');"
+          hits=$(grep -rEn "discord\\.com/api/webhooks/[0-9]+/[A-Za-z0-9_\\-]{32,}" --exclude-dir=node_modules --exclude-dir=.git . || true)
+          hits=$(printf '%s\n' "$hits" | grep -viE "FAKE|PLACEHOLDER|example" || true)
+          if [ -n "$hits" ]; then printf '%s\n' "$hits"; echo "secret pattern scan: live webhook token found"; exit 1; fi
+          echo "secret pattern scan: clean"
+
+      - name: Upload determinism bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: determinism-node-20
+          path: |
+            dist/travian-attack-alert.user.js
+            dist/travian-attack-alert.user.js.sha256
+            metadata.json
+            module-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+  browser-node-20:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install (locked dependencies)
+        run: npm ci
+
+      - name: Build generated artifacts
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser integration gates
+        run: npm run test:browser
+
+      - name: Loopback e2e gates
+        timeout-minutes: 10
+        run: npm run test:e2e
+
+      - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-evidence-node-${{ matrix.node-version }}
-          path: |
-            test-results/
-            dist/
-            metadata.json
+          name: browser-node-20-evidence
+          path: test-results/
           if-no-files-found: error
+          retention-days: 14
+
+  cross-node-determinism:
+    runs-on: ubuntu-latest
+    needs: [offline-node-18, offline-node-20]
+    steps:
+      - name: Download determinism-node-18
+        uses: actions/download-artifact@v4
+        with:
+          name: determinism-node-18
+          path: determinism-node-18
+
+      - name: Download determinism-node-20
+        uses: actions/download-artifact@v4
+        with:
+          name: determinism-node-20
+          path: determinism-node-20
+
+      - name: Byte-compare all four outputs across Node majors
+        run: |
+          for f in travian-attack-alert.user.js travian-attack-alert.user.js.sha256 metadata.json module-manifest.json; do
+            if [ "$f" = "travian-attack-alert.user.js" ] || [ "$f" = "travian-attack-alert.user.js.sha256" ]; then
+              a="determinism-node-18/dist/$f"; b="determinism-node-20/dist/$f"
+            else
+              a="determinism-node-18/$f"; b="determinism-node-20/$f"
+            fi
+            # Artifacts upload with directory prefixes stripped when a single
+            # file matches; accept both layouts.
+            [ -f "$a" ] || a="determinism-node-18/$f"
+            [ -f "$b" ] || b="determinism-node-20/$f"
+            cmp "$a" "$b" && echo "identical: $f"
+          done
+
+      - name: Write canonical ci-identity record
+        env:
+          WORKFLOW_PATH: .github/workflows/ci.yml
+        run: |
+          cat > /tmp/ci-identity.cjs <<'EOF'
+          'use strict';
+          const crypto = require('node:crypto');
+          const fs = require('node:fs');
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const isPullRequest = process.env.GITHUB_EVENT_NAME === 'pull_request';
+          const files = [
+            'travian-attack-alert.user.js',
+            'travian-attack-alert.user.js.sha256',
+            'metadata.json',
+            'module-manifest.json',
+          ];
+          function locate(dir, name) {
+            const prefixed = name.startsWith('travian-') ? `dist/${name}` : name;
+            for (const candidate of [`${dir}/${prefixed}`, `${dir}/${name}`]) {
+              if (fs.existsSync(candidate)) return candidate;
+            }
+            throw new Error(`ci-identity: missing artifact file ${dir}/${name}`);
+          }
+          const perFile = {};
+          for (const name of files) {
+            perFile[name] = crypto.createHash('sha256').update(fs.readFileSync(locate('determinism-node-18', name))).digest('hex');
+          }
+          const artifactSha256 = crypto.createHash('sha256').update(files.map((name) => `${name}:${perFile[name]}`).join('\n')).digest('hex');
+          const record = {
+            schemaVersion: 1,
+            workflowPath: process.env.WORKFLOW_PATH,
+            workflowRef: process.env.GITHUB_REF,
+            event: process.env.GITHUB_EVENT_NAME,
+            sha: process.env.GITHUB_SHA,
+            baseSha: isPullRequest ? event?.pull_request?.base?.sha ?? null : null,
+            headSha: isPullRequest ? event?.pull_request?.head?.sha ?? null : null,
+            runId: Number(process.env.GITHUB_RUN_ID),
+            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+            repository: process.env.GITHUB_REPOSITORY,
+            artifactSha256,
+            artifacts: perFile,
+          };
+          fs.mkdirSync('ci-identity', { recursive: true });
+          fs.writeFileSync('ci-identity/ci-identity.json', `${JSON.stringify(record, null, 2)}\n`);
+          console.log(JSON.stringify(record, null, 2));
+          EOF
+          node /tmp/ci-identity.cjs
+
+      - name: Upload ci-identity
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-identity
+          path: ci-identity/ci-identity.json
+          if-no-files-found: error
+          retention-days: 14

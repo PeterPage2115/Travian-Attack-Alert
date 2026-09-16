@@ -42,18 +42,27 @@ test('Given the offline lane, When its source is inspected, Then it has no brows
 });
 
 test('Given the offline lane, When its declared files are inspected, Then none imports Playwright', () => {
+    const path = require('node:path');
     const packageJson = require('../../package.json');
-    const offlineFiles = packageJson.scripts['test:offline'].match(/test\/[^ ]+\.(?:cjs|js)/gu);
+    const patterns = packageJson.scripts['test:offline'].match(/test\/[^ ]+\.(?:cjs|js)/gu);
+    assert.ok(patterns && patterns.length > 0, 'offline lane declares test files');
+    const offlineFiles = patterns.flatMap((pattern) => {
+        if (!pattern.includes('*')) return [pattern];
+        const dir = path.dirname(pattern);
+        const glob = new RegExp(`^${path.basename(pattern).replace(/\./gu, '\\.').replace(/\*/gu, '.*')}$`, 'u');
+        return fs.readdirSync(path.resolve(__dirname, '..', '..', dir)).filter((f) => glob.test(f)).map((f) => `${dir}/${f}`);
+    });
+    assert.ok(offlineFiles.length >= 3, `offline lane covers offline + parity + server suites, got ${offlineFiles.length}`);
     const playwrightRequire = ['require(', "'playwright'", ')'].join('');
     for (const file of offlineFiles) {
-        const source = fs.readFileSync(require('node:path').resolve(__dirname, '..', '..', file), 'utf8');
+        const source = fs.readFileSync(path.resolve(__dirname, '..', '..', file), 'utf8');
         assert.equal(source.includes(playwrightRequire), false, file);
     }
 });
 
-test('Given npm test, When its command is inspected, Then it delegates only to the offline lane', () => {
+test('Given npm test, When its command is inspected, Then it aggregates exactly the node:test lanes', () => {
     const scripts = require('../../package.json').scripts;
-    assert.equal(scripts.test, 'npm run test:offline');
+    assert.equal(scripts.test, 'npm run test:offline && npm run test:tools && npm run test:artifact');
 });
 
 test('Given the offline lane, When its command is inspected, Then browser suites are excluded', () => {
