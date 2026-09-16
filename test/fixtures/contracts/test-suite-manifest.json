@@ -1,0 +1,354 @@
+{
+  "schemaVersion": 1,
+  "preRefactorHead": "16fc306d74af695b50d9106da9c2a0c28a847c10",
+  "behaviorOracleSha256": "fca2e73a8f9459e25201eeb9a50dcfe8c7bdbee271cfe6351e467dc295c1063b",
+  "verifierHashes": {
+    "test/tools/runtime-contract-audit.cjs": "78cafdf136df07b1fdb5be89e2c6553f015234ab5f92e99a30fae6e5f2c0753c",
+    "test/tools/plan-evidence-audit.cjs": "9a3d2479454c7a8baeae1cda7ee5ce0cfaa5c6f2dd28a2e49824a22d6c944bc0",
+    "test/tools/final-review-receipts.cjs": "da1e60a091f887d2bad8b484c64632939763ff786c792f750dc846a983955128",
+    "test/tools/task-receipt.cjs": "807a4162e27719537eb0ed8d7be23bfd6f3c6de44d3e856821decd899e91f09a",
+    "test/tools/task-checkpoint.cjs": "0c23222b686560394f74afc86537887ed733f8c085443bb3b168f3c2f7e72dd6",
+    "test/tools/test-inventory.cjs": "6fda30decd6e25d8fbed0f29205f928547432d14c7a3d1b937e4c69b2264ddd4"
+  },
+  "suites": [
+    {
+      "id": "suite:test/artifact/delivery-matrix.test.cjs",
+      "path": "test/artifact/delivery-matrix.test.cjs",
+      "classification": "dist-artifact",
+      "expectedExecutionCount": 16,
+      "coverage": [
+        "dist-runtime",
+        "delivery-matrix"
+      ]
+    },
+    {
+      "id": "suite:test/artifact/detector-matrix.test.cjs",
+      "path": "test/artifact/detector-matrix.test.cjs",
+      "classification": "dist-artifact",
+      "expectedExecutionCount": 17,
+      "coverage": [
+        "dist-runtime",
+        "detector-matrix"
+      ]
+    },
+    {
+      "id": "suite:test/artifact/lease-release.test.cjs",
+      "path": "test/artifact/lease-release.test.cjs",
+      "classification": "dist-artifact",
+      "expectedExecutionCount": 3,
+      "coverage": [
+        "dist-runtime",
+        "lease-release"
+      ]
+    },
+    {
+      "id": "suite:test/artifact/migration-6x.test.cjs",
+      "path": "test/artifact/migration-6x.test.cjs",
+      "classification": "dist-artifact",
+      "expectedExecutionCount": 11,
+      "coverage": [
+        "dist-runtime",
+        "migration-6x"
+      ]
+    },
+    {
+      "id": "suite:test/artifact/settings-backup.test.cjs",
+      "path": "test/artifact/settings-backup.test.cjs",
+      "classification": "dist-artifact",
+      "expectedExecutionCount": 11,
+      "coverage": [
+        "dist-runtime",
+        "settings-backup"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/attack-panel.spec.ts",
+      "path": "test/e2e/attack-panel.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 96,
+      "coverage": [
+        "browser-runtime",
+        "attack-panel"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/clean-install.spec.ts",
+      "path": "test/e2e/clean-install.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 36,
+      "coverage": [
+        "browser-runtime",
+        "clean-install"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/discord-delivery.spec.ts",
+      "path": "test/e2e/discord-delivery.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 18,
+      "coverage": [
+        "browser-runtime",
+        "discord-delivery"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/discord-manual-fetch-timing.spec.ts",
+      "path": "test/e2e/discord-manual-fetch-timing.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 6,
+      "coverage": [
+        "browser-runtime",
+        "discord-manual-fetch-timing"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/dual-tab-lease.spec.ts",
+      "path": "test/e2e/dual-tab-lease.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 24,
+      "coverage": [
+        "browser-runtime",
+        "dual-tab-lease"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/f3-browser-qa.spec.ts",
+      "path": "test/e2e/f3-browser-qa.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 12,
+      "coverage": [
+        "browser-runtime",
+        "f3-browser-qa"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/live-member-scan.spec.ts",
+      "path": "test/e2e/live-member-scan.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 54,
+      "coverage": [
+        "browser-runtime",
+        "live-member-scan"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/migration-6x.spec.ts",
+      "path": "test/e2e/migration-6x.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 18,
+      "coverage": [
+        "browser-runtime",
+        "migration-6x"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/onboarding-states.spec.ts",
+      "path": "test/e2e/onboarding-states.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 36,
+      "coverage": [
+        "browser-runtime",
+        "onboarding-states"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/readiness-late.spec.ts",
+      "path": "test/e2e/readiness-late.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 18,
+      "coverage": [
+        "browser-runtime",
+        "readiness-late"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/route-lease.spec.ts",
+      "path": "test/e2e/route-lease.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 18,
+      "coverage": [
+        "browser-runtime",
+        "route-lease"
+      ]
+    },
+    {
+      "id": "suite:test/fixtures/performance/server.test.cjs",
+      "path": "test/fixtures/performance/server.test.cjs",
+      "classification": "offline",
+      "expectedExecutionCount": 1,
+      "coverage": [
+        "offline-fixture"
+      ]
+    },
+    {
+      "id": "suite:test/pure-module-parity.test.cjs",
+      "path": "test/pure-module-parity.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 4,
+      "coverage": [
+        "source-module-parity"
+      ]
+    },
+    {
+      "id": "suite:test/runtime-parity.test.cjs",
+      "path": "test/runtime-parity.test.cjs",
+      "classification": "dist-artifact",
+      "expectedExecutionCount": 2,
+      "coverage": [
+        "runtime-api-exports",
+        "storage-keys",
+        "menu-commands",
+        "route-fixtures",
+        "boot-effects",
+        "release-identity"
+      ]
+    },
+    {
+      "id": "suite:test/script.test.cjs",
+      "path": "test/script.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 354,
+      "coverage": [
+        "offline-runtime-behavior"
+      ]
+    },
+    {
+      "id": "suite:test/tools/backup-rollback.test.cjs",
+      "path": "test/tools/backup-rollback.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 53,
+      "coverage": [
+        "repository-tooling",
+        "backup-rollback"
+      ]
+    },
+    {
+      "id": "suite:test/tools/final-review-receipts.test.cjs",
+      "path": "test/tools/final-review-receipts.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 3,
+      "coverage": [
+        "repository-tooling",
+        "final-review-receipts"
+      ]
+    },
+    {
+      "id": "suite:test/tools/plan-evidence-audit.test.cjs",
+      "path": "test/tools/plan-evidence-audit.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 5,
+      "coverage": [
+        "repository-tooling",
+        "plan-evidence-audit"
+      ]
+    },
+    {
+      "id": "suite:test/tools/public-boundary.test.cjs",
+      "path": "test/tools/public-boundary.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 12,
+      "coverage": [
+        "repository-tooling",
+        "public-boundary"
+      ]
+    },
+    {
+      "id": "suite:test/tools/readme-runtime-contract.test.cjs",
+      "path": "test/tools/readme-runtime-contract.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 10,
+      "coverage": [
+        "repository-tooling",
+        "readme-runtime-contract"
+      ]
+    },
+    {
+      "id": "suite:test/tools/release-state.test.cjs",
+      "path": "test/tools/release-state.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 4,
+      "coverage": [
+        "repository-tooling",
+        "release-state"
+      ]
+    },
+    {
+      "id": "suite:test/tools/runtime-contract-audit.test.cjs",
+      "path": "test/tools/runtime-contract-audit.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 3,
+      "coverage": [
+        "repository-tooling",
+        "runtime-contract-audit"
+      ]
+    },
+    {
+      "id": "suite:test/tools/task-checkpoint.test.cjs",
+      "path": "test/tools/task-checkpoint.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 3,
+      "coverage": [
+        "repository-tooling",
+        "task-checkpoint"
+      ]
+    },
+    {
+      "id": "suite:test/tools/task-receipt.test.cjs",
+      "path": "test/tools/task-receipt.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 4,
+      "coverage": [
+        "repository-tooling",
+        "task-receipt"
+      ]
+    },
+    {
+      "id": "suite:test/tools/test-inventory.test.cjs",
+      "path": "test/tools/test-inventory.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 5,
+      "coverage": [
+        "repository-tooling",
+        "test-inventory"
+      ]
+    },
+    {
+      "id": "suite:test/tools/userscript-build-contract.test.cjs",
+      "path": "test/tools/userscript-build-contract.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 7,
+      "coverage": [
+        "repository-tooling",
+        "userscript-build-contract"
+      ]
+    }
+  ],
+  "relocations": [],
+  "totals": {
+    "suiteCount": 31,
+    "expectedExecutionCount": 864,
+    "byClassification": {
+      "browser": {
+        "suiteCount": 11,
+        "expectedExecutionCount": 336
+      },
+      "dist-artifact": {
+        "suiteCount": 6,
+        "expectedExecutionCount": 60
+      },
+      "offline": {
+        "suiteCount": 1,
+        "expectedExecutionCount": 1
+      },
+      "source-artifact": {
+        "suiteCount": 2,
+        "expectedExecutionCount": 358
+      },
+      "tool": {
+        "suiteCount": 11,
+        "expectedExecutionCount": 109
+      }
+    }
+  },
+  "kind": "mutable-manifest"
+}

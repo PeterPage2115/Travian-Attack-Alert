@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "kind": "runtime-contract-provenance",
+  "attemptId": "20260916T081851Z-ff0605b1",
+  "preRefactor": {
+    "head": "16fc306d74af695b50d9106da9c2a0c28a847c10",
+    "tree": "845e4b8e35d34e2c4f5af251434113765eef4508",
+    "branch": "work/repository-structural-hardening",
+    "origin": "https://github.com/PeterPage2115/Travian-Attack-Alert",
+    "clean": true
+  },
+  "plan": {
+    "sha256": "0edb9a8c1ed1cee1d6d1b3392a7b7a19c730d8acbd8872a1ae4ecf20385ecf15",
+    "byteCount": 92294
+  },
+  "environment": {
+    "node": "v22.22.0",
+    "npm": "10.9.4",
+    "esbuild": "0.25.9",
+    "platform": "linux",
+    "arch": "x64",
+    "kernel": "Linux 6.6.87.2-microsoft-standard-WSL2 x64",
+    "normalized": {
+      "TZ": "UTC",
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8",
+      "CI": false,
+      "NODE_ENV": null,
+      "SOURCE_DATE_EPOCH": null
+    }
+  },
+  "inputs": {
+    "package-lock.json": "6b4cd4b03460b808f04743c84171ee7aa7ef004413c3cd59decf7952bdb930fc",
+    "src/runtime.js": "737d1dd2de650e0a7e403871b70a3fb22e48956163abadaa2281655ec84f20d7",
+    "dist/travian-attack-alert.user.js": "e60011a92b02668ad3b1d0bd5f7b8235304e534c3bc617eb81e25bb9a41b153e",
+    "dist/travian-attack-alert.user.js.sha256": "54ba57e9846e55a0e0676fd5d1abc09d81b9ff7f543fe0d95831f61d06d3af55",
+    "metadata.json": "5adb8adef0bfd1f27e5f1e162109bcde59df6d2bfd3b71cf16f399c58fd92bc0"
+  },
+  "rebuiltOutputs": {
+    "dist/travian-attack-alert.user.js": "e60011a92b02668ad3b1d0bd5f7b8235304e534c3bc617eb81e25bb9a41b153e",
+    "dist/travian-attack-alert.user.js.sha256": "54ba57e9846e55a0e0676fd5d1abc09d81b9ff7f543fe0d95831f61d06d3af55",
+    "metadata.json": "5adb8adef0bfd1f27e5f1e162109bcde59df6d2bfd3b71cf16f399c58fd92bc0",
+    "module-manifest.json": "6579c455dcb3368d3309f2ffdc8a4193dd0b55c09170014ce62e10c5ff786f26"
+  },
+  "determinism": {
+    "cleanBuilds": 2,
+    "equal": true,
+    "distSha256": "e60011a92b02668ad3b1d0bd5f7b8235304e534c3bc617eb81e25bb9a41b153e"
+  },
+  "oracle": {
+    "path": "test/fixtures/contracts/runtime-contract.json",
+    "sha256": "fca2e73a8f9459e25201eeb9a50dcfe8c7bdbee271cfe6351e467dc295c1063b",
+    "behaviorOracleSha256": "fca2e73a8f9459e25201eeb9a50dcfe8c7bdbee271cfe6351e467dc295c1063b",
+    "exportCount": 325,
+    "sourceAndDistIndependentlyEqual": true
+  },
+  "verifierHashes": {
+    "test/tools/runtime-contract-audit.cjs": "78cafdf136df07b1fdb5be89e2c6553f015234ab5f92e99a30fae6e5f2c0753c",
+    "test/tools/plan-evidence-audit.cjs": "9a3d2479454c7a8baeae1cda7ee5ce0cfaa5c6f2dd28a2e49824a22d6c944bc0",
+    "test/tools/final-review-receipts.cjs": "da1e60a091f887d2bad8b484c64632939763ff786c792f750dc846a983955128",
+    "test/tools/task-receipt.cjs": "807a4162e27719537eb0ed8d7be23bfd6f3c6de44d3e856821decd899e91f09a",
+    "test/tools/task-checkpoint.cjs": "0c23222b686560394f74afc86537887ed733f8c085443bb3b168f3c2f7e72dd6",
+    "test/tools/test-inventory.cjs": "6fda30decd6e25d8fbed0f29205f928547432d14c7a3d1b937e4c69b2264ddd4"
+  },
+  "frozenFiles": {
+    "test/fixtures/contracts/runtime-contract.json": "fca2e73a8f9459e25201eeb9a50dcfe8c7bdbee271cfe6351e467dc295c1063b",
+    "test/fixtures/contracts/runtime-contract.json.sha256": "ff25ed1d3a3dc423fe797f248d32d68fe71e7ee91cef5228452c0b2f84ec79c7",
+    "test/fixtures/contracts/test-suite-baseline.json": "2ee9671a71b707fc8b99fe656335ab17a9b185e7f0210f150ae9ace593fb7a2b",
+    "test/fixtures/tools/run-test-inventory-mutations.cjs": "44d2f73d02f37c265e1cfb7fb637b1d6aee1edefb08b4cf6be8b174b525355e1",
+    "test/tools/final-review-receipts.cjs": "da1e60a091f887d2bad8b484c64632939763ff786c792f750dc846a983955128",
+    "test/tools/final-review-receipts.test.cjs": "5c2ea645c3cab48acd0dce7fec52b68b92fcbe9e92272ec1aaec48f58b55cae1",
+    "test/tools/plan-evidence-audit.cjs": "9a3d2479454c7a8baeae1cda7ee5ce0cfaa5c6f2dd28a2e49824a22d6c944bc0",
+    "test/tools/plan-evidence-audit.test.cjs": "6eed72ecbcdbc14e6b1ac6302cac8758330bf90b45537062f7df3179700b2fd6",
+    "test/tools/runtime-contract-audit.cjs": "78cafdf136df07b1fdb5be89e2c6553f015234ab5f92e99a30fae6e5f2c0753c",
+    "test/tools/runtime-contract-audit.test.cjs": "102c0ff9dbc42a98e7963c00646c514cef54dff30d88688e920fee6e7f9aabb8",
+    "test/tools/task-checkpoint.cjs": "0c23222b686560394f74afc86537887ed733f8c085443bb3b168f3c2f7e72dd6",
+    "test/tools/task-checkpoint.test.cjs": "48d0fe847c139cf477ee07f09bc16c1ae6f92847f46130962242a73126d3c83b",
+    "test/tools/task-receipt.cjs": "807a4162e27719537eb0ed8d7be23bfd6f3c6de44d3e856821decd899e91f09a",
+    "test/tools/task-receipt.test.cjs": "0eca48ea60de5f64521b33f5d6a400cb7928f3ccd446788782b9300f5e197331",
+    "test/tools/test-inventory.cjs": "6fda30decd6e25d8fbed0f29205f928547432d14c7a3d1b937e4c69b2264ddd4",
+    "test/tools/test-inventory.test.cjs": "c399af35e3b8be0341d84f407caf4ad07f17b24e26dfb6400500dec67f83f690"
+  },
+  "mutableFilesAtFreeze": {
+    "test/fixtures/contracts/test-suite-manifest.json": "5963755dcb87e425a3f51aa14f13207faa2c97624fded175b7da872c486550f5"
+  },
+  "testInventory": {
+    "suiteCount": 31,
+    "expectedExecutionCount": 864,
+    "mutationCases": 6,
+    "mutationCasesRejected": 6
+  },
+  "characterization": {
+    "staleDistRejected": true,
+    "staleDistExitCode": 1,
+    "failingFirst": [
+      "missing test/tools/test-inventory.test.cjs"
+    ],
+    "manualQa": "PASS: rebuilt dist sidecar matched and new Function parsed"
+  },
+  "github": {
+    "preflight": ".omo/evidence/repository-structural-hardening/20260916T081851Z-ff0605b1/github-preflight.json",
+    "authenticated": false,
+    "task23Blocker": true
+  }
+}
