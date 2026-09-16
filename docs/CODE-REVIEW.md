@@ -9,6 +9,9 @@ the standing commitment to keep all 11 correct.
 
 1. Every external review comment is verified with a repro command before it is
    resolved or dismissed. Resolving threads without evidence is forbidden.
+   Every confirmed finding must remain open or, before resolution, record its
+   remediation, owner, tracking issue, or explicit accepted-risk decision
+   alongside the required verification evidence.
 2. Evidence goes to `.omo/notepads/qodo-review-verification/` (append-only,
    never committed). This doc links gates, it does not duplicate evidence.
 3. Each item below maps to an EXISTING gate only. No new executable checks.
@@ -28,7 +31,7 @@ module graph `docs/architecture.md` §10.
 | 6 | `npm run check:types` must be fail-closed, including compiler/config failures. | `tools/check-types-ratchet.cjs` + type-error-baseline + `run-quality-ratchet-mutations.cjs --cases new-type-error` | Temp copy with `tsconfig.json.include` pointed at an empty glob: gate exits 0 with `actualTotal:0, verdict:PASS` (TS18003 unparsed) |
 | 7 | `test-inventory` relocation must not hide lost suites or executions. | `test/tools/test-inventory.cjs` + `test-suite-baseline.json`/`test-suite-manifest.json` + `test-inventory.test.cjs` (5/5) | Temp copy swapping `delivery-matrix` (16 executions) for a 1-execution suite keeps the same baseline ID: inventory still exits 0 with PASS |
 | 8 | PARTIAL: facade consumers keep per-symbol reference identity. | `test/tools/module-architecture.test.cjs:258` (per-symbol `===`) + `aggregator-cutover` (5/5) | `node -e` probe: all 17 `facade[n]===impl[n]`, `api.lease===facade`, but `facade===impl` is `false` by design (`storage` `select()` requires a fresh object) |
-| 9 | PARTIAL: lifecycle singletons have exactly one declared owner. | `test/tools/module-architecture.test.cjs:271-295` + ownership graph (`singletonOwner: src/lifecycle.js`) | `grep require('./lifecycle.js') src/` is empty; `runtime.js:309-337` legacy copies are pinned transition state, deleted only at cutover |
+| 9 | PARTIAL: lifecycle singletons have exactly one declared owner. | `test/tools/module-architecture.test.cjs:271-295` + ownership graph (`singletonOwner: src/lifecycle.js`) | `grep -R "require('./lifecycle.js')" src/` is empty; `runtime.js:309-337` legacy copies are pinned transition state, deleted only at cutover |
 | 10 | Browser/e2e artifacts must pass the evidence privacy scan before upload. | `tools/audit-public-tree.cjs --mode evidence` (`:812-1152`, fail-closed) + CI cleanup job (`.github/workflows/ci.yml:113-121`) | Workflow parse of the `browser-node-20` block: `evidenceModeCalls:0`, `uploadAlways:true`; temp evidence run exits 1 fail-closed |
 | 11 | `tools/backup.cjs` must not report success for a tampered payload. | `tools/backup.cjs` + `tools/rollback.cjs` (`lstatSync` rejects symlinks) + backup-rollback and mutation runners | Temp copy: symlink-swap `config/userscript.json` to same-byte external file, rerun backup (status 0) then rollback (status 1, not a regular file) |
 
