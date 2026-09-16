@@ -43,12 +43,10 @@ jobs:
       - name: Checks (versions, artifact, inventory)
         run: npm run check
 
-      - name: Type gate (non-blocking; pre-existing monolith typings, see F2 review)
-        continue-on-error: true
+      - name: Type gate (blocking; Todo-6 ratchet vs type-error-baseline.json)
         run: npm run check:types
 
-      - name: Quality gate (non-blocking; pre-existing monolith size, see F2 review)
-        continue-on-error: true
+      - name: Quality gate (blocking; Todo-6 ratchet vs quality-baseline.json)
         run: npm run quality
 
       - name: Privacy / secrets scan
@@ -106,12 +104,10 @@ jobs:
       - name: Checks (versions, artifact, inventory)
         run: npm run check
 
-      - name: Type gate (non-blocking; pre-existing monolith typings, see F2 review)
-        continue-on-error: true
+      - name: Type gate (blocking; Todo-6 ratchet vs type-error-baseline.json)
         run: npm run check:types
 
-      - name: Quality gate (non-blocking; pre-existing monolith size, see F2 review)
-        continue-on-error: true
+      - name: Quality gate (blocking; Todo-6 ratchet vs quality-baseline.json)
         run: npm run quality
 
       - name: Privacy / secrets scan
