@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Testy node:test dla czystych funkcji eksportowanych z ../src/runtime.js
+ * Testy node:test dla czystych funkcji eksportowanych z ../../src/runtime.js
  * (Travian - Alliance Attacks to Discord, wersja 4.6).
  *
  * Zasady:
@@ -19,23 +19,53 @@ const fs = require('node:fs');
 process.env.TZ = 'UTC';
 
 const script = Object.assign({},
-    require('../src/constants.js'), require('../src/text.js'),
-    require('../src/storage.js'), require('../src/lease.js'),
-    require('../src/route.js'), require('../src/parser.js'),
-    require('../src/snapshot.js'), require('../src/envelope.js'),
-    require('../src/migration.js'), require('../src/discord.js'),
-    require('../src/transport.js'), require('../src/dispatch.js'),
-    require('../src/conservation.js'),
-    require('../src/diagnostics.js'), require('../src/panel.js'),
-    require('../src/acquisition.js')
+    require('../../src/constants.js'), require('../../src/text.js'),
+    require('../../src/storage.js'), require('../../src/lease.js'),
+    require('../../src/route.js'), require('../../src/parser.js'),
+    require('../../src/snapshot.js'), require('../../src/envelope.js'),
+    require('../../src/migration.js'), require('../../src/discord.js'),
+    require('../../src/transport.js'), require('../../src/dispatch.js'),
+    require('../../src/conservation.js'),
+    require('../../src/diagnostics.js'), require('../../src/panel.js'),
+    require('../../src/acquisition.js')
 );
-const runtime = require('../src/runtime.js');
+const runtime = require('../../src/runtime.js');
 Object.assign(script, runtime);
-const canonicalDiscord = require('./fixtures/discord/canonical.cjs');
-const acquisition = require('./fixtures/acquisition/sanitizer.cjs');
-const acquisitionBrowser = require('./fixtures/acquisition/browser-harness.cjs');
-const evidenceRunner = require('./fixtures/stabilization/evidence-runner.cjs');
-const conservation = require('./fixtures/stabilization/conservation-oracle.cjs');
+const canonicalDiscord = require('../fixtures/discord/canonical.cjs');
+const acquisition = require('../fixtures/acquisition/sanitizer.cjs');
+const evidenceRunner = require('../fixtures/stabilization/evidence-runner.cjs');
+const conservation = require('../fixtures/stabilization/conservation-oracle.cjs');
+
+test('Given the offline lane, When its source is inspected, Then it has no browser harness consumer', () => {
+    const browserHarnessNeedle = ['browser', 'harness.cjs'].join('-');
+    assert.equal(fs.readFileSync(__filename, 'utf8').includes(browserHarnessNeedle), false);
+});
+
+test('Given the offline lane, When its declared files are inspected, Then none imports Playwright', () => {
+    const packageJson = require('../../package.json');
+    const offlineFiles = packageJson.scripts['test:offline'].match(/test\/[^ ]+\.(?:cjs|js)/gu);
+    const playwrightRequire = ['require(', "'playwright'", ')'].join('');
+    for (const file of offlineFiles) {
+        const source = fs.readFileSync(require('node:path').resolve(__dirname, '..', '..', file), 'utf8');
+        assert.equal(source.includes(playwrightRequire), false, file);
+    }
+});
+
+test('Given npm test, When its command is inspected, Then it delegates only to the offline lane', () => {
+    const scripts = require('../../package.json').scripts;
+    assert.equal(scripts.test, 'npm run test:offline');
+});
+
+test('Given the offline lane, When its command is inspected, Then browser suites are excluded', () => {
+    const offlineCommand = require('../../package.json').scripts['test:offline'];
+    assert.equal(offlineCommand.includes('test/browser/'), false);
+    assert.equal(offlineCommand.includes('playwright'), false);
+});
+
+test('Given the browser lane, When its command is inspected, Then acquisition runs explicitly there', () => {
+    const browserCommand = require('../../package.json').scripts['test:browser'];
+    assert.match(browserCommand, /test\/browser\/\*\.test\.cjs/u);
+});
 
 test('route classifier accepts only the exact query-free canonical member route', () => {
     assert.equal(script.classifyAllianceRoute('https://world.example/alliance/profile/members').role, 'canonical-member');
@@ -93,11 +123,11 @@ const releaseId = 'taa-1.0.0';
 }
 
 test('release identity contract is invoked for the active distributable', () => {
-    const scriptSource = fs.readFileSync(require.resolve('../dist/travian-attack-alert.user.js'), 'utf8');
-    const readme = fs.readFileSync(require.resolve('../README.md'), 'utf8');
-    const packageJson = JSON.parse(fs.readFileSync(require.resolve('../package.json'), 'utf8'));
-    const metadata = JSON.parse(fs.readFileSync(require.resolve('../metadata.json'), 'utf8'));
-    const manifest = JSON.parse(fs.readFileSync(require.resolve('../module-manifest.json'), 'utf8'));
+const scriptSource = fs.readFileSync(require.resolve('../../dist/travian-attack-alert.user.js'), 'utf8');
+    const readme = fs.readFileSync(require.resolve('../../README.md'), 'utf8');
+const packageJson = JSON.parse(fs.readFileSync(require.resolve('../../package.json'), 'utf8'));
+const metadata = JSON.parse(fs.readFileSync(require.resolve('../../metadata.json'), 'utf8'));
+const manifest = JSON.parse(fs.readFileSync(require.resolve('../../module-manifest.json'), 'utf8'));
     const diagnostics = script.buildDiagnosticsPanelModel({ atMs: 0, statusOrError: 'ok' });
     const incidentBundle = script.buildIncidentBundle({ envelope: {}, diagnostics: {}, traces: [] });
      assert.deepEqual(contract610ReleaseIdentity({ scriptSource, readme, packageJson, metadata, manifest, diagnostics, incidentBundle }), {
@@ -1560,17 +1590,6 @@ test('Players workspace read model: authoritative DOM wins over stale cache', ()
     assert.equal(model.rosterStatus, 'authoritative');
     assert.deepEqual(model.rows.map((row) => row.id), ['1']);
     assert.equal(model.rows[0].name, 'Fresh Alpha');
-});
-
-test('Players workspace fixture: rejected browser DOM gets a labelled cached roster', async () => {
-    const rejected = await acquisitionBrowser.extractRejectedFixtureSnapshots(['missing-player-id']);
-    const model = script.buildPlayerWorkspaceReadModel({
-        snapshot: rejected['missing-player-id'].snapshot,
-        cachedRoster: { '900001': { name: 'Fixture cached player' } }
-    });
-    assert.equal(rejected['missing-player-id'].snapshot.status, 'rejected');
-    assert.equal(model.rosterStatusText, 'Live roster unavailable — showing last accepted roster (1 players). Reason: missing-player-id');
-    assert.equal(model.rows[0].name, 'Fixture cached player');
 });
 
 test('Players workspace read model: rejected parse without cache is explicit and does not write', () => {
@@ -3397,7 +3416,7 @@ test('compact production mentions and legacy cleanup', () => {
     assert.deepEqual(raidPayloads[0].allowed_mentions, { users: [UID_A, UID_B] });
     assert.equal('roles' in raidPayloads[0].allowed_mentions, false);
 
-    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../../src/runtime.js'), 'utf8');
     assert.equal((source.match(/function\s+buildDiscordPayloads\s*\(/g) || []).length, 1);
     assert.equal((source.match(/function\s+serializeCompactDiscordRequestPlans\s*\(/g) || []).length, 1);
     for (const removed of [
@@ -7506,7 +7525,7 @@ test('Todo 8 draft gate: write-read-compare blocks throwing or mismatching stora
 });
 
 test('hotfix caret restore: selection support excludes checkbox inputs', () => {
-    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../../src/runtime.js'), 'utf8');
     assert.match(source, /function supportsInputSelection\s*\(element\)/);
     assert.doesNotMatch(source, /typeof draftFocus\.setSelectionRange\s*===\s*['"]function['"]|typeof input\.setSelectionRange\s*===\s*['"]function['"]/);
     assert.equal((source.match(/supportsInputSelection\(draftFocus\)/g) || []).length, 1);
@@ -7518,7 +7537,7 @@ test('hotfix caret restore: selection support excludes checkbox inputs', () => {
 });
 
 test('Todo 8 inventory: all panel capabilities have a structured tab surface', () => {
-    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../../src/runtime.js'), 'utf8');
     const workspaceStart = source.indexOf('const renderWorkspace');
     const workspace = source.slice(workspaceStart, source.indexOf('let pendingBackfillIds', workspaceStart));
     for (const capability of [
@@ -7573,64 +7592,12 @@ test('sanitized acquisition fixtures preserve exact golden structure', () => {
     }
 });
 
-test('sanitized acquisition fixtures exercise the real DOM snapshot path', async () => {
-    const snapshots = await acquisitionBrowser.extractFixtureSnapshots([
-        'members-60', 'members-59-incident'
-    ]);
-    assert.equal(snapshots['members-60'].status, 'authoritative');
-    assert.equal(Object.keys(snapshots['members-60'].membersById).length, 60);
-    assert.equal(snapshots['members-59-incident'].status, 'authoritative');
-    assert.equal(Object.keys(snapshots['members-59-incident'].membersById).length, 59);
-    const incidentMembers = Object.values(snapshots['members-59-incident'].membersById);
-    assert.equal(incidentMembers.reduce((sum, member) => sum + member.attackCount, 0), 2);
-    assert.equal(incidentMembers.reduce((sum, member) => sum + member.raidCount, 0), 0);
-    for (const member of Object.values(snapshots['members-59-incident'].membersById)) {
-        assert.match(member.url, /\/profile\/\d+$/);
-    }
-});
-
-test('paired zero counters browser extraction is authoritative', async () => {
-    const result = await acquisitionBrowser.extractPairedZeroFixtureSnapshot();
-    assert.equal(result.snapshot.status, 'authoritative');
-    const counts = member => ({ attackCount: member.attackCount, raidCount: member.raidCount });
-    assert.deepEqual(counts(result.snapshot.membersById['900001']), { attackCount: 1, raidCount: 0 });
-    assert.deepEqual(counts(result.snapshot.membersById['900002']), { attackCount: 1, raidCount: 0 });
-    assert.deepEqual(counts(result.snapshot.membersById['900003']), { attackCount: 0, raidCount: 0 });
-    assert.equal(result.snapshot.anomalies.malformedCount, false);
-    assert.equal(result.storageAfter, result.storageBefore);
-});
-
 test('sanitized acquisition fixtures contain only synthetic paired-zero data', () => {
-    const source = fs.readFileSync(require('node:path').join(__dirname, 'fixtures/acquisition/paired-zero-members.html'), 'utf8');
+    const source = fs.readFileSync(require('node:path').join(__dirname, '..', 'fixtures/acquisition/paired-zero-members.html'), 'utf8');
     assert.match(source, /900001|900002|900003/);
     assert.match(source, /SynthAlpha|SynthBeta|SynthGamma/);
     assert.doesNotMatch(source, /cw\.x2\.international\.travian\.com|discord(?:app)?\.com\/api\/webhooks\/\d+\/[A-Za-z0-9._-]+/i);
     assert.doesNotMatch(source, /Lenny|Quinno\x73|Ariadn\x65|Borek|Ciri|Darek|\x73andla/i);
-});
-
-test('bare-word malformed count stays rejected in the browser without storage writes', async () => {
-    const result = await acquisitionBrowser.extractRejectedFixtureSnapshots(['malformed-count']);
-    assert.deepEqual(result['malformed-count'].snapshot, { status: 'rejected', reason: 'malformed-count' });
-    assert.equal(result['malformed-count'].storageAfter, result['malformed-count'].storageBefore);
-});
-
-test('member-table contract rejects every reason without mutating state', async () => {
-    const reasons = [
-        'no-member-table', 'multiple-member-tables', 'pagination-or-filter',
-        'missing-player-id', 'duplicate-player-id', 'conflicting-tooltip',
-        'malformed-count'
-    ];
-    const results = await acquisitionBrowser.extractRejectedFixtureSnapshots(reasons);
-    for (const reason of reasons) {
-        assert.deepEqual(results[reason].snapshot, {
-            status: 'rejected', reason
-        });
-        assert.deepEqual(results[reason].storageAfter, results[reason].storageBefore, reason);
-        const diagnostics = script.recordFailure({}, HOST, 1700000000000, 'invalid-snapshot', 0, results[reason].snapshot.reason, {
-            memberRows: 0, rows: 0, icons: 0
-        });
-        assert.equal(diagnostics[HOST].lastFailure.rejectionReason, reason);
-    }
 });
 
 test('evidence runner self-test rejects unknown registry IDs', () => {
@@ -7755,7 +7722,7 @@ test('monitor commit-attempt hook reports the attempted transition generation wi
     );
     assert.equal(plan.outcome, 'ok');
     assert.equal(plan.generation, 8);
-    const scriptSource = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
+    const scriptSource = fs.readFileSync(require.resolve('../../src/runtime.js'), 'utf8');
     assert.match(scriptSource, /reportLifecycleHook\("onMonitorCommitAttempt", \{\s+observedAtMs,\s+generation: transition\.generation\s+\}\)/);
     assert.equal(/\bcandidate\b/.test(scriptSource), false);
 });
@@ -7917,7 +7884,7 @@ test('Todo 8 migration is one-shot and keeps baseline, accounting, and schema ke
 // send, or reload). Runtime authority still requires the query-free canonical
 // /alliance/profile/members route; install scope alone never grants it.
 function readPublicHeader() {
-    const source = fs.readFileSync(require.resolve('../dist/travian-attack-alert.user.js'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../../dist/travian-attack-alert.user.js'), 'utf8');
     const header = source.slice(0, source.indexOf('==/UserScript=='));
     const value = (key) => {
         const line = header.split('\n').find((candidate) => candidate.startsWith(`// ${key}`));
@@ -7973,7 +7940,7 @@ test('neutral world host reaches canonical-member with per-hostname isolated sta
 });
 
 test('noncanonical and unsupported routes never qualify for scan authority', () => {
-    const source = fs.readFileSync(require.resolve('../src/runtime.js'), 'utf8');
+    const source = fs.readFileSync(require.resolve('../../src/runtime.js'), 'utf8');
     assert.ok(source.includes('classifyAllianceRoute(location.href).role === ROUTE_ROLES.CANONICAL_MEMBER ? loadState() : null'), 'state loads only on the canonical-member route');
     for (const url of [
         'https://s1.example.travian.com/alliance/profile/members?page=2',

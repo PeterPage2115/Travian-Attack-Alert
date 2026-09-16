@@ -3,7 +3,6 @@
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { chromium } = require('playwright');
 
 const ROOT = __dirname;
 const SCRIPT = fs.readFileSync(path.resolve(ROOT, '..', '..', '..', 'src', 'runtime.js'), 'utf8');
@@ -16,7 +15,18 @@ const REASONS = Object.freeze([
 function html(name) { return fs.readFileSync(path.join(ROOT, `${name}.html`), 'utf8'); }
 
 async function withParser(documentHtml, callback) {
-    const browser = await chromium.launch({ headless: true });
+    let chromium;
+    try {
+        ({ chromium } = require('playwright'));
+    } catch (error) {
+        throw new Error('browser required: Playwright is not installed', { cause: error });
+    }
+    let browser;
+    try {
+        browser = await chromium.launch({ headless: true });
+    } catch (error) {
+        throw new Error('browser required: Chromium is not installed or could not launch', { cause: error });
+    }
     const server = http.createServer((request, response) => {
         response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
         response.end(documentHtml);

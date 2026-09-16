@@ -62,6 +62,16 @@
       ]
     },
     {
+      "id": "suite:test/browser/acquisition.test.cjs",
+      "path": "test/browser/acquisition.test.cjs",
+      "classification": "browser",
+      "expectedExecutionCount": 5,
+      "coverage": [
+        "browser-runtime",
+        "acquisition"
+      ]
+    },
+    {
       "id": "suite:test/e2e/attack-panel.spec.ts",
       "path": "test/e2e/attack-panel.spec.ts",
       "classification": "browser",
@@ -205,7 +215,7 @@
     },
     {
       "id": "suite:test/script.test.cjs",
-      "path": "test/script.test.cjs",
+      "path": "test/offline/script.test.cjs",
       "classification": "source-artifact",
       "expectedExecutionCount": 354,
       "coverage": [
@@ -335,14 +345,20 @@
       ]
     }
   ],
-  "relocations": [],
+  "relocations": [
+    {
+      "baselineId": "suite:test/script.test.cjs",
+      "from": "test/script.test.cjs",
+      "to": "test/offline/script.test.cjs"
+    }
+  ],
   "totals": {
-    "suiteCount": 32,
-    "expectedExecutionCount": 868,
+    "suiteCount": 33,
+    "expectedExecutionCount": 873,
     "byClassification": {
       "browser": {
-        "suiteCount": 11,
-        "expectedExecutionCount": 336
+        "suiteCount": 12,
+        "expectedExecutionCount": 341
       },
       "dist-artifact": {
         "suiteCount": 6,
