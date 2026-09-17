@@ -20,6 +20,7 @@ Userscript Tampermonkey, moduly `src/` budowane do `dist/` (`npm run build`). Te
 - `npm test` musi byc zielone (caly pakiet testow offline, zero fail).
 - Szybki syntax check: `node -e "new Function(require('fs').readFileSync('dist/travian-attack-alert.user.js','utf8'))"`.
 - Fikstury deterministyczne (loopback), zadnych realnych webhookow i requestow do Travian.
+- Uwagi review zewnetrznego: `docs/CODE-REVIEW.md`, kazdy komentarz weryfikuj repro przed resolve.
 
 ## 4. Sekrety
 
