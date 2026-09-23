@@ -15,6 +15,14 @@ const AUDITOR = path.join(ROOT, 'tools', 'audit-public-tree.cjs');
 // across a chunk boundary) instead of crashing when the export is missing.
 const CHUNK_BYTES = STREAM_CHUNK_BYTES || 64 * 1024;
 const OVERSIZE_BYTES = 8 * 1024 * 1024 + 4096;
+const LARGE_LINE_BYTES = 32 * 1024 * 1024;
+// A bounded scanner only ever keeps a few chunk-sized buffers; its peak-RSS
+// growth for a 32 MiB newline-free file is ~9 MiB. The unbounded predecessor
+// retained the whole line and grew by ~80 MiB. 32 MiB is a 3.5x margin over
+// the bounded value and well below the unbounded one.
+const LARGE_SCAN_RSS_BUDGET_KB = 32 * 1024;
+const FIFO_CHILD_TIMEOUT_MS = 15000;
+const SCAN_CHILD_TIMEOUT_MS = 60000;
 const MODES = ['tree', 'secrets'];
 const REVIEWED_FILES = [
   '.editorconfig',
@@ -365,3 +373,80 @@ for (const mode of MODES) {
     });
   });
 }
+
+test('Given a FIFO pathname, When streamScanFile is called directly in a child process, Then it is rejected as non-regular within the hard timeout', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-public-boundary-fifo-direct-'));
+  try {
+    const fifoPath = path.join(fixtureRoot, 'fifo-entry');
+    execFileSync('mkfifo', [fifoPath]);
+    // Opening a FIFO without O_NONBLOCK blocks forever. The child process plus
+    // hard timeout turns any regression into a bounded failure, never a hang.
+    const script = [
+      `const { streamScanFile } = require(${JSON.stringify(AUDITOR)});`,
+      `const result = streamScanFile(${JSON.stringify(fifoPath)}, 'docs/fifo-entry');`,
+      'process.stdout.write(JSON.stringify(result));',
+    ].join('\n');
+    const result = spawnSync(process.execPath, ['-e', script], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: FIFO_CHILD_TIMEOUT_MS,
+    });
+    assert.equal(result.error, undefined, `opening a FIFO must not block (child timed out): ${result.stderr}`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      hits: [],
+      binary: false,
+      scanned: false,
+      error: 'non-regular',
+      bytes: 0,
+    });
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test('Given a 32 MiB newline-free file with a webhook near EOF, When streamScanFile runs in a child process, Then the secret is detected within a bounded memory delta', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-public-boundary-large-line-'));
+  try {
+    const docsDir = path.join(fixtureRoot, 'docs');
+    fs.mkdirSync(docsDir);
+    const smallPath = path.join(docsDir, 'small.txt');
+    fs.writeFileSync(smallPath, Buffer.alloc(1024 * 1024, 0x61));
+    const largePath = path.join(docsDir, 'large-single-line.txt');
+    const buffer = Buffer.alloc(LARGE_LINE_BYTES, 0x61);
+    const token = syntheticWebhook();
+    const start = LARGE_LINE_BYTES - token.length - 16;
+    Buffer.from(` ${token} `, 'utf8').copy(buffer, start - 1);
+    fs.writeFileSync(largePath, buffer);
+    // `maxRSS` is a per-process high-water mark (KiB on Linux), so the delta
+    // across the large scan measures the state a newline-free line retains.
+    const script = [
+      `const { streamScanFile } = require(${JSON.stringify(AUDITOR)});`,
+      `streamScanFile(${JSON.stringify(smallPath)}, 'docs/small.txt');`,
+      'const beforeKb = process.resourceUsage().maxRSS;',
+      `const result = streamScanFile(${JSON.stringify(largePath)}, 'docs/large-single-line.txt');`,
+      'const afterKb = process.resourceUsage().maxRSS;',
+      'process.stdout.write(JSON.stringify({ result, deltaKb: afterKb - beforeKb }));',
+    ].join('\n');
+    const child = spawnSync(process.execPath, ['-e', script], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: SCAN_CHILD_TIMEOUT_MS,
+    });
+    assert.equal(child.error, undefined, `large-line scan must finish within the hard timeout: ${child.stderr}`);
+    assert.equal(child.status, 0, child.stderr);
+    const { result, deltaKb } = JSON.parse(child.stdout);
+    assert.equal(result.scanned, true, JSON.stringify(result));
+    assert.equal(result.error, null);
+    assert.ok(
+      result.hits.some((hit) => hit.kind === 'discord-webhook'),
+      'the webhook near EOF of a 32 MiB newline-free file must be detected',
+    );
+    assert.ok(
+      deltaKb < LARGE_SCAN_RSS_BUDGET_KB,
+      `streaming scan must not retain the whole line: delta ${deltaKb} KiB >= ${LARGE_SCAN_RSS_BUDGET_KB} KiB`,
+    );
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});

@@ -416,7 +416,7 @@
       "id": "suite:test/tools/public-boundary.test.cjs",
       "path": "test/tools/public-boundary.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 28,
+      "expectedExecutionCount": 30,
       "coverage": [
         "repository-tooling",
         "public-boundary"
@@ -562,7 +562,7 @@
   ],
   "totals": {
     "suiteCount": 54,
-    "expectedExecutionCount": 1138,
+    "expectedExecutionCount": 1140,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -578,7 +578,7 @@
       },
       "tool": {
         "suiteCount": 20,
-        "expectedExecutionCount": 271
+        "expectedExecutionCount": 273
       }
     }
   },

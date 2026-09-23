@@ -114,6 +114,26 @@ const MIN_REAL_TOKEN_LEN = 32;
 // split a signature exactly across a chunk boundary.
 const STREAM_CHUNK_BYTES = 64 * 1024;
 
+// Bounded pending policy. A newline-free run longer than this keeps only the
+// LAST STREAM_PENDING_LIMIT characters as matcher state, so a pathological
+// single-line file (gigabytes without '\n') can neither OOM nor stall.
+//
+// Safety margin: the longest supported complete match is a Discord webhook URL
+// (`discord.com/api/webhooks/` 24 + snowflake 19 + '/' + real token ~70) at
+// roughly 115 characters; snowflakes are <= 21, the fixed legacy identity/host
+// names are shorter, and real private paths stay under a few hundred. 64 KiB
+// is therefore > 500x the longest real token, so a token split at ANY chunk
+// boundary is still seen whole by the retained suffix plus the match overlap
+// below.
+const STREAM_PENDING_LIMIT = 64 * 1024;
+
+// Extra characters scanned past the retained suffix. Without this, a match
+// whose start is already committed (all but the last STREAM_PENDING_LIMIT
+// characters) but whose end reaches into the retained suffix would be
+// separated from its pattern start and missed. Must be >= the longest
+// supported match (~115 chars); 4 KiB is a > 30x margin.
+const STREAM_MATCH_OVERLAP = 4 * 1024;
+
 // Test-only fault injection seam (see testReadFault). Never set in production;
 // any configured fault can only ADD a failure, never skip or weaken a scan.
 const TEST_READ_FAULT_ENV = 'TAA_AUDIT_TEST_READ_FAULT';
@@ -223,6 +243,15 @@ const IDENTITY_EXEMPT_RE = /^(?:test\/|docs\/release-history\/)/;
  * the trailing partial line stays as state until more text (or `end`) arrives,
  * so a token split across two chunks is never missed by a chunk-local regex.
  *
+ * Pending state is bounded by STREAM_PENDING_LIMIT: when a newline-free run
+ * exceeds the limit, the safe prefix is scanned immediately and only the last
+ * STREAM_PENDING_LIMIT characters are retained as cross-chunk state (plus a
+ * STREAM_MATCH_OVERLAP scan window so a match starting just before the flush
+ * boundary is still completed). Every real token kind is far shorter than the
+ * retained suffix, so normal files and cross-chunk tokens are unaffected;
+ * hits are de-duplicated by kind+offset because the overlap window may scan
+ * the same committed characters twice.
+ *
  * @param {string} rel posix relative path (used only for exemption routing)
  * @param {{snowflakeExempt?:boolean, identityExempt?:boolean}} opts exemption flags
  * @returns {{push: (chunk: string) => void, end: () => Array<{kind:string, offset:number, line:number, tokenLen:number}>, hits: Array<{kind:string, offset:number, line:number, tokenLen:number}>}}
@@ -230,11 +259,21 @@ const IDENTITY_EXEMPT_RE = /^(?:test\/|docs\/release-history\/)/;
 function createSecretStreamMatcher(rel, opts = {}) {
   const matchers = buildSecretMatchers();
   const hits = [];
+  const seenHitKeys = new Set();
   const snowflakeExempt = opts.snowflakeExempt === true;
   const identityExempt = opts.identityExempt === true;
   let pending = '';
   let pendingStart = 0;
   let lineNumber = 1;
+
+  // Same shape as the historical direct push; the key guard only suppresses
+  // re-reports of a committed offset rescanned through the overlap window.
+  const addHit = (kind, offset, tokenLen) => {
+    const key = `${kind}:${offset}`;
+    if (seenHitKeys.has(key)) return;
+    seenHitKeys.add(key);
+    hits.push({ kind, offset, line: lineNumber, tokenLen });
+  };
 
   const record = (line, lineStart, regex, kind) => {
     regex.lastIndex = 0;
@@ -246,12 +285,7 @@ function createSecretStreamMatcher(rel, opts = {}) {
         regex.lastIndex += 1;
         continue;
       }
-      hits.push({
-        kind,
-        offset: lineStart + match.index,
-        line: lineNumber,
-        tokenLen: match[0].length,
-      });
+      addHit(kind, lineStart + match.index, match[0].length);
     }
   };
 
@@ -268,12 +302,7 @@ function createSecretStreamMatcher(rel, opts = {}) {
       const token = m[2];
       if (!matchers.placeholderRe.test(token) && token.length >= MIN_REAL_TOKEN_LEN) {
         // Celowo BEZ wartości tokena: tylko lokalizacja i długość.
-        hits.push({
-          kind: 'discord-webhook',
-          offset: lineStart + m.index,
-          line: lineNumber,
-          tokenLen: m[0].length,
-        });
+        addHit('discord-webhook', lineStart + m.index, m[0].length);
       }
       if (m[0].length === 0) {
         matchers.webhookRe.lastIndex += 1;
@@ -286,6 +315,20 @@ function createSecretStreamMatcher(rel, opts = {}) {
     }
   };
 
+  // Bound newline-free state: scan everything except the last
+  // STREAM_PENDING_LIMIT characters (plus the STREAM_MATCH_OVERLAP window that
+  // lets a match starting just before the cut finish), then retain only that
+  // suffix. Offsets stay exact because `pendingStart` advances by the dropped
+  // length and the logical line (and lineNumber) is unchanged.
+  const flushBoundedPending = () => {
+    if (pending.length <= STREAM_PENDING_LIMIT) return;
+    const scanLength = pending.length - STREAM_PENDING_LIMIT + STREAM_MATCH_OVERLAP;
+    scanLine(pending.slice(0, scanLength), pendingStart);
+    const dropLength = pending.length - STREAM_PENDING_LIMIT;
+    pendingStart += dropLength;
+    pending = pending.slice(dropLength);
+  };
+
   return {
     push(chunk) {
       if (typeof chunk !== 'string' || chunk.length === 0) return;
@@ -295,6 +338,7 @@ function createSecretStreamMatcher(rel, opts = {}) {
       let newline = rest.indexOf('\n');
       if (newline === -1) {
         pending += rest;
+        flushBoundedPending();
         return;
       }
       while (newline !== -1) {
@@ -308,6 +352,7 @@ function createSecretStreamMatcher(rel, opts = {}) {
         newline = rest.indexOf('\n');
       }
       pending = rest;
+      flushBoundedPending();
     },
     end() {
       if (pending.length > 0) {
@@ -367,30 +412,36 @@ function testReadFault(rel) {
  */
 function streamScanFile(abs, rel, opts = {}) {
   const fault = testReadFault(rel);
-  let size = 0;
-  try {
-    const st = fs.statSync(abs);
-    if (!st.isFile()) return { hits: [], binary: false, scanned: false, error: 'non-regular', bytes: 0 };
-    size = st.size;
-  } catch {
-    return { hits: [], binary: false, scanned: false, error: 'stat-failure', bytes: 0 };
-  }
   let fd = null;
   try {
     // O_NOFOLLOW: an entry swapped for a symlink after traversal fails open.
-    fd = fs.openSync(abs, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+    // O_NONBLOCK: a pathname swapped for a FIFO/device after traversal cannot
+    // block the open forever. The descriptor is validated with fstat below,
+    // never with a prior pathname stat, so the open->check window cannot race.
+    const flags = fs.constants.O_RDONLY
+      | (fs.constants.O_NOFOLLOW || 0)
+      | (fs.constants.O_NONBLOCK || 0);
+    fd = fs.openSync(abs, flags);
   } catch {
     return { hits: [], binary: false, scanned: false, error: 'open-failure', bytes: 0 };
   }
-  const matcher = createSecretStreamMatcher(rel, opts);
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  const buffer = Buffer.allocUnsafe(Math.min(STREAM_CHUNK_BYTES, Math.max(1, size)));
-  let bytes = 0;
-  let chunks = 0;
-  let binary = false;
-  let truncated = false;
-  let error = null;
   try {
+    let size = 0;
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) return { hits: [], binary: false, scanned: false, error: 'non-regular', bytes: 0 };
+      size = st.size; // descriptor size — the file that was actually opened
+    } catch {
+      return { hits: [], binary: false, scanned: false, error: 'stat-failure', bytes: 0 };
+    }
+    const matcher = createSecretStreamMatcher(rel, opts);
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const buffer = Buffer.allocUnsafe(Math.min(STREAM_CHUNK_BYTES, Math.max(1, size)));
+    let bytes = 0;
+    let chunks = 0;
+    let binary = false;
+    let truncated = false;
+    let error = null;
     for (;;) {
       let read = 0;
       try {
@@ -432,6 +483,12 @@ function streamScanFile(abs, rel, opts = {}) {
         error = 'decode-failure';
       }
     }
+    if (binary) return { hits: [], binary: true, scanned: false, error: null, bytes };
+    if (error !== null) return { hits: [], binary: false, scanned: false, error, bytes };
+    if (truncated || bytes !== size) {
+      return { hits: [], binary: false, scanned: false, error: 'truncated-read', bytes };
+    }
+    return { hits: matcher.end(), binary: false, scanned: true, error: null, bytes };
   } finally {
     try {
       fs.closeSync(fd);
@@ -439,12 +496,6 @@ function streamScanFile(abs, rel, opts = {}) {
       // fd already closed
     }
   }
-  if (binary) return { hits: [], binary: true, scanned: false, error: null, bytes };
-  if (error !== null) return { hits: [], binary: false, scanned: false, error, bytes };
-  if (truncated || bytes !== size) {
-    return { hits: [], binary: false, scanned: false, error: 'truncated-read', bytes };
-  }
-  return { hits: matcher.end(), binary: false, scanned: true, error: null, bytes };
 }
 
 /**
@@ -1479,8 +1530,10 @@ module.exports = {
   GENERATED,
   SETTINGS_BACKUP_RE,
   STREAM_CHUNK_BYTES,
+  STREAM_PENDING_LIMIT,
   scanTextForSecrets,
   createSecretStreamMatcher,
+  streamScanFile,
   treeScanExemptions,
   verifyOcrModel,
   verifyEvidenceDeps,
