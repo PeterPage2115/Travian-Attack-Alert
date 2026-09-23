@@ -332,7 +332,7 @@
       "id": "suite:test/tools/backup-rollback.test.cjs",
       "path": "test/tools/backup-rollback.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 53,
+      "expectedExecutionCount": 63,
       "coverage": [
         "repository-tooling",
         "backup-rollback"
@@ -500,7 +500,7 @@
   ],
   "totals": {
     "suiteCount": 48,
-    "expectedExecutionCount": 1013,
+    "expectedExecutionCount": 1023,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -516,7 +516,7 @@
       },
       "tool": {
         "suiteCount": 16,
-        "expectedExecutionCount": 191
+        "expectedExecutionCount": 201
       }
     }
   },

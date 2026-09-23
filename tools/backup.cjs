@@ -70,6 +70,42 @@ function inventorySourceConfig(root = ROOT) {
 
 function toPosix(p) { return p.split(path.sep).join('/'); }
 
+/** Legacy selector artifact names (schemaVersion-1 four-file snapshot). */
+function selectorNames(selector) {
+    return { runtime: `runtime-${selector}.js`, config: `config-${selector}.json`, metadata: `metadata-${selector}.json`, moduleManifest: `module-manifest-${selector}.json` };
+}
+
+function lstatOrNull(target) {
+    try { return fs.lstatSync(target); } catch { return null; }
+}
+
+/**
+ * Shared regular-file contract (Task 7) for backup and rollback: lstat never
+ * follows symlinks, so symlinks, FIFOs, sockets, devices and directories all
+ * fail closed. Returns null when the path is absent; callers own the missing
+ * case so the message stays actionable.
+ */
+function lstatRegularFile(target, rel, kind = 'backup payload') {
+    const stat = lstatOrNull(target);
+    if (stat === null) return null;
+    if (!stat.isFile()) throw new Error(`${kind} is not a regular file: ${rel}`);
+    return stat;
+}
+
+function readRegularJson(file, rel, kind) {
+    if (lstatRegularFile(file, rel, kind) === null) return null;
+    try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
+}
+
+function legacyManifestsEquivalent(published, proposed) {
+    if (!published || published.schemaVersion !== proposed.schemaVersion || published.version !== proposed.version
+        || published.releaseId !== proposed.releaseId || published.selector !== proposed.selector
+        || published.runtimeSha256 !== proposed.runtimeSha256 || !published.files) return false;
+    const kinds = Object.keys(proposed.files);
+    return Object.keys(published.files).length === kinds.length
+        && kinds.every((kind) => published.files[kind] && published.files[kind].path === proposed.files[kind].path && published.files[kind].sha256 === proposed.files[kind].sha256);
+}
+
 /** Canonical digest over the sorted inventory: `<path>:<sha256>\n` lines. */
 function sourceConfigDigest(entries) {
     return crypto.createHash('sha256').update(entries.map((e) => `${e.rel}:${e.sha256}\n`).join('')).digest('hex');
@@ -116,32 +152,119 @@ function manifestsEquivalentIgnoringTimestamp(a, b) {
     return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
 }
 
-function commitSourceConfigPayloads(selector, stageDir, entries, manifest) {
+function walkRegularPayloadTree(dirAbs, relPrefix, expectedDirs, out) {
+    for (const name of fs.readdirSync(dirAbs).sort()) {
+        const abs = path.join(dirAbs, name);
+        const rel = relPrefix ? `${relPrefix}/${name}` : name;
+        const stat = fs.lstatSync(abs);
+        if (stat.isDirectory()) {
+            if (!expectedDirs.has(rel)) throw new Error(`backup selector payload entry unexpected: ${rel}`);
+            out.push(rel);
+            walkRegularPayloadTree(abs, rel, expectedDirs, out);
+            continue;
+        }
+        if (!stat.isFile()) throw new Error(`backup payload is not a regular file: ${rel}`);
+        out.push(rel);
+    }
+}
+
+/**
+ * A published legacy snapshot is compatible only when it is the byte-exact
+ * proposed snapshot: manifest fields, every payload digest, every sidecar and
+ * the complete artifact set. Anything else fails closed and is never touched.
+ */
+function validatePublishedLegacySelector(selector, names, manifest) {
+    const manifestName = `backup-${selector}.manifest.json`;
+    const published = readRegularJson(path.join(BACKUPS, manifestName), manifestName, 'backup manifest');
+    if (published === null) throw new Error(`backup selector manifest missing: ${manifestName}`);
+    if (published === undefined) throw new Error(`backup selector manifest is malformed: ${manifestName}`);
+    if (!legacyManifestsEquivalent(published, manifest)) throw new Error(`backup selector already published: ${selector}`);
+    for (const kind of Object.keys(names)) {
+        const name = names[kind];
+        const payload = path.join(BACKUPS, name);
+        if (lstatRegularFile(payload, name) === null) throw new Error(`backup selector payload missing: ${name}`);
+        if (digest(payload) !== manifest.files[kind].sha256) throw new Error(`backup selector payload mismatch: ${name}`);
+        const sidecarName = `${name}.sha256`;
+        const sidecar = path.join(BACKUPS, sidecarName);
+        if (lstatRegularFile(sidecar, sidecarName, 'backup sidecar') === null) throw new Error(`backup selector sidecar missing: ${sidecarName}`);
+        if (fs.readFileSync(sidecar, 'utf8') !== `${manifest.files[kind].sha256}  ${name}\n`) throw new Error(`backup selector sidecar mismatch: ${name}`);
+    }
+}
+
+/**
+ * A published source/config snapshot is compatible only when the manifest is
+ * the byte-exact proposed one (ignoring createdAt), the payload directory is a
+ * real directory holding exactly the expected regular files/sidecars, and
+ * every payload digest and sidecar matches the manifest.
+ */
+function validatePublishedSourceConfigSelector(selector, manifest) {
+    const { manifestName, payloadDirName } = sourceConfigNames(selector);
+    const published = readRegularJson(path.join(BACKUPS, manifestName), manifestName, 'backup manifest');
+    if (published === null) throw new Error(`backup selector manifest missing: ${manifestName}`);
+    if (published === undefined) throw new Error(`backup selector manifest is malformed: ${manifestName}`);
+    if (!manifestsEquivalentIgnoringTimestamp(published, manifest)) throw new Error(`backup selector already published: ${selector}`);
+    const payloadRoot = path.join(BACKUPS, payloadDirName);
+    const rootStat = lstatOrNull(payloadRoot);
+    if (rootStat === null) throw new Error(`backup payload dir missing: ${payloadDirName}`);
+    if (!rootStat.isDirectory()) throw new Error(`backup payload dir is not a directory: ${payloadDirName}`);
+    const expected = new Set();
+    const expectedDirs = new Set();
+    for (const entry of manifest.files) {
+        expected.add(entry.path);
+        expected.add(`${entry.path}.sha256`);
+        const parts = entry.path.split('/');
+        parts.pop();
+        let dir = '';
+        for (const part of parts) { dir = dir ? `${dir}/${part}` : part; expected.add(dir); expectedDirs.add(dir); }
+    }
+    // Every manifest payload path must itself be a regular file before the tree
+    // shape is compared, so a directory/symlink/FIFO swap is rejected as such.
+    for (const entry of manifest.files) {
+        if (lstatRegularFile(path.join(payloadRoot, entry.path), entry.path) === null) throw new Error(`backup selector payload entry missing: ${entry.path}`);
+    }
+    const actual = [];
+    walkRegularPayloadTree(payloadRoot, '', expectedDirs, actual);
+    const actualSet = new Set(actual);
+    for (const rel of expected) if (!actualSet.has(rel)) throw new Error(`backup selector payload entry missing: ${rel}`);
+    for (const rel of actual) if (!expected.has(rel)) throw new Error(`backup selector payload entry unexpected: ${rel}`);
+    for (const entry of manifest.files) {
+        const payload = path.join(payloadRoot, entry.path);
+        if (digest(payload) !== entry.sha256) throw new Error(`backup selector payload mismatch: ${entry.path}`);
+        const sidecar = `${payload}.sha256`;
+        if (fs.readFileSync(sidecar, 'utf8') !== `${entry.sha256}  ${entry.path}\n`) throw new Error(`backup selector sidecar mismatch: ${entry.path}`);
+    }
+}
+
+/**
+ * Complete-selector preflight (Task 7). Classifies the whole selector as
+ * absent, legacy-only (extendable additively), or a byte-exact published copy
+ * of the proposed snapshot — and throws on any partial, non-regular or
+ * colliding state. Runs before a single path is created, replaced, published
+ * or deleted, and uses lstat only so a symlink is never followed.
+ */
+function preflightSelector(selector, names, legacyManifest, sourceConfigManifest) {
+    const { manifestName, payloadDirName } = sourceConfigNames(selector);
+    const legacyArtifacts = [...Object.keys(names).flatMap((kind) => [names[kind], `${names[kind]}.sha256`]), `backup-${selector}.manifest.json`];
+    const legacyPresent = legacyArtifacts.filter((name) => lstatOrNull(path.join(BACKUPS, name)) !== null);
+    const sourceConfigPresent = [manifestName, payloadDirName].filter((name) => lstatOrNull(path.join(BACKUPS, name)) !== null);
+    if (legacyPresent.length === 0 && sourceConfigPresent.length === 0) return { state: 'absent' };
+    if (legacyPresent.length !== legacyArtifacts.length || sourceConfigPresent.length === 1) {
+        throw new Error(`backup selector is partially published: ${selector}`);
+    }
+    validatePublishedLegacySelector(selector, names, legacyManifest);
+    if (sourceConfigPresent.length === 0) return { state: 'legacy-only' };
+    validatePublishedSourceConfigSelector(selector, sourceConfigManifest);
+    return { state: 'complete' };
+}
+
+function publishSourceConfigPayloads(selector, stageDir, entries, manifest) {
     const { manifestName, payloadDirName } = sourceConfigNames(selector);
     const payloadDir = path.join(BACKUPS, payloadDirName);
     const manifestPath = path.join(BACKUPS, manifestName);
-    if (fs.existsSync(payloadDir) || fs.existsSync(manifestPath)) {
-        // Never rewrite an old backup payload: re-publishing the identical
-        // source/config set (e.g. backup after a byte-exact rollback) is an
-        // idempotent no-op; anything else fails closed.
-        let identical = false;
-        try {
-            const existing = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-            identical = manifestsEquivalentIgnoringTimestamp(existing, manifest)
-                && Array.isArray(existing.files)
-                && existing.files.every((f) => {
-                    const live = path.join(payloadDir, f.path);
-                    return fs.statSync(live).isFile() && digest(live) === f.sha256;
-                });
-        } catch {
-            identical = false;
-        }
-        fs.rmSync(stageDir, { recursive: true, force: true });
-        if (!identical) throw new Error(`backup selector already published: ${selector}`);
-        return { manifestPath, payloadDir };
-    }
-    fs.renameSync(stageDir, payloadDir);
+    let published = false;
     try {
+        fs.renameSync(stageDir, payloadDir);
+        published = true;
         for (const entry of entries) fsyncFile(path.join(payloadDir, entry.rel));
         const manifestBytes = `${JSON.stringify(manifest)}\n`;
         atomicWrite(manifestPath, manifestBytes);
@@ -150,23 +273,44 @@ function commitSourceConfigPayloads(selector, stageDir, entries, manifest) {
         }
         fsyncDir();
     } catch (error) {
-        fs.rmSync(payloadDir, { recursive: true, force: true });
-        fs.rmSync(manifestPath, { force: true });
+        if (published) {
+            fs.rmSync(payloadDir, { recursive: true, force: true });
+            fs.rmSync(manifestPath, { force: true });
+            fs.rmSync(`${manifestPath}.tmp`, { force: true });
+        }
         throw error;
     }
     return { manifestPath, payloadDir };
 }
 
-function removePublishedSelector(selector) {
-    const legacy = [
-        `runtime-${selector}.js`, `config-${selector}.json`, `metadata-${selector}.json`, `module-manifest-${selector}.json`,
-        `runtime-${selector}.js.sha256`, `config-${selector}.json.sha256`, `metadata-${selector}.json.sha256`, `module-manifest-${selector}.json.sha256`,
-        `backup-${selector}.manifest.json`,
-    ];
+function removeSourceConfigSelector(selector) {
     const { manifestName, payloadDirName } = sourceConfigNames(selector);
-    for (const name of legacy) fs.rmSync(path.join(BACKUPS, name), { force: true });
     fs.rmSync(path.join(BACKUPS, payloadDirName), { recursive: true, force: true });
     fs.rmSync(path.join(BACKUPS, manifestName), { force: true });
+}
+
+/**
+ * Removes every artifact of a selector that this run proved absent before
+ * publication. Never called on a validation/collision failure, so a
+ * pre-existing published selector is never deleted.
+ */
+function removeSelectorArtifacts(selector) {
+    const names = selectorNames(selector);
+    for (const name of Object.values(names)) {
+        fs.rmSync(path.join(BACKUPS, name), { force: true });
+        fs.rmSync(path.join(BACKUPS, `${name}.sha256`), { force: true });
+    }
+    fs.rmSync(path.join(BACKUPS, `backup-${selector}.manifest.json`), { force: true });
+    removeSourceConfigSelector(selector);
+}
+
+function reportBackup(result, runtimeSha256) {
+    if (process.argv.includes('--json')) {
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+    } else {
+        process.stdout.write(`${runtimeSha256}\n`);
+    }
+    return result;
 }
 
 function backup() {
@@ -181,11 +325,11 @@ function backup() {
     if (moduleManifest.release?.version !== RELEASE_VERSION || moduleManifest.release.releaseId !== `taa-${RELEASE_VERSION}`) throw new Error('backup source module manifest does not match release');
     if (typeof config.name !== 'string' || !Array.isArray(config.match) || config.version !== undefined) throw new Error('backup source config does not match the version-owned contract');
     const hash8 = hashes.runtime.slice(0, 8); const selector = `${RELEASE_VERSION}-${hash8}`;
-    const names = { runtime: `runtime-${selector}.js`, config: `config-${selector}.json`, metadata: `metadata-${selector}.json`, moduleManifest: `module-manifest-${selector}.json` };
-    fs.mkdirSync(BACKUPS, { recursive: true });
-    // Stage the additive source/config payloads before any legacy file is
-    // published, so a staging failure leaves the backups tree untouched.
-    const stageDir = stageSourceConfigPayloads(selector, sourceConfigEntries);
+    const names = selectorNames(selector);
+    // The proposed selector content is built entirely in memory: nothing is
+    // created, replaced, published or deleted until the preflight passes.
+    const manifest = { schemaVersion: 1, version: RELEASE_VERSION, releaseId: `taa-${RELEASE_VERSION}`, selector, files: {}, runtimeSha256: hashes.runtime };
+    for (const kind of Object.keys(names)) { manifest.files[kind] = { path: names[kind], sha256: hashes[kind] }; }
     const sourceConfigManifest = {
         schemaVersion: SOURCE_CONFIG_SCHEMA_VERSION,
         version: RELEASE_VERSION,
@@ -197,31 +341,41 @@ function backup() {
         payloadDir: sourceConfigNames(selector).payloadDirName,
         createdAt: new Date().toISOString(),
     };
+    const result = { selector, manifestPath: toPosix(path.relative(ROOT, path.join(BACKUPS, sourceConfigNames(selector).manifestName))), sourceConfigSha256, files: sourceConfigEntries.map((e) => e.rel) };
+    // Complete-selector preflight: a byte-exact published copy is an idempotent
+    // no-op; any partial/non-regular/colliding state fails closed with the
+    // pre-existing selector untouched.
+    const preflight = preflightSelector(selector, names, manifest, sourceConfigManifest);
+    if (preflight.state === 'complete') return reportBackup(result, hashes.runtime);
+    fs.mkdirSync(BACKUPS, { recursive: true });
     const temporary = {};
+    let stageDir = null;
     try {
-        for (const [kind, source] of Object.entries(sources)) { if (process.env.TAA_FAIL_COPY === kind) throw new Error(`injected failure: copy-${kind}`); temporary[kind] = path.join(BACKUPS, `.backup-${selector}-${kind}.tmp`); fs.copyFileSync(source, temporary[kind]); if (process.env.TAA_FAIL_STAGED_READBACK === kind || digest(temporary[kind]) !== hashes[kind]) throw new Error(`backup readback mismatch: ${kind}`); }
-        const manifest = { schemaVersion: 1, version: RELEASE_VERSION, releaseId: `taa-${RELEASE_VERSION}`, selector, files: {}, runtimeSha256: hashes.runtime };
-        for (const kind of Object.keys(names)) { manifest.files[kind] = { path: names[kind], sha256: hashes[kind] }; }
-        const sidecars = {};
-        for (const [kind, name] of Object.entries(names)) { const target = path.join(BACKUPS, name); fs.renameSync(temporary[kind], target); fsyncFile(target); sidecars[kind] = `${target}.sha256`; atomicWrite(sidecars[kind], `${hashes[kind]}  ${name}\n`); }
-        const manifestPath = path.join(BACKUPS, `backup-${selector}.manifest.json`); const manifestBytes = `${JSON.stringify(manifest)}\n`; atomicWrite(manifestPath, manifestBytes); if (fs.readFileSync(manifestPath, 'utf8') !== manifestBytes) throw new Error(`backup integrity readback mismatch: ${manifestPath}`);
-        for (const file of Object.values(sidecars)) { const expected = `${hashes[Object.keys(sidecars).find((kind) => sidecars[kind] === file)]}  ${path.basename(file, '.sha256')}\n`; if (fs.readFileSync(file, 'utf8') !== expected) throw new Error(`backup integrity readback mismatch: ${file}`); }
-        commitSourceConfigPayloads(selector, stageDir, sourceConfigEntries, sourceConfigManifest);
-        fsyncDir();
-        const manifestRel = toPosix(path.relative(ROOT, path.join(BACKUPS, sourceConfigNames(selector).manifestName)));
-        if (process.argv.includes('--json')) {
-            process.stdout.write(`${JSON.stringify({ selector, manifestPath: manifestRel, sourceConfigSha256, files: sourceConfigEntries.map((e) => e.rel) })}\n`);
-        } else {
-            process.stdout.write(`${hashes.runtime}\n`);
+        // Stage the additive source/config payloads before any legacy file is
+        // published, so a staging failure leaves the backups tree untouched.
+        stageDir = stageSourceConfigPayloads(selector, sourceConfigEntries);
+        if (preflight.state === 'absent') {
+            for (const [kind, source] of Object.entries(sources)) { if (process.env.TAA_FAIL_COPY === kind) throw new Error(`injected failure: copy-${kind}`); temporary[kind] = path.join(BACKUPS, `.backup-${selector}-${kind}.tmp`); fs.copyFileSync(source, temporary[kind]); if (process.env.TAA_FAIL_STAGED_READBACK === kind || digest(temporary[kind]) !== hashes[kind]) throw new Error(`backup readback mismatch: ${kind}`); }
+            const sidecars = {};
+            for (const [kind, name] of Object.entries(names)) { const target = path.join(BACKUPS, name); fs.renameSync(temporary[kind], target); fsyncFile(target); sidecars[kind] = `${target}.sha256`; atomicWrite(sidecars[kind], `${hashes[kind]}  ${name}\n`); }
+            const manifestPath = path.join(BACKUPS, `backup-${selector}.manifest.json`); const manifestBytes = `${JSON.stringify(manifest)}\n`; atomicWrite(manifestPath, manifestBytes); if (fs.readFileSync(manifestPath, 'utf8') !== manifestBytes) throw new Error(`backup integrity readback mismatch: ${manifestPath}`);
+            for (const file of Object.values(sidecars)) { const expected = `${hashes[Object.keys(sidecars).find((kind) => sidecars[kind] === file)]}  ${path.basename(file, '.sha256')}\n`; if (fs.readFileSync(file, 'utf8') !== expected) throw new Error(`backup integrity readback mismatch: ${file}`); }
         }
-        return { selector, manifestPath: manifestRel, sourceConfigSha256, files: sourceConfigEntries.map((e) => e.rel) };
+        publishSourceConfigPayloads(selector, stageDir, sourceConfigEntries, sourceConfigManifest);
+        stageDir = null;
+        fsyncDir();
+        return reportBackup(result, hashes.runtime);
     } catch (error) {
-        fs.rmSync(stageDir, { recursive: true, force: true });
-        removePublishedSelector(selector);
+        if (stageDir) fs.rmSync(stageDir, { recursive: true, force: true });
+        // Publication failed. Only artifacts this run created may be removed:
+        // 'absent' proved nothing pre-existed; 'legacy-only' proved the
+        // published legacy snapshot must stay untouched.
+        if (preflight.state === 'absent') removeSelectorArtifacts(selector);
+        else removeSourceConfigSelector(selector);
         throw error;
     } finally { for (const file of Object.values(temporary)) fs.rmSync(file, { force: true }); }
 }
 
 if (require.main === module) backup();
 
-module.exports = { backup, digest, recoverRollbackJournal, inventorySourceConfig, sourceConfigDigest, sourceConfigNames, SOURCE_CONFIG_ROOTS, SOURCE_CONFIG_SCHEMA_VERSION };
+module.exports = { backup, digest, recoverRollbackJournal, inventorySourceConfig, sourceConfigDigest, sourceConfigNames, lstatRegularFile, SOURCE_CONFIG_ROOTS, SOURCE_CONFIG_SCHEMA_VERSION };

@@ -62,6 +62,52 @@ function legacySelectorInfo(project) {
 function payloadName(kind, selector) { return `${kind === 'moduleManifest' ? 'module-manifest' : kind}-${selector}.${kind === 'runtime' ? 'js' : 'json'}`; }
 function unchangedFailure(project, args, extra = {}) { const before = liveHashes(project); const result = run(project, 'rollback.cjs', args, extra); assert.notEqual(result.status, 0, result.stdout); assert.deepEqual(liveHashes(project), before); }
 
+// Task 7: complete-selector immutability proof. Snapshots every path, type,
+// mode, size, mtime and file byte digest under a tree so any mutation of a
+// pre-existing selector (including a silent symlink repair) is detected.
+function snapshotTree(dir) {
+    const entries = [];
+    const visit = (abs, rel) => {
+        for (const name of fs.readdirSync(abs).sort()) {
+            const childAbs = path.join(abs, name);
+            const childRel = rel ? `${rel}/${name}` : name;
+            const stat = fs.lstatSync(childAbs);
+            const kind = stat.isSymbolicLink() ? 'symlink' : stat.isDirectory() ? 'dir' : stat.isFile() ? 'file' : 'other';
+            const entry = { rel: childRel, kind, mode: stat.mode & 0o777, size: stat.size, mtimeMs: stat.mtimeMs };
+            if (kind === 'file') entry.sha256 = hash(childAbs);
+            if (kind === 'symlink') entry.link = fs.readlinkSync(childAbs);
+            entries.push(entry);
+            if (kind === 'dir') visit(childAbs, childRel);
+        }
+    };
+    if (fs.existsSync(dir)) visit(dir, '');
+    return entries;
+}
+function backupsSnapshot(project) { return snapshotTree(path.join(project, 'backups')); }
+// Same-byte symlink swap: the link target carries the exact original bytes, so
+// any reader that follows the link cannot tell the payload was replaced.
+function sameByteSymlink(project, file) {
+    const external = path.join(project, `external-${path.basename(file)}`);
+    fs.copyFileSync(file, external);
+    fs.rmSync(file);
+    fs.symlinkSync(external, file);
+}
+function rejectedBackup(project) {
+    const before = backupsSnapshot(project);
+    const result = run(project, 'backup.cjs');
+    assert.notEqual(result.status, 0, `backup unexpectedly succeeded: ${result.stdout}`);
+    assert.deepEqual(backupsSnapshot(project), before);
+    return result;
+}
+function rejectedRollback(project, args, extra = {}) {
+    const live = liveHashes(project); const backups = backupsSnapshot(project);
+    const result = run(project, 'rollback.cjs', args, extra);
+    assert.notEqual(result.status, 0, `rollback unexpectedly succeeded: ${result.stdout}`);
+    assert.deepEqual(liveHashes(project), live);
+    assert.deepEqual(backupsSnapshot(project), backups);
+    return result;
+}
+
 test('Given a fixture, When backup runs, Then it publishes matching payloads, sidecars, and manifest', () => {
     const project = fixture();
     try {
@@ -224,5 +270,116 @@ test('Given a missing live metadata file and a crash after one old move, When ro
         const crashed = run(project, 'rollback.cjs', [selector], { TAA_CRASH_AFTER_OLD_MOVED: '1' }); assert.notEqual(crashed.status, 0);
         const recovered = run(project, 'rollback.cjs', [selector]); assert.equal(recovered.status, 0, recovered.stderr);
         assert.deepEqual(liveHashes(project), [digest, hash(path.join(dir, payloadName('config', selector))), hash(path.join(dir, payloadName('metadata', selector))), hash(path.join(dir, payloadName('moduleManifest', selector)))]); assert.equal(fs.readdirSync(dir).filter((name) => /^\.rollback-journal-/.test(name)).length, 0);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+// Task 7 — Reject symlinked backup payloads consistently.
+// The published selector is the operator's only recovery point: a rerun must
+// either be a byte-exact no-op or fail before touching anything, and rollback
+// must never follow a symlink payload.
+
+test('Given a published selector, When backup reruns without changes, Then it succeeds and the complete selector stays identical', () => {
+    const project = fixture();
+    try {
+        const { digest } = selectorInfo(project);
+        const before = backupsSnapshot(project);
+        const result = run(project, 'backup.cjs');
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(result.stdout.trim(), digest);
+        assert.deepEqual(backupsSnapshot(project), before);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given a same-byte symlinked source/config payload, When backup reruns, Then it fails closed and the published selector stays identical', () => {
+    const project = fixture();
+    try {
+        const { selector } = selectorInfo(project);
+        sameByteSymlink(project, path.join(project, 'backups', `source-config-${selector}`, 'config', 'userscript.json'));
+        const result = rejectedBackup(project);
+        assert.match(result.stderr, /not a regular file/);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given a same-byte symlinked legacy payload, When backup reruns, Then it fails closed and the published selector stays identical', () => {
+    const project = fixture();
+    try {
+        const { selector } = selectorInfo(project);
+        sameByteSymlink(project, path.join(project, 'backups', `config-${selector}.json`));
+        const result = rejectedBackup(project);
+        assert.match(result.stderr, /not a regular file/);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given a directory where a payload is expected, When backup reruns, Then it fails closed and the published selector stays identical', () => {
+    const project = fixture();
+    try {
+        const { selector } = selectorInfo(project);
+        const payload = path.join(project, 'backups', `source-config-${selector}`, 'config', 'userscript.json');
+        fs.rmSync(payload); fs.mkdirSync(payload);
+        const result = rejectedBackup(project);
+        assert.match(result.stderr, /not a regular file/);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given a FIFO where a payload is expected, When backup reruns, Then it fails closed and the published selector stays identical', (t) => {
+    const project = fixture();
+    try {
+        const { selector } = selectorInfo(project);
+        const payload = path.join(project, 'backups', `source-config-${selector}`, 'config', 'userscript.json');
+        fs.rmSync(payload);
+        const made = require('node:child_process').spawnSync('mkfifo', [payload], { encoding: 'utf8' });
+        if (made.status !== 0) { t.skip(`mkfifo unavailable: ${made.stderr}`); return; }
+        const result = rejectedBackup(project);
+        assert.match(result.stderr, /not a regular file/);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given changed live config for the same runtime selector, When backup reruns, Then it fails closed as a collision and the published selector stays identical', () => {
+    const project = fixture();
+    try {
+        selectorInfo(project);
+        fs.appendFileSync(path.join(project, 'config', 'userscript.json'), '\n');
+        const result = rejectedBackup(project);
+        assert.match(result.stderr, /already published/);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given tampered published payload bytes, When backup reruns, Then it fails closed as a collision and the published selector stays identical', () => {
+    const project = fixture();
+    try {
+        const { selector } = selectorInfo(project);
+        fs.appendFileSync(path.join(project, 'backups', `source-config-${selector}`, 'src', 'runtime.js'), 'x');
+        const result = rejectedBackup(project);
+        assert.match(result.stderr, /payload mismatch/);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given a published selector with a missing sidecar, When backup reruns, Then it fails closed and the published selector stays identical', () => {
+    const project = fixture();
+    try {
+        const { selector } = selectorInfo(project);
+        fs.rmSync(path.join(project, 'backups', `source-config-${selector}`, 'config', 'userscript.json.sha256'));
+        const result = rejectedBackup(project);
+        assert.match(result.stderr, /payload entry missing/);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given a same-byte symlinked source/config payload, When rollback runs, Then it fails with a regular-file error and nothing is mutated', () => {
+    const project = fixture();
+    try {
+        const { selector } = selectorInfo(project);
+        sameByteSymlink(project, path.join(project, 'backups', `source-config-${selector}`, 'src', 'runtime.js'));
+        const result = rejectedRollback(project, [selector]);
+        assert.match(result.stderr, /not a regular file/);
+    } finally { fs.rmSync(project, { recursive: true, force: true }); }
+});
+
+test('Given a same-byte symlinked legacy payload, When rollback runs, Then it fails with a regular-file error and nothing is mutated', () => {
+    const project = fixture();
+    try {
+        const { selector } = legacySelectorInfo(project);
+        sameByteSymlink(project, path.join(project, 'backups', payloadName('runtime', selector)));
+        const result = rejectedRollback(project, [selector]);
+        assert.match(result.stderr, /not a regular file/);
     } finally { fs.rmSync(project, { recursive: true, force: true }); }
 });
