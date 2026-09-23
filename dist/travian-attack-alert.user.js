@@ -15,8 +15,8 @@
 // @license      MIT
 // @homepageURL  https://github.com/PeterPage2115/Travian-Attack-Alert
 // @supportURL   https://github.com/PeterPage2115/Travian-Attack-Alert/issues
-// @updateURL    https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js
-// @downloadURL  https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js
+// @updateURL    https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
+// @downloadURL  https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
 // ==/UserScript==
 
 "use strict";
