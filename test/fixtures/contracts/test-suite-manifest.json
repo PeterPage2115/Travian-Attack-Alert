@@ -433,6 +433,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/release-assets.test.cjs",
+      "path": "test/tools/release-assets.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 19,
+      "coverage": [
+        "repository-tooling",
+        "release-assets"
+      ]
+    },
+    {
       "id": "suite:test/tools/release-state.test.cjs",
       "path": "test/tools/release-state.test.cjs",
       "classification": "tool",
@@ -571,8 +581,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 55,
-    "expectedExecutionCount": 1173,
+    "suiteCount": 56,
+    "expectedExecutionCount": 1192,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -587,8 +597,8 @@
         "expectedExecutionCount": 440
       },
       "tool": {
-        "suiteCount": 21,
-        "expectedExecutionCount": 296
+        "suiteCount": 22,
+        "expectedExecutionCount": 315
       }
     }
   },

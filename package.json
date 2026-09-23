@@ -22,6 +22,8 @@
     "test:artifact": "node --test test/artifact/*.test.cjs test/runtime-parity.test.cjs",
     "check": "npm run check:versions && npm run check:artifact && node test/tools/test-inventory-v2.cjs --baseline test/fixtures/contracts/test-suite-baseline.json --manifest test/fixtures/contracts/test-suite-manifest.json --receipt-dir test-results/suite-receipts",
     "check:release": "node tools/check-release.cjs",
+    "release:prepare": "node tools/prepare-release.cjs",
+    "release:check": "node tools/check-release-readiness.cjs",
     "build": "node tools/build.cjs",
     "backup": "node tools/backup.cjs",
     "rollback": "node tools/rollback.cjs",
