@@ -476,7 +476,7 @@
       "id": "suite:test/tools/seal-evidence.test.cjs",
       "path": "test/tools/seal-evidence.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 11,
+      "expectedExecutionCount": 16,
       "coverage": [
         "repository-tooling",
         "seal-evidence"
@@ -562,7 +562,7 @@
   ],
   "totals": {
     "suiteCount": 54,
-    "expectedExecutionCount": 1157,
+    "expectedExecutionCount": 1162,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -578,7 +578,7 @@
       },
       "tool": {
         "suiteCount": 20,
-        "expectedExecutionCount": 280
+        "expectedExecutionCount": 285
       }
     }
   },

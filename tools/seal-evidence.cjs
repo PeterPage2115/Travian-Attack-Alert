@@ -28,7 +28,11 @@
  *   - files are opened with O_NOFOLLOW and fstat-verified as regular,
  *   - archive/manifest must resolve outside the input tree,
  *   - the manifest archive SHA-256 + byte count + entry list are re-checked
- *     by --verify; any drift is a nonzero exit.
+ *     by --verify, which also recomputes every stored entry payload's SHA-256
+ *     and compares it with the manifest value; any drift is a nonzero exit.
+ *   - --verify rejects malformed manifest entries/hashes, duplicate paths and
+ *     ZIP features the deterministic writer cannot produce (multi-disk, ZIP64,
+ *     encryption, data descriptors, non-STORE methods).
  */
 
 const crypto = require('crypto');
@@ -44,6 +48,12 @@ const VERSION_MADE_BY = (3 << 8) | 20; // Unix host, PKZIP 2.0
 const EXTERNAL_ATTRS = (0o100644 << 16) >>> 0;
 const UINT16_MAX = 0xffff;
 const UINT32_MAX = 0xffffffff;
+const ZIP_LOCAL_SIG = 0x04034b50;
+const ZIP_CENTRAL_SIG = 0x02014b50;
+const ZIP_EOCD_SIG = 0x06054b50;
+const ZIP64_LOCATOR_SIG = 0x07064b50;
+const FLAG_ENCRYPTED = 0x0001;
+const FLAG_DATA_DESCRIPTOR = 0x0008;
 
 const CRC_TABLE = (() => {
   const table = new Int32Array(256);
@@ -229,40 +239,104 @@ function buildZip(entries) {
 
 /**
  * Parse the ZIP end-of-central-directory + central directory (no extraction).
+ * Fails closed on structures the deterministic writer cannot produce
+ * (multi-disk, ZIP64, encryption, data descriptors, non-STORE methods) and on
+ * unsafe entry names.
  * @param {Buffer} buffer
- * @returns {Array<{path: string, crc32: number, bytes: number}>}
+ * @returns {{entries: Array<{path: string, crc32: number, bytes: number, method: number, flags: number, localHeaderOffset: number}>, centralOffset: number}}
  */
-function readZipCentralDirectory(buffer) {
+function parseZipDirectory(buffer) {
   if (buffer.length < 22) throw fail('not a ZIP archive: shorter than the end-of-central-directory record');
   let eocd = -1;
   const minEocd = Math.max(0, buffer.length - 22 - UINT16_MAX);
   for (let i = buffer.length - 22; i >= minEocd; i -= 1) {
-    if (buffer.readUInt32LE(i) === 0x06054b50) {
+    if (buffer.readUInt32LE(i) === ZIP_EOCD_SIG) {
       eocd = i;
       break;
     }
   }
   if (eocd === -1) throw fail('not a ZIP archive: end-of-central-directory record missing');
+  if (buffer.readUInt16LE(eocd + 4) !== 0 || buffer.readUInt16LE(eocd + 6) !== 0) {
+    throw fail('unsupported ZIP feature: multi-disk archive');
+  }
   const entryCount = buffer.readUInt16LE(eocd + 10);
   const centralSize = buffer.readUInt32LE(eocd + 12);
   const centralOffset = buffer.readUInt32LE(eocd + 16);
+  if (eocd >= 20 && buffer.readUInt32LE(eocd - 20) === ZIP64_LOCATOR_SIG) {
+    throw fail('unsupported ZIP feature: ZIP64 archive');
+  }
+  if (centralSize === UINT32_MAX || centralOffset === UINT32_MAX) {
+    throw fail('unsupported ZIP feature: ZIP64 archive');
+  }
   if (centralOffset + centralSize > buffer.length) throw fail('corrupt ZIP: central directory out of bounds');
   const entries = [];
   let cursor = centralOffset;
   for (let i = 0; i < entryCount; i += 1) {
-    if (cursor + 46 > buffer.length || buffer.readUInt32LE(cursor) !== 0x02014b50) {
+    if (cursor + 46 > buffer.length || buffer.readUInt32LE(cursor) !== ZIP_CENTRAL_SIG) {
       throw fail('corrupt ZIP: invalid central directory entry');
     }
+    const flags = buffer.readUInt16LE(cursor + 8);
+    const method = buffer.readUInt16LE(cursor + 10);
+    const crc = buffer.readUInt32LE(cursor + 16);
+    const compressedBytes = buffer.readUInt32LE(cursor + 20);
+    const bytes = buffer.readUInt32LE(cursor + 24);
     const nameLength = buffer.readUInt16LE(cursor + 28);
     const extraLength = buffer.readUInt16LE(cursor + 30);
     const commentLength = buffer.readUInt16LE(cursor + 32);
-    const bytes = buffer.readUInt32LE(cursor + 24);
-    const crc = buffer.readUInt32LE(cursor + 16);
+    const diskNumberStart = buffer.readUInt16LE(cursor + 34);
+    const localHeaderOffset = buffer.readUInt32LE(cursor + 42);
+    if (cursor + 46 + nameLength + extraLength + commentLength > buffer.length) {
+      throw fail('corrupt ZIP: central directory entry out of bounds');
+    }
+    if (flags & FLAG_ENCRYPTED) throw fail('unsupported ZIP feature: encrypted entry');
+    if (flags & FLAG_DATA_DESCRIPTOR) throw fail('unsupported ZIP feature: data descriptor');
+    if (method !== METHOD_STORE) throw fail(`unsupported ZIP feature: compression method ${method}`);
+    if (diskNumberStart !== 0) throw fail('unsupported ZIP feature: multi-disk entry');
+    if (compressedBytes !== bytes) throw fail('corrupt ZIP: STORE entry sizes disagree');
+    if (bytes === UINT32_MAX || localHeaderOffset === UINT32_MAX) {
+      throw fail('unsupported ZIP feature: ZIP64 archive');
+    }
     const name = buffer.toString('utf8', cursor + 46, cursor + 46 + nameLength);
-    entries.push({ path: name, crc32: crc, bytes });
+    entries.push({ path: normalizeEntryPath(name), crc32: crc, bytes, method, flags, localHeaderOffset });
     cursor += 46 + nameLength + extraLength + commentLength;
   }
-  return entries;
+  return { entries, centralOffset };
+}
+
+/**
+ * Parse the ZIP central directory (array view over {@link parseZipDirectory}).
+ * @param {Buffer} buffer
+ * @returns {Array<{path: string, crc32: number, bytes: number, method: number, flags: number, localHeaderOffset: number}>}
+ */
+function readZipCentralDirectory(buffer) {
+  return parseZipDirectory(buffer).entries;
+}
+
+/**
+ * Extract one entry's stored payload using the validated central-directory
+ * metadata (offset + byte count); the local header only locates name/extra.
+ * @param {Buffer} buffer
+ * @param {{path: string, bytes: number, localHeaderOffset: number}} entry
+ * @param {number} centralOffset
+ * @returns {Buffer}
+ */
+function readStoredPayload(buffer, entry, centralOffset) {
+  const at = entry.localHeaderOffset;
+  if (at + 30 > centralOffset || buffer.readUInt32LE(at) !== ZIP_LOCAL_SIG) {
+    throw fail(`corrupt ZIP: invalid local file header for ${entry.path}`);
+  }
+  const method = buffer.readUInt16LE(at + 8);
+  if (method !== METHOD_STORE) {
+    throw fail(`unsupported ZIP feature: compression method ${method} for ${entry.path}`);
+  }
+  const nameLength = buffer.readUInt16LE(at + 26);
+  const extraLength = buffer.readUInt16LE(at + 28);
+  const dataStart = at + 30 + nameLength + extraLength;
+  const dataEnd = dataStart + entry.bytes;
+  if (dataEnd > centralOffset) {
+    throw fail(`corrupt ZIP: entry payload out of bounds for ${entry.path}`);
+  }
+  return buffer.subarray(dataStart, dataEnd);
 }
 
 function atomicWrite(abs, buffer) {
@@ -356,12 +430,34 @@ function verifySealedArchive(options) {
   if (actualSha256 !== manifest.archiveSha256) {
     throw fail(`archive digest mismatch: manifest ${manifest.archiveSha256}, actual ${actualSha256}`);
   }
-  const central = readZipCentralDirectory(buffer);
-  const manifestEntries = manifest.entries
-    .map(entry => ({ path: entry && entry.path, bytes: entry && entry.bytes }))
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const { entries: central, centralOffset } = parseZipDirectory(buffer);
+  const manifestEntries = manifest.entries.map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw fail(`malformed manifest entry at index ${index}`);
+    }
+    if (typeof entry.path !== 'string') throw fail(`malformed manifest entry path at index ${index}`);
+    const entryPath = normalizeEntryPath(entry.path);
+    if (!Number.isInteger(entry.bytes) || entry.bytes < 0) {
+      throw fail(`malformed manifest byte count for entry ${entryPath}`);
+    }
+    if (typeof entry.sha256 !== 'string' || !/^[0-9a-f]{64}$/u.test(entry.sha256)) {
+      throw fail(`malformed manifest sha256 for entry ${entryPath}`);
+    }
+    return { path: entryPath, bytes: entry.bytes, sha256: entry.sha256 };
+  });
+  const manifestPaths = new Set();
+  for (const entry of manifestEntries) {
+    if (manifestPaths.has(entry.path)) throw fail(`duplicate manifest entry path: ${entry.path}`);
+    manifestPaths.add(entry.path);
+  }
+  const centralPaths = new Set();
+  for (const entry of central) {
+    if (centralPaths.has(entry.path)) throw fail(`duplicate archive entry path: ${entry.path}`);
+    centralPaths.add(entry.path);
+  }
+  manifestEntries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const centralEntries = central
-    .map(entry => ({ path: entry.path, bytes: entry.bytes }))
+    .map(entry => ({ path: entry.path, bytes: entry.bytes, localHeaderOffset: entry.localHeaderOffset }))
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   if (manifest.entryCount !== manifestEntries.length || centralEntries.length !== manifestEntries.length) {
     throw fail(
@@ -373,6 +469,10 @@ function verifySealedArchive(options) {
     const actual = centralEntries[i];
     if (declared.path !== actual.path || declared.bytes !== actual.bytes) {
       throw fail(`entry mismatch: manifest ${declared.path} (${declared.bytes}B), archive ${actual.path} (${actual.bytes}B)`);
+    }
+    const actualEntrySha256 = sha256(readStoredPayload(buffer, actual, centralOffset));
+    if (actualEntrySha256 !== declared.sha256) {
+      throw fail(`entry digest mismatch: ${declared.path} manifest ${declared.sha256}, actual ${actualEntrySha256}`);
     }
   }
   return {

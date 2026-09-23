@@ -20,6 +20,7 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 
 const {
+  buildZip,
   readZipCentralDirectory,
   verifySealedArchive,
 } = require('../../tools/seal-evidence.cjs');
@@ -68,6 +69,17 @@ function runEvidenceScan(rootDir, reportPath) {
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function centralDirectoryOffset(buffer) {
+  for (let i = buffer.length - 22; i >= 0; i -= 1) {
+    if (buffer.readUInt32LE(i) === 0x06054b50) return buffer.readUInt32LE(i + 16);
+  }
+  throw new Error('end-of-central-directory record not found');
+}
+
+function writeManifest(file, doc) {
+  fs.writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`);
 }
 
 function sealCleanFixture(t) {
@@ -216,6 +228,104 @@ test('verify fails closed on a missing or mutated archive and on digest tamperin
   fs.rmSync(sealed.archive);
   const missing = runSeal(['--verify', '--archive', sealed.archive, '--manifest', sealed.manifest]);
   assert.notEqual(missing.status, 0);
+});
+
+test('verify rejects a manifest entry digest changed without touching the archive', (t) => {
+  const sealed = sealCleanFixture(t);
+  const doc = readJson(sealed.manifest);
+  const index = doc.entries.findIndex(entry => entry.path === 'notes.txt');
+  assert.notEqual(index, -1, 'fixture must declare notes.txt');
+  const original = doc.entries[index].sha256;
+  doc.entries[index].sha256 = (original[0] === '0' ? '1' : '0') + original.slice(1);
+  assert.notEqual(doc.entries[index].sha256, original);
+  writeManifest(sealed.manifest, doc);
+
+  const run = runSeal(['--verify', '--archive', sealed.archive, '--manifest', sealed.manifest]);
+  assert.notEqual(run.status, 0, 'a changed entry digest must fail verification');
+  assert.match(run.stderr, /entry digest mismatch: notes\.txt/u);
+  assert.match(run.stderr, new RegExp(doc.entries[index].sha256, 'u'), 'failure must name the declared digest');
+});
+
+test('verify rejects malformed manifest entry hashes and shapes', (t) => {
+  const sealed = sealCleanFixture(t);
+  const original = readJson(sealed.manifest);
+
+  const badHash = JSON.parse(JSON.stringify(original));
+  badHash.entries[0].sha256 = 'Z'.repeat(64);
+  writeManifest(sealed.manifest, badHash);
+  const badHashRun = runSeal(['--verify', '--archive', sealed.archive, '--manifest', sealed.manifest]);
+  assert.notEqual(badHashRun.status, 0);
+  assert.match(badHashRun.stderr, /malformed manifest sha256/u);
+
+  const shortHash = JSON.parse(JSON.stringify(original));
+  shortHash.entries[1].sha256 = 'abc123';
+  writeManifest(sealed.manifest, shortHash);
+  const shortHashRun = runSeal(['--verify', '--archive', sealed.archive, '--manifest', sealed.manifest]);
+  assert.notEqual(shortHashRun.status, 0);
+  assert.match(shortHashRun.stderr, /malformed manifest sha256/u);
+
+  const badBytes = JSON.parse(JSON.stringify(original));
+  badBytes.entries[0].bytes = '3';
+  writeManifest(sealed.manifest, badBytes);
+  const badBytesRun = runSeal(['--verify', '--archive', sealed.archive, '--manifest', sealed.manifest]);
+  assert.notEqual(badBytesRun.status, 0);
+  assert.match(badBytesRun.stderr, /malformed manifest byte count/u);
+});
+
+test('verify rejects duplicate manifest entry paths', (t) => {
+  const sealed = sealCleanFixture(t);
+  const doc = readJson(sealed.manifest);
+  doc.entries[1] = { ...doc.entries[0] };
+  writeManifest(sealed.manifest, doc);
+
+  const run = runSeal(['--verify', '--archive', sealed.archive, '--manifest', sealed.manifest]);
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /duplicate manifest entry path/u);
+});
+
+test('verify rejects a ZIP with duplicate entry paths', (t) => {
+  const fixture = tempRoot(t, 'taa-seal-archive-dup-');
+  const payloadA = Buffer.from('one\n');
+  const payloadB = Buffer.from('two\n');
+  const zip = buildZip([
+    { rel: 'dup.txt', data: payloadA },
+    { rel: 'dup.txt', data: payloadB },
+  ]);
+  const archive = path.join(fixture, 'dup.zip');
+  const manifest = path.join(fixture, 'dup.manifest.json');
+  fs.writeFileSync(archive, zip);
+  writeManifest(manifest, {
+    schemaVersion: 1,
+    archive: 'dup.zip',
+    archiveSha256: sha256(zip),
+    archiveBytes: zip.length,
+    entryCount: 2,
+    // Unique manifest paths: the duplicate is an archive-level defect and must
+    // be rejected by the archive check, not shadowed by the manifest check.
+    entries: [
+      { path: 'one.txt', bytes: payloadA.length, sha256: sha256(payloadA) },
+      { path: 'two.txt', bytes: payloadB.length, sha256: sha256(payloadB) },
+    ],
+  });
+
+  const run = runSeal(['--verify', '--archive', archive, '--manifest', manifest]);
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /duplicate archive entry path/u);
+});
+
+test('verify rejects unsupported ZIP features even with a matching archive digest', (t) => {
+  const sealed = sealCleanFixture(t);
+  const mutated = Buffer.from(fs.readFileSync(sealed.archive));
+  mutated.writeUInt16LE(8, centralDirectoryOffset(mutated) + 10); // deflate
+  fs.writeFileSync(sealed.archive, mutated);
+  const doc = readJson(sealed.manifest);
+  doc.archiveSha256 = sha256(mutated);
+  doc.archiveBytes = mutated.length;
+  writeManifest(sealed.manifest, doc);
+
+  const run = runSeal(['--verify', '--archive', sealed.archive, '--manifest', sealed.manifest]);
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, /unsupported ZIP feature/u);
 });
 
 test('source mutation after sealing cannot enter the sealed archive bytes', (t) => {
