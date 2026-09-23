@@ -4,18 +4,26 @@ Owner-only checklist for protecting the userscript update channel. All items
 refer to https://github.com/PeterPage2115/Travian-Attack-Alert. Apply in
 Settings; verify from a clean clone.
 
-Live-state note (verified through the GitHub API on 2026-09-16): the default
-branch is `release/public-1.0.0`; it is not yet protected; no repository
-ruleset is installed; repository description, homepage, and topics are unset;
-and the default Actions workflow permission is read-only. Unchecked items below
-are owner actions, not claims about the current remote state.
+Public-state observation (read-only GitHub API GETs on 2026-09-23): the
+default branch is `release/public-1.0.0` and it is the only branch on the
+remote (`main` and `master` do not exist); that branch is protected with the
+four required status checks `offline-node-18`, `offline-node-20`,
+`browser-node-20`, and `cross-node-determinism`; no repository ruleset is
+installed; the description, homepage, and topics are set; and the default
+Actions workflow permission is read-only. This is a point-in-time API
+observation, not owner attestation. The separate owner-manual record in
+`docs/release-state.json` still holds `ownerManual.branchProtection: false`
+and `stable: false` until the owner completes the pilot and records the
+evidence. This file is an owner checklist, not that owner-attestation record;
+checked items below are API-observed public state, and unchecked items are
+pending owner actions.
 
 ## 0. Gate ownership — AGENT-AUTOMATED vs OWNER-MANUAL
 
 ### AGENT-AUTOMATED (done by this migration)
 
 - Deterministic `dist/` build from `src/`; `config/userscript.json`
-  `updateURL`/`downloadURL` pointing at the protected-`main` raw artifact
+  `updateURL`/`downloadURL` pointing at the release-branch raw artifact
   URL in §1; read-only CI workflow (§3) with no publish step; docs.
 
 ### OWNER-MANUAL (owner only — everything below)
@@ -34,21 +42,25 @@ are owner actions, not claims about the current remote state.
       Default branch).
 - [x] No `main` or `master` branch currently exists on the public remote.
 - [x] `config/userscript.json` `updateURL` and `downloadURL` both point at
-      the protected-`main` artifact URL exactly:
+      the release-branch artifact URL exactly:
 
-      `https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js`
+      `https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js`
 
 ## 2. Branch protection for `release/public-1.0.0`
 
-- [ ] Branch protection rule targets `release/public-1.0.0` (Settings →
-      Branches → Add rule).
-- [ ] Require status checks to pass before merging; the four exact required
+- [x] Branch protection rule targets `release/public-1.0.0` (Settings →
+      Branches → Add rule); the public API reported the branch protected on
+      2026-09-23.
+- [x] Require status checks to pass before merging; the four exact required
       checks from `.github/workflows/ci.yml` are `offline-node-18`,
-      `offline-node-20`, `browser-node-20`, and `cross-node-determinism`.
+      `offline-node-20`, `browser-node-20`, and `cross-node-determinism`
+      (observed as the required contexts on 2026-09-23).
 - [ ] Require a pull request before merging (at least 1 approving review;
-      dismiss stale approvals on new commits).
+      dismiss stale approvals on new commits). Owner-verify: the public branch
+      endpoint does not expose pull-request review requirements.
 - [ ] Block force pushes (`Do not allow force pushes`) and deletions
-      (`Do not allow deletions`) for `main`.
+      (`Do not allow deletions`) for `release/public-1.0.0`. Owner-verify: the
+      public branch endpoint does not expose these toggles.
 - [ ] Optionally require linear history to keep the deterministic-build
       history auditable.
 
@@ -65,11 +77,14 @@ are owner actions, not claims about the current remote state.
 
 ## 4. Repository presentation
 
-- Current API state: description and homepage are `null`; topics are empty.
-- [ ] Description set (Settings → General → About), e.g.:
+- Observed public API state (2026-09-23): description is "Tampermonkey
+  userscript: Travian alliance attack alerts to Discord"; homepage is
+  `https://github.com/PeterPage2115/Travian-Attack-Alert`; topics are
+  `discord-webhook`, `tampermonkey`, `travian`, and `userscript`.
+- [x] Description set (Settings → General → About), e.g.:
       "Tampermonkey userscript: Travian alliance attack alerts to Discord".
-- [ ] Website points at the repository or docs.
-- [ ] Topics include at least: `travian`, `userscript`, `tampermonkey`,
+- [x] Website points at the repository or docs.
+- [x] Topics include at least: `travian`, `userscript`, `tampermonkey`,
       `discord-webhook`.
 
 ## 5. Update URL availability test
