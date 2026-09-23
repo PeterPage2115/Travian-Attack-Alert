@@ -7,7 +7,12 @@ const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const test = require('node:test');
 
-const { STREAM_CHUNK_BYTES } = require('../../tools/audit-public-tree.cjs');
+const {
+  STREAM_CHUNK_BYTES,
+  walkRootEntries,
+  collectSecretScanFiles,
+  walkVerifiedDirectories,
+} = require('../../tools/audit-public-tree.cjs');
 
 const ROOT = path.resolve(__dirname, '../..');
 const AUDITOR = path.join(ROOT, 'tools', 'audit-public-tree.cjs');
@@ -373,6 +378,111 @@ for (const mode of MODES) {
     });
   });
 }
+
+/** A fake readdir Dirent that claims to be a directory (as readdir reported it). */
+function fakeDirectoryDirent(name) {
+  return {
+    name,
+    isDirectory: () => true,
+    isFile: () => false,
+    isSymbolicLink: () => false,
+  };
+}
+
+/**
+ * Run `assertion` with fs.readdirSync patched to return `entries` for `root`
+ * only. Deterministic: no timing, no race, restored in a finally block.
+ */
+function withPatchedReaddir(root, entries, assertion) {
+  const original = fs.readdirSync;
+  fs.readdirSync = function patched(target, options) {
+    if (target === root) return entries;
+    return original.call(fs, target, options);
+  };
+  try {
+    assertion();
+  } finally {
+    fs.readdirSync = original;
+  }
+}
+
+/**
+ * Fixture where the readdir Dirent for `sub` claims a directory, while on disk
+ * `sub` is a symlink to a clean directory OUTSIDE the requested root.
+ */
+function createDirectorySwapFixture() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-public-boundary-swap-'));
+  const publicRoot = path.join(fixtureRoot, 'public');
+  const external = path.join(fixtureRoot, 'external');
+  fs.mkdirSync(publicRoot);
+  fs.mkdirSync(external);
+  fs.writeFileSync(path.join(external, 'external-clean.txt'), 'external clean fixture\n');
+  fs.symlinkSync(external, path.join(publicRoot, 'sub'), 'dir');
+  return { fixtureRoot, publicRoot, external };
+}
+
+test('Given a directory swapped for a symlink after readdir, When the tree walker runs, Then it is reported and its subtree is never followed', () => {
+  const fixture = createDirectorySwapFixture();
+  try {
+    const files = [];
+    const nonRegular = [];
+    withPatchedReaddir(fixture.publicRoot, [fakeDirectoryDirent('sub')], () => {
+      walkRootEntries(fixture.publicRoot, '', files, nonRegular);
+    });
+    assert.deepEqual(files, [], 'no file under the swapped sub/ directory may be collected');
+    assert.deepEqual(nonRegular, [{ file: 'sub', reason: 'symlink' }]);
+  } finally {
+    fs.rmSync(fixture.fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test('Given a directory swapped for a symlink after readdir, When the secrets walker runs, Then it is reported and its subtree is never followed', () => {
+  const fixture = createDirectorySwapFixture();
+  try {
+    let outcome = null;
+    withPatchedReaddir(fixture.publicRoot, [fakeDirectoryDirent('sub')], () => {
+      outcome = collectSecretScanFiles(fixture.publicRoot);
+    });
+    assert.deepEqual(outcome.files, [], 'no file under the swapped sub/ directory may be collected');
+    assert.deepEqual(outcome.nonRegular, [{ file: 'sub', reason: 'symlink' }]);
+  } finally {
+    fs.rmSync(fixture.fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test('Given a directory identity change during the read, When either walker runs, Then the walk fails closed with identity-change', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-public-boundary-identity-'));
+  const original = fs.lstatSync;
+  let calls = 0;
+  // Alternate dev/ino between the pre-read and post-read lstat of the root.
+  fs.lstatSync = function patched(target, options) {
+    if (target === fixtureRoot) {
+      calls += 1;
+      return {
+        isSymbolicLink: () => false,
+        isDirectory: () => true,
+        dev: 7,
+        ino: calls % 2 === 1 ? 111 : 222,
+      };
+    }
+    return original.call(fs, target, options);
+  };
+  try {
+    assert.throws(() => walkRootEntries(fixtureRoot, '', [], []), /identity-change/);
+    assert.throws(() => collectSecretScanFiles(fixtureRoot), /identity-change/);
+    assert.throws(
+      () => walkVerifiedDirectories(fixtureRoot, '', {
+        skipDirNames: new Set(),
+        onFile: () => {},
+        onNonRegular: () => {},
+      }),
+      /identity-change/,
+    );
+  } finally {
+    fs.lstatSync = original;
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
 
 test('Given a FIFO pathname, When streamScanFile is called directly in a child process, Then it is rejected as non-regular within the hard timeout', () => {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-public-boundary-fifo-direct-'));

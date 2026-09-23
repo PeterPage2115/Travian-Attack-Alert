@@ -33,7 +33,13 @@
  *   open/read/decode/truncation errors, every non-regular entry (symlinks,
  *   FIFOs, sockets, devices), secret matches. Oversized text is streamed
  *   through one stateful matcher; binary files are classified explicitly and
- *   reported as auditable binary skips (never a silent size skip).
+ *   reported as auditable binary skips (never a silent size skip). Directory
+ *   traversal never trusts a readdir Dirent: each directory is lstat-verified
+ *   before and after reading (identity change included) and each child is
+ *   re-lstat-verified immediately before descent, so a directory swapped for
+ *   a symlink can neither be followed outside the root nor hide its subtree
+ *   behind a clean verdict; an unverifiable directory aborts the walk with a
+ *   non-zero exit.
  *
  * Redaction: every report and every stdout line carries rule/path/offset
  * digests only — matched bytes (tokens, URLs, payloads, snowflakes) are
@@ -613,11 +619,113 @@ function listFilesRecursive(absDir, relBase) {
 }
 
 /**
+ * lstat without following the final path component. Never throws.
+ *
+ * @param {string} abs
+ * @returns {{st: fs.Stats|null, error: string|null}}
+ */
+function lstatSafe(abs) {
+  try {
+    return { st: fs.lstatSync(abs), error: null };
+  } catch {
+    return { st: null, error: 'stat-failure' };
+  }
+}
+
+/**
+ * Read a directory only after verifying by lstat (never stat) that the path
+ * itself is a real directory — both BEFORE and AFTER the read. A directory
+ * swapped for a symlink (or any non-directory) during traversal is therefore
+ * never followed, and a dev/ino identity change between the two checks is
+ * reported instead of trusted.
+ *
+ * @param {string} absDir
+ * @returns {{entries: fs.Dirent[]|null, error: string|null}}
+ */
+function readDirectoryVerified(absDir) {
+  const before = lstatSafe(absDir);
+  if (before.error !== null) return { entries: null, error: before.error };
+  if (before.st.isSymbolicLink() || !before.st.isDirectory()) {
+    return { entries: null, error: 'non-directory' };
+  }
+  let entries;
+  try {
+    entries = fs.readdirSync(absDir, { withFileTypes: true });
+  } catch {
+    return { entries: null, error: 'read-failure' };
+  }
+  const after = lstatSafe(absDir);
+  if (after.error !== null) return { entries: null, error: after.error };
+  if (after.st.isSymbolicLink() || !after.st.isDirectory()) {
+    return { entries: null, error: 'non-directory' };
+  }
+  if (before.st.dev !== after.st.dev || before.st.ino !== after.st.ino) {
+    return { entries: null, error: 'identity-change' };
+  }
+  return { entries, error: null };
+}
+
+/**
+ * Walk a tree using verified reads only. A readdir Dirent is treated as a
+ * hint, never as proof: each child classified as a directory is re-lstat'ed
+ * immediately before descent, and a symlink or non-directory is reported as a
+ * non-regular finding instead of being followed. Directories that cannot be
+ * verified (stat-failure / read-failure / non-directory / identity-change)
+ * throw so the caller fails closed — non-zero exit, never a clean PASS and
+ * never a silent skip.
+ *
+ * @param {string} absDir
+ * @param {string} relBase posix relative prefix, '' or ending with '/'
+ * @param {{skipDirNames: Set<string>, onFile: (rel: string, abs: string) => void, onNonRegular: (rel: string, reason: string) => void}} options
+ */
+function walkVerifiedDirectories(absDir, relBase, options) {
+  const result = readDirectoryVerified(absDir);
+  if (result.error !== null) {
+    const display = relBase === '' ? '.' : relBase.replace(/\/$/, '');
+    throw new Error(`directory-verification-failed: ${display} (${result.error})`);
+  }
+  for (const ent of result.entries) {
+    const rel = relBase + ent.name;
+    const abs = path.join(absDir, ent.name);
+    if (ent.isDirectory()) {
+      if (options.skipDirNames.has(ent.name)) continue;
+      // Re-lstat the child immediately before descent: the Dirent may predate
+      // a directory -> symlink swap, and following it would escape the root.
+      const child = lstatSafe(abs);
+      if (child.error !== null) {
+        options.onNonRegular(rel, 'non-regular');
+        continue;
+      }
+      if (child.st.isSymbolicLink()) {
+        options.onNonRegular(rel, 'symlink');
+        continue;
+      }
+      if (!child.st.isDirectory()) {
+        options.onNonRegular(rel, 'non-regular');
+        continue;
+      }
+      walkVerifiedDirectories(abs, `${rel}/`, options);
+    } else if (ent.isFile()) {
+      options.onFile(rel, abs);
+    } else {
+      // Symlink / FIFO / socket / device: reported, never followed or opened.
+      options.onNonRegular(rel, ent.isSymbolicLink() ? 'symlink' : 'non-regular');
+    }
+  }
+}
+
+// `.git` is VCS metadata outside the public surface (tree mode); secrets mode
+// additionally skips node_modules (installed dependencies, excluded by CI).
+const TREE_WALK_SKIP_DIR_NAMES = new Set(['.git']);
+const SECRETS_WALK_SKIP_DIR_NAMES = new Set(['.git', 'node_modules']);
+
+/**
  * Walk a tree collecting regular files while reporting every non-regular
  * entry (symlink / FIFO / socket / device) instead of silently omitting it.
- * `.git` is VCS metadata outside the public surface (excluded exactly like the
- * existing extra-file and scan skips); everything else is traversed so the
- * denylist still sees nested occurrences by name.
+ * `.git` is excluded exactly like the existing extra-file and scan skips;
+ * everything else is traversed so the denylist still sees nested occurrences
+ * by name. Directory reads and descents go through walkVerifiedDirectories,
+ * so a directory swapped for a symlink is reported and never followed.
  *
  * @param {string} absDir
  * @param {string} relBase
@@ -625,18 +733,15 @@ function listFilesRecursive(absDir, relBase) {
  * @param {Array<{file:string, reason:string}>} nonRegular
  */
 function walkRootEntries(absDir, relBase, files, nonRegular) {
-  for (const ent of fs.readdirSync(absDir, { withFileTypes: true })) {
-    const rel = relBase + ent.name;
-    const abs = path.join(absDir, ent.name);
-    if (ent.isDirectory()) {
-      if (ent.name === '.git') continue;
-      walkRootEntries(abs, `${rel}/`, files, nonRegular);
-    } else if (ent.isFile()) {
+  walkVerifiedDirectories(absDir, relBase, {
+    skipDirNames: TREE_WALK_SKIP_DIR_NAMES,
+    onFile: (rel) => {
       files.push(rel);
-    } else {
-      nonRegular.push({ file: rel, reason: ent.isSymbolicLink() ? 'symlink' : 'non-regular' });
-    }
-  }
+    },
+    onNonRegular: (rel, reason) => {
+      nonRegular.push({ file: rel, reason });
+    },
+  });
 }
 
 function toPosix(p) {
@@ -792,24 +897,15 @@ function writeReport(outAbs, report) {
 function collectSecretScanFiles(root) {
   const files = [];
   const nonRegular = [];
-  const visit = (absDir) => {
-    for (const ent of fs.readdirSync(absDir, { withFileTypes: true })) {
-      const abs = path.join(absDir, ent.name);
-      if (ent.isDirectory()) {
-        if (ent.name === '.git' || ent.name === 'node_modules') continue;
-        visit(abs);
-      } else if (ent.isFile()) {
-        files.push(abs);
-      } else {
-        // Symlink / FIFO / socket / device: reported, never followed or opened.
-        nonRegular.push({
-          file: toPosix(path.relative(root, abs)),
-          reason: ent.isSymbolicLink() ? 'symlink' : 'non-regular',
-        });
-      }
-    }
-  };
-  visit(root);
+  walkVerifiedDirectories(root, '', {
+    skipDirNames: SECRETS_WALK_SKIP_DIR_NAMES,
+    onFile: (rel, abs) => {
+      files.push(abs);
+    },
+    onNonRegular: (rel, reason) => {
+      nonRegular.push({ file: rel, reason });
+    },
+  });
   return { files, nonRegular };
 }
 
@@ -1538,4 +1634,9 @@ module.exports = {
   verifyOcrModel,
   verifyEvidenceDeps,
   ocrModelPaths,
+  lstatSafe,
+  readDirectoryVerified,
+  walkVerifiedDirectories,
+  walkRootEntries,
+  collectSecretScanFiles,
 };
