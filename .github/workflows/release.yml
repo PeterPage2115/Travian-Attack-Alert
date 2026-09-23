@@ -26,9 +26,18 @@ name: Release
 # still false; the `release` environment has a distinct required reviewer with
 # prevent-self-review and a `v*` deployment tag policy; both environment secrets
 # exist and no same-named repository secret or variable exists; immutable
-# releases are enabled; and docs/release-owner-evidence.json binds the live
-# token grants/expiry, the approval proof digest, and organization-level name
-# absence to this exact tag/commit.
+# releases are enabled; an active tag ruleset with no bypass actors restricts
+# creation, update and deletion of the exact `refs/tags/v*` ref, so no release
+# actor can retarget the tag; and docs/release-owner-evidence.json binds the
+# live token grants/expiry, the approval proof digest, and organization-level
+# name absence to this exact tag/commit.
+#
+# The publish job proves the complete draft asset set is exactly the seven
+# declared names (both as downloaded and as reported by the API), re-fetches the
+# draft immediately before the single mutation and rejects any changed release
+# id, tag, draft state or asset id/name/size/digest, then re-resolves the tag
+# target after publication. A retargeted tag is a publication incident and is
+# never reported as success.
 
 on:
   push:
@@ -329,6 +338,33 @@ jobs:
               }
               const immutable = await api(`/repos/${repo}/immutable-releases`);
               if (immutable.enabled !== true) fail('immutable-releases-disabled', 'repository immutable releases are not enabled');
+              const rulesets = await api(`/repos/${repo}/rulesets`);
+              if (!Array.isArray(rulesets)) fail('tag-protection-missing', 'repository rulesets response is not an array');
+              const matchesRef = (pattern, ref) => {
+                if (pattern === '~ALL') return true;
+                if (pattern === '~DEFAULT_BRANCH') return false;
+                const escaped = pattern.replace(/[.+?^${}()|[\]\\]/gu, '\\$&').replace(/\*/gu, '.*');
+                return new RegExp(`^${escaped}$`, 'u').test(ref);
+              };
+              const releaseTagRef = `refs/tags/${tag}`;
+              let tagProtectionRulesetId = null;
+              for (const candidate of rulesets) {
+                if (candidate.target !== 'tag' || candidate.enforcement !== 'active') continue;
+                const ruleset = await api(`/repos/${repo}/rulesets/${candidate.id}`);
+                const refName = (ruleset.conditions && ruleset.conditions.ref_name) || {};
+                const includes = Array.isArray(refName.include) ? refName.include : [];
+                const excludes = Array.isArray(refName.exclude) ? refName.exclude : [];
+                if (!includes.some((pattern) => matchesRef(pattern, releaseTagRef))) continue;
+                if (excludes.some((pattern) => matchesRef(pattern, releaseTagRef))) continue;
+                const ruleTypes = (ruleset.rules || []).map((rule) => rule.type);
+                for (const required of ['creation', 'update', 'deletion']) {
+                  if (!ruleTypes.includes(required)) fail('tag-protection-missing', `active tag ruleset ${ruleset.id} does not restrict ${required} for ${releaseTagRef}`);
+                }
+                if (!Array.isArray(ruleset.bypass_actors) || ruleset.bypass_actors.length !== 0) fail('tag-protection-bypass', `active tag ruleset ${ruleset.id} grants bypass actors that could retarget ${releaseTagRef}`);
+                tagProtectionRulesetId = ruleset.id;
+                break;
+              }
+              if (tagProtectionRulesetId === null) fail('tag-protection-missing', `no active tag ruleset restricts creation/update/deletion of ${releaseTagRef}`);
               const tagRef = await api(`/repos/${repo}/git/ref/tags/${tag}`);
               let target = tagRef.object.sha;
               if (tagRef.object.type === 'tag') {
@@ -370,6 +406,7 @@ jobs:
                 reviewerLogins,
                 environmentSecretNames,
                 immutableReleasesEnabled: immutable.enabled,
+                tagProtectionRulesetId,
                 ownerEvidenceDigest: sha256(JSON.stringify(evidence)),
                 ownerEvidenceTokenExpiresAt: tokenEvidence.expiresAt,
               };
@@ -393,11 +430,34 @@ jobs:
       - name: Download every remote draft asset into a separate fresh directory
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           TAG: ${{ needs.release-build.outputs.source-tag }}
         run: |
           set -euo pipefail
           mkdir -p preflight/draft-assets
           gh release download "$TAG" --dir preflight/draft-assets --clobber
+          gh api "repos/$REPO/releases/tags/$TAG" > preflight/release-listed.json
+          node -e "
+            const fs = require('fs');
+            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256','metadata.json','module-manifest.json','sbom.spdx.json','release-manifest.json','SHA256SUMS'].sort();
+            const release = JSON.parse(fs.readFileSync('preflight/release-listed.json', 'utf8'));
+            function fail(message) { console.error('RELEASE PUBLISH FAIL: draft-asset-set-mismatch: ' + message); process.exit(1); }
+            if (release.draft !== true) fail('target release is not a draft');
+            const apiNames = release.assets.map((asset) => asset.name);
+            if (new Set(apiNames).size !== apiNames.length) fail('the API-reported draft contains duplicate asset names');
+            if (JSON.stringify([...apiNames].sort()) !== JSON.stringify(expected)) fail('the API-reported draft asset set is not exactly the seven declared assets');
+            const downloaded = fs.readdirSync('preflight/draft-assets').sort();
+            if (new Set(downloaded).size !== downloaded.length) fail('the downloaded asset directory contains duplicate names');
+            if (JSON.stringify(downloaded) !== JSON.stringify(expected)) fail('the downloaded asset set is not exactly the seven declared assets');
+            const crypto = require('crypto');
+            for (const asset of release.assets) {
+              const bytes = fs.readFileSync('preflight/draft-assets/' + asset.name);
+              const digest = 'sha256:' + crypto.createHash('sha256').update(bytes).digest('hex');
+              if (asset.digest !== digest) fail('downloaded bytes do not match the API digest for ' + asset.name);
+              if (asset.size !== bytes.length) fail('downloaded size does not match the API size for ' + asset.name);
+            }
+            console.log('RELEASE PUBLISH DRAFT SET OK: exactly seven declared assets');
+          "
 
       - name: Reverify byte identity, checksums, tag target and attestations
         id: verify
@@ -440,7 +500,17 @@ jobs:
             const crypto = require('crypto');
             const release = JSON.parse(fs.readFileSync('preflight/release-before.json', 'utf8'));
             const immutable = JSON.parse(fs.readFileSync('preflight/immutable-releases.json', 'utf8'));
+            const listed = JSON.parse(fs.readFileSync('preflight/release-listed.json', 'utf8'));
             if (release.draft !== true) { console.error('RELEASE PUBLISH FAIL: target release is not a draft'); process.exit(1); }
+            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256','metadata.json','module-manifest.json','sbom.spdx.json','release-manifest.json','SHA256SUMS'].sort();
+            const names = release.assets.map((asset) => asset.name);
+            if (new Set(names).size !== names.length) { console.error('RELEASE PUBLISH FAIL: draft-asset-set-mismatch: duplicate asset names'); process.exit(1); }
+            if (JSON.stringify([...names].sort()) !== JSON.stringify(expected)) { console.error('RELEASE PUBLISH FAIL: draft-asset-set-mismatch: asset set is not exactly the seven declared assets'); process.exit(1); }
+            for (const asset of release.assets) {
+              if (!Number.isInteger(asset.id) || !Number.isInteger(asset.size) || typeof asset.digest !== 'string' || asset.digest === '') { console.error('RELEASE PUBLISH FAIL: draft-asset-metadata-invalid: ' + asset.name); process.exit(1); }
+            }
+            const fingerprint = (assets) => JSON.stringify(assets.map((asset) => ({ id: asset.id, name: asset.name, size: asset.size, digest: asset.digest })).sort((a, b) => a.name.localeCompare(b.name)));
+            if (fingerprint(listed.assets) !== fingerprint(release.assets)) { console.error('RELEASE PUBLISH FAIL: draft-asset-set-mismatch: draft metadata changed after download'); process.exit(1); }
             const record = {
               schemaVersion: 1,
               draftReleaseId: release.id,
@@ -462,8 +532,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-build.outputs.source-tag }}
         run: |
           set -euo pipefail
+          gh api "repos/$REPO/releases/tags/$TAG" > preflight/release-recheck.json
+          node -e "
+            const fs = require('fs');
+            const record = JSON.parse(fs.readFileSync('preflight/publish-record.json', 'utf8'));
+            const recheck = JSON.parse(fs.readFileSync('preflight/release-recheck.json', 'utf8'));
+            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256','metadata.json','module-manifest.json','sbom.spdx.json','release-manifest.json','SHA256SUMS'].sort();
+            function fail(message) { console.error('RELEASE PUBLISH FAIL: draft-drift-before-publish: ' + message); process.exit(1); }
+            if (recheck.draft !== true) fail('the draft is no longer a draft');
+            if (recheck.id !== record.draftReleaseId) fail('the draft release id changed');
+            if (recheck.tag_name !== record.tag) fail('the draft tag changed');
+            const names = recheck.assets.map((asset) => asset.name);
+            if (new Set(names).size !== names.length) fail('duplicate asset names appeared in the draft');
+            if (JSON.stringify([...names].sort()) !== JSON.stringify(expected)) fail('the draft asset set is not exactly the seven declared assets');
+            const fingerprint = (assets) => JSON.stringify(assets.map((asset) => ({ id: asset.id, name: asset.name, size: asset.size, digest: asset.digest })).sort((a, b) => a.name.localeCompare(b.name)));
+            if (fingerprint(recheck.assets) !== fingerprint(record.assetIds)) fail('asset ids, names, sizes or digests changed');
+            console.log('RELEASE PUBLISH DRAFT STABLE: no drift between verification and mutation');
+          "
           release_id=$(node -e "console.log(require('./preflight/publish-record.json').draftReleaseId)")
           gh api --method PATCH "repos/$REPO/releases/$release_id" -f draft=false > preflight/release-after.json
 
@@ -477,6 +565,9 @@ jobs:
           gh release verify "$TAG" || { echo "RELEASE PUBLISH FAIL: release attestation verification failed"; exit 1; }
           gh release verify-asset "$TAG" preflight/workflow-artifact/travian-attack-alert.user.js || { echo "RELEASE PUBLISH FAIL: userscript release attestation failed"; exit 1; }
           gh api "repos/$REPO/immutable-releases" --jq '.enabled' | grep -qx true || { echo "RELEASE PUBLISH FAIL: immutable releases disabled"; exit 1; }
+          tag_object_after=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha')
+          tag_commit_after=$(gh api "repos/$REPO/git/tags/$tag_object_after" --jq '.object.sha')
+          test "$tag_commit_after" = "$SOURCE_SHA" || { echo "RELEASE PUBLISH FAIL: tag-target-changed-after-publish (incident): $TAG now points at $tag_commit_after, expected $SOURCE_SHA; never report success"; exit 1; }
           gh api "repos/$REPO/releases/tags/$TAG" > preflight/release-final.json
           node -e "
             const fs = require('fs');

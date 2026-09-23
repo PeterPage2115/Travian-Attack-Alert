@@ -121,8 +121,16 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
    works.
 2. Enable **immutable releases** so a published asset or tag cannot be silently
    replaced.
-3. Install a tag ruleset (or tag protection) restricting creation, update, and
-   deletion of `v*` tags to the owner.
+3. Install an **active tag ruleset** that makes the `v*` tag immutable. It must
+   target tag refs, match `refs/tags/v*` (including the exact release tag),
+   enable **restrict creations**, **restrict updates**, and **restrict
+   deletions**, and grant **no bypass actors**. With no bypass actors, no
+   release actor — not the owner, not a repository administrator — can retarget,
+   delete, or recreate the tag while a publication is running. The
+   `release-publish` preflight proves this exact ruleset through read-only API
+   calls and fails closed (`tag-protection-missing` / `tag-protection-bypass`)
+   if the ruleset is absent, inactive, does not cover the exact tag ref, lacks
+   any of the three restrictions, or lists any bypass actor.
 4. Create a protected `release` environment with a required reviewer distinct
    from the release actor, prevent self-review, and a `v*` deployment tag policy.
 5. Store **environment-only** secrets: `TAA_RELEASE_APPROVAL_PROOF` (random) and
@@ -131,11 +139,13 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
    exists and no organization-level name collides.
 6. Complete every item in `docs/REPOSITORY-SETTINGS.md`.
 
-- **Evidence:** authenticated settings export digests, environment protection
-  response digest, secret-name absence digests, timestamp, actor, repository/ref.
+- **Evidence:** authenticated settings export digests, tag ruleset response
+  digest (id, target, enforcement, ref conditions, rules, empty bypass list),
+  environment protection response digest, secret-name absence digests,
+  timestamp, actor, repository/ref.
 - **Stop:** an unprotected or auto-created environment, a missing environment
   secret, a same-actor reviewer, a disabled immutable-release setting, or a
-  missing tag ruleset stops the run.
+  missing, inactive, uncovered, or bypassable tag ruleset stops the run.
 - **Rollback:** correct the setting and re-verify; the release stays `BLOCKED`.
 
 ## Stage 6 — Populate pre-publication owner gates and set `stable:true`
@@ -178,8 +188,9 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
 
 - **Evidence:** workflow run/artifact ids, draft release id, asset ids/digests,
   attestation ids, immutable-release response digest.
-- **Stop:** a missing draft asset, a checksum or attestation mismatch, or a
-  substituted asset stops publication; the draft stays unpublished.
+- **Stop:** a missing draft asset, an extra or duplicate draft asset, a checksum
+  or attestation mismatch, or a substituted asset stops publication; the draft
+  stays unpublished.
 - **Rollback:** delete the draft release and the tag, fix the cause, and re-tag;
   never publish a mismatched draft.
 
@@ -189,7 +200,8 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
    reviewer **distinct** from the triggering actor approves the deployment.
 2. The job performs its GET-only preflight with the short-lived
    `TAA_RELEASE_SETTINGS_READ_TOKEN`, proves the live environment protections,
-   both environment secrets, immutable releases, the exact tag target, and the
+   both environment secrets, immutable releases, the active no-bypass tag
+   ruleset covering the exact tag ref, the exact tag target, and the
    digest-bound owner evidence, then unsets the token immediately.
 
 - **Evidence:** environment approval record, reviewer identity, preflight record,
@@ -201,19 +213,32 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
 
 ## Stage 10 — Verify the published immutable release
 
-1. After approval, the single publish mutation flips the draft to published.
-2. Verify the published release: `gh release verify`, per-asset
+1. Immediately before the single publish mutation the workflow re-fetches the
+   draft and requires the same release id, tag, draft state, and asset
+   id/name/size/digest set it verified. Any drift
+   (`draft-drift-before-publish`) stops publication with the draft untouched.
+   After approval, the single publish mutation flips the draft to published.
+2. Immediately after the mutation the workflow re-resolves the tag object and
+   requires it to still point at the exact release commit it verified before
+   publication. A retargeted tag (`tag-target-changed-after-publish`) is a
+   publication **incident**: the job fails, the release is never represented as
+   success, and Stage 11 must not run.
+3. Verify the published release: `gh release verify`, per-asset
    `gh release verify-asset`, immutable releases still enabled, and unchanged
    asset ids and digests. Any mismatch raises an incident and must never be
    represented as success.
 
-- **Evidence:** published release id, asset ids/digests, release attestation
+- **Evidence:** pre-publish draft record, post-publish tag object id and target
+  commit, published release id, asset ids/digests, release attestation
   verification, immutable-release response digest, timestamp.
-- **Stop:** a mutable release, a failed release attestation, or changed asset
-  digests is an incident; do not report success.
+- **Stop:** draft drift before the mutation, a retargeted tag, a mutable
+  release, a failed release attestation, or changed asset digests is an
+  incident; do not report success.
 - **Rollback:** if immutable releases are enabled the release cannot be silently
-  replaced; delete the release and tag only through the documented owner
-  incident procedure and re-run from Stage 7.
+  replaced; if the tag was retargeted, stop, do not run Stage 11, and delete the
+  release and the wrong tag only through the documented owner incident procedure
+  (temporarily amending the tag ruleset in an owner-reviewed change, then
+  restoring it and re-verifying) before re-running from Stage 7.
 
 ## Stage 11 — Post-publication follow-up record
 

@@ -20,11 +20,18 @@
 //     and rejects an existing published or mismatched draft;
 //   * the publish job depends on build/attest/draft, declares
 //     `environment: release`, checks both environment secrets only after
-//     approval, proves the live protection rules with a GET-only settings token,
-//     unset immediately after preflight, reverifies the workflow artifact against
-//     every remote draft asset, verifies build attestations, records immutable
-//     evidence, performs exactly one publish mutation, and verifies the
-//     published immutable release and exact asset digests.
+//     approval, proves the live protection rules with a GET-only settings token
+//     (including an active tag ruleset with no bypass actors that forbids
+//     creation/update/deletion of the exact tag ref), unset immediately after
+//     preflight, validates the complete downloaded AND API-reported draft asset
+//     set against the exact seven-name allowlist (extras, omissions and
+//     duplicates fail closed), reverifies the workflow artifact against every
+//     remote draft asset, verifies build attestations, records immutable
+//     evidence, re-fetches the draft immediately before performing exactly one
+//     publish mutation and rejects any changed release id/tag/draft state or
+//     asset id/name/size/digest, then verifies the published immutable release,
+//     exact asset digests, and that the tag still points at the source commit
+//     (a retargeted tag is an incident, never success).
 //
 // `analyzeReleaseWorkflow()` is a pure, offline analyzer over the workflow
 // source. The suite runs it against the real file (zero violations) and against
@@ -265,6 +272,40 @@ function analyzeReleaseWorkflow(source) {
   if (!/gh release verify/u.test(publish)) add('missing-post-publish-verify', 'publish job must verify the published release and attestation');
   if (!/asset digests changed after publish/u.test(publish)) add('missing-post-publish-verify', 'publish job must reject changed asset digests after publish');
 
+  // The complete draft asset set must be exactly the seven declared names, both
+  // as downloaded and as reported by the API: extras, omissions and duplicates
+  // all fail closed before any byte comparison.
+  if (!/draft-asset-set-mismatch/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must reject a draft asset set that is not exactly the seven declared assets');
+  if (!/new Set\(apiNames\)\.size !== apiNames\.length/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must reject duplicate API-reported draft asset names');
+  if (!/JSON\.stringify\(\[\.\.\.apiNames\]\.sort\(\)\) !== JSON\.stringify\(expected\)/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must compare the API-reported draft asset set against the exact allowlist');
+  if (!/readdirSync\(/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must validate the complete downloaded asset set');
+  if (!/JSON\.stringify\(downloaded\) !== JSON\.stringify\(expected\)/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must compare the downloaded asset set against the exact allowlist');
+  if (!/asset\.digest !== digest/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must compare the downloaded bytes against the API-reported digest');
+  if (!/asset\.size !== bytes\.length/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must compare the downloaded size against the API-reported size');
+  if (!/fingerprint\(listed\.assets\) !== fingerprint\(release\.assets\)/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must reject draft metadata drift between download and evidence snapshot');
+
+  // Immediately before the single publish mutation the draft is fetched again
+  // and any changed id, tag, draft state, asset id/name/size/digest, or extra
+  // asset fails closed.
+  if (!/draft-drift-before-publish/u.test(publish)) add('missing-draft-recheck', 'publish job must re-fetch the draft immediately before the publish mutation');
+  if (!/recheck\.draft !== true/u.test(publish)) add('missing-draft-recheck', 'publish job must reject a draft-state change before the publish mutation');
+  if (!/recheck\.id !== record\.draftReleaseId/u.test(publish)) add('missing-draft-recheck', 'publish job must reject a changed draft release id before the publish mutation');
+  if (!/recheck\.tag_name !== record\.tag/u.test(publish)) add('missing-draft-recheck', 'publish job must reject a changed draft tag before the publish mutation');
+  if (!/fingerprint\(recheck\.assets\) !== fingerprint\(record\.assetIds\)/u.test(publish)) add('missing-draft-recheck', 'publish job must reject changed asset ids, names, sizes or digests before the publish mutation');
+
+  // The tag must be proven immutable (active tag ruleset, matching ref, no
+  // bypass actors) before publication, and the tag target must be re-resolved
+  // after publication; any mismatch is a publication failure, never success.
+  if (!/rulesets/u.test(publish)) add('missing-tag-protection-check', 'publish job must verify repository tag rulesets');
+  if (!/tag-protection-missing/u.test(publish)) add('missing-tag-protection-check', 'publish job must fail closed when the tag ruleset is missing');
+  if (!/tag-protection-bypass/u.test(publish)) add('missing-tag-protection-check', 'publish job must fail closed when the tag ruleset grants bypass actors');
+  if (!/bypass_actors\.length !== 0/u.test(publish)) add('missing-tag-protection-check', 'publish job must reject a tag ruleset with bypass actors');
+  if (!/ref_name/u.test(publish)) add('missing-tag-protection-check', 'publish job must match the ruleset against the exact tag ref');
+  if (!/includes\.some\(\(pattern\) => matchesRef\(pattern, releaseTagRef\)\)/u.test(publish)) add('missing-tag-protection-check', 'publish job must prove the ruleset include conditions cover the exact tag ref');
+  if (!/for \(const required of \['creation', 'update', 'deletion'\]\)/u.test(publish)) add('missing-tag-protection-check', 'publish job must require creation/update/deletion restrictions');
+  if (!/tag-target-changed-after-publish/u.test(publish)) add('missing-post-publish-tag-check', 'publish job must treat a retargeted tag after publication as a failure');
+  if (!/test "\$tag_commit_after" = "\$SOURCE_SHA"/u.test(publish)) add('missing-post-publish-tag-check', 'publish job must compare the post-publication tag target against the source commit');
+
   for (const [name, jobText] of Object.entries(jobs)) {
     if (name === 'release-publish') continue;
     if (/gh\s+release\s+edit|--method\s+(?:PATCH|POST|PUT|DELETE)|draft=false/u.test(jobText)) add('direct-auto-publish', `${name} must not mutate a release`);
@@ -299,6 +340,15 @@ function mutateAll(from, to) {
   const source = readReleaseWorkflow();
   assert.ok(source.includes(from), `mutation anchor not found: ${from}`);
   return source.replaceAll(from, to);
+}
+
+function mutateSeq(...pairs) {
+  let source = readReleaseWorkflow();
+  for (const [from, to] of pairs) {
+    assert.ok(source.includes(from), `mutation anchor not found: ${from}`);
+    source = source.replace(from, to);
+  }
+  return source;
 }
 
 function expectRejected(source, code) {
@@ -465,4 +515,68 @@ test('Given a direct auto-publish, when analyzed, then the workflow is rejected'
     '\n  release-publish:\n',
     '\n      - name: bypass\n        run: gh release edit "$TAG" --draft=false\n\n  release-publish:\n',
   ), 'direct-auto-publish');
+});
+
+test('Given an unverified tag ruleset, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutateAll('tag-protection-missing', 'tag-protection-ok'), 'missing-tag-protection-check');
+});
+
+test('Given a tag ruleset that grants bypass actors, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('ruleset.bypass_actors.length !== 0', 'false'), 'missing-tag-protection-check');
+});
+
+test('Given an undeclared extra draft asset, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutateAll('draft-asset-set-mismatch', 'draft-asset-set-ok'), 'missing-draft-asset-set-check');
+});
+
+test('Given a missing duplicate-asset guard, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('new Set(apiNames).size !== apiNames.length', 'false'), 'missing-draft-asset-set-check');
+});
+
+test('Given an unvalidated downloaded asset directory, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('readdirSync(', 'readdirSyncX('), 'missing-draft-asset-set-check');
+});
+
+test('Given a missing pre-publish draft re-fetch, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('draft-drift-before-publish', 'draft-drift-ok'), 'missing-draft-recheck');
+});
+
+test('Given a changed draft asset between verification and publish, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('fingerprint(recheck.assets) !== fingerprint(record.assetIds)', 'false'), 'missing-draft-recheck');
+});
+
+test('Given a retagged commit after publication, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('test "$tag_commit_after" = "$SOURCE_SHA"', 'true'), 'missing-post-publish-tag-check');
+});
+
+test('Given an unchecked API-reported draft asset set, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('JSON.stringify([...apiNames].sort()) !== JSON.stringify(expected)', 'false'), 'missing-draft-asset-set-check');
+});
+
+test('Given an unchecked downloaded draft asset set, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('JSON.stringify(downloaded) !== JSON.stringify(expected)', 'false'), 'missing-draft-asset-set-check');
+});
+
+test('Given weakened pre-publish recheck fields, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutateSeq(
+    ['recheck.draft !== true', 'false'],
+    ['recheck.id !== record.draftReleaseId', 'false'],
+    ['recheck.tag_name !== record.tag', 'false'],
+  ), 'missing-draft-recheck');
+});
+
+test('Given a tag ruleset that does not cover the exact tag ref, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('includes.some((pattern) => matchesRef(pattern, releaseTagRef))', 'true'), 'missing-tag-protection-check');
+});
+
+test('Given a tag ruleset without creation/update/deletion restrictions, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate("['creation', 'update', 'deletion']", "['update']"), 'missing-tag-protection-check');
+});
+
+test('Given downloaded bytes that do not match the API digest, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('asset.digest !== digest', 'false'), 'missing-draft-asset-set-check');
+});
+
+test('Given draft metadata that drifted after download, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('fingerprint(listed.assets) !== fingerprint(release.assets)', 'false'), 'missing-draft-asset-set-check');
 });
