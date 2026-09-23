@@ -5256,27 +5256,234 @@ const RELEASE_ID = "taa-1.0.0";
       alerts: []
     };
   }
+  function monitorLegacyWorldEntry(map, world) {
+    if (!isPlainMonitorObject(map)) return void 0;
+    const key = normalizeHostname(world);
+    return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : void 0;
+  }
+  function monitorLegacyStoreRecords(store) {
+    return isPlainMonitorObject(store) && Array.isArray(store.events) ? store.events : [];
+  }
+  function monitorLegacyWorldKeyed(legacy, world) {
+    return monitorLegacyWorldEntry(legacy && legacy.pending, world) !== void 0
+      || monitorLegacyWorldEntry(legacy && legacy.inFlight, world) !== void 0
+      || monitorLegacyWorldEntry(legacy && legacy.failed, world) !== void 0;
+  }
+  function monitorEnvelopeQueueIdentitySet(envelope) {
+    const ids = /* @__PURE__ */ new Set();
+    for (const queue of [envelope.pending, envelope.inFlight, envelope.failed, envelope.uncertain]) {
+      if (!Array.isArray(queue)) continue;
+      for (const event of queue) {
+        if (event && typeof event.eventId === "string") ids.add(event.eventId);
+      }
+    }
+    return ids;
+  }
+  function monitorUncertainLegacySettlement(event) {
+    return Object.assign({}, event, {
+      deliveryState: "uncertain-legacy-settlement",
+      responseClass: "uncertain-legacy-settlement"
+    });
+  }
+  function monitorReconciliationCapacityOk(envelope, nextUncertain) {
+    return [envelope.pending, envelope.inFlight, envelope.failed, nextUncertain].every(
+      (queue) => !Array.isArray(queue) || queue.length <= MONITOR_MAX_PENDING_RECORDS
+    );
+  }
+  function monitorPendingMapNeedsCleanup(map, world) {
+    const entry = monitorLegacyWorldEntry(map, world);
+    if (!isPlainMonitorObject(entry)) return false;
+    return monitorLegacyStoreRecords(entry).length > 0
+      || (Array.isArray(entry.inFlight) && entry.inFlight.length > 0);
+  }
+  function monitorFailedMapNeedsCleanup(map, world) {
+    return monitorLegacyStoreRecords(monitorLegacyWorldEntry(map, world)).length > 0;
+  }
+  // Idempotent staged cleanup: pending.events + pending.inFlight first, then the
+  // separate failed map, each with a verified readback. Physical atomicity
+  // across the two legacy keys is unavailable, so a write without a verified
+  // readback stops in an explicit indeterminate stage and never guesses values.
+  function monitorStagedLegacyCleanupV1(world, options = {}) {
+    const hostname = normalizeHostname(world);
+    const storage = options.storage;
+    const legacy = options.legacy || {};
+    if (monitorPendingMapNeedsCleanup(legacy.pending, hostname)) {
+      const nextPending = Object.assign({}, legacy.pending);
+      nextPending[hostname] = Object.assign({}, monitorLegacyWorldEntry(legacy.pending, hostname), { events: [], inFlight: [] });
+      const pendingWrite = monitorWriteReadback(
+        storage,
+        PENDING_BATCH_STORAGE_KEY,
+        JSON.stringify(nextPending)
+      );
+      if (!pendingWrite.ok) {
+        return {
+          outcome: "pending-cleanup-indeterminate",
+          stage: "pending-cleanup-indeterminate",
+          reason: pendingWrite.outcome,
+          blocked: true
+        };
+      }
+    }
+    if (monitorFailedMapNeedsCleanup(legacy.failed, hostname)) {
+      const nextFailed = Object.assign({}, legacy.failed);
+      nextFailed[hostname] = Object.assign({}, monitorLegacyWorldEntry(legacy.failed, hostname), { events: [] });
+      const failedWrite = monitorWriteReadback(
+        storage,
+        FAILED_BATCH_STORAGE_KEY,
+        JSON.stringify(nextFailed)
+      );
+      if (!failedWrite.ok) {
+        return {
+          outcome: "failed-cleanup-indeterminate",
+          stage: "failed-cleanup-indeterminate",
+          reason: failedWrite.outcome,
+          blocked: true
+        };
+      }
+    }
+    return { outcome: "ok", stage: "cleanup-complete", blocked: false };
+  }
+  // Reconciles the world-keyed legacy queues against an existing envelope.
+  // Per-store snapshots keep each store's own index space; every unmatched
+  // valid record becomes an explicit uncertain-legacy-settlement (never sent),
+  // malformed records fail preflight for the whole world with zero writes, and
+  // only records whose exact ls1: identity is retained stay in active queues.
+  function reconcileMonitorLegacyQueuesV1(world, loadedEnvelope, options = {}) {
+    const hostname = normalizeHostname(world);
+    const legacy = options.legacy || {};
+    let plan;
+    try {
+      plan = planMonitorLegacyMigration(legacy, options.snapshot, hostname);
+    } catch (error) {
+      return {
+        outcome: "malformed-legacy-record",
+        stage: "preflight",
+        blocked: true,
+        envelope: loadedEnvelope,
+        reason: "malformed-legacy-record",
+        error: String(error && error.message || error)
+      };
+    }
+    const represented = monitorEnvelopeQueueIdentitySet(loadedEnvelope);
+    const additions = [];
+    for (const event of [].concat(
+      plan.pending || [],
+      plan.inFlight || [],
+      plan.failed || [],
+      plan.uncertain || []
+    )) {
+      if (!event || typeof event.eventId !== "string" || represented.has(event.eventId)) continue;
+      represented.add(event.eventId);
+      additions.push(monitorUncertainLegacySettlement(event));
+    }
+    const nextUncertain = (Array.isArray(loadedEnvelope.uncertain) ? loadedEnvelope.uncertain : []).concat(additions);
+    if (!monitorReconciliationCapacityOk(loadedEnvelope, nextUncertain)) {
+      return {
+        outcome: "capacity-reject",
+        stage: "preflight",
+        blocked: true,
+        envelope: loadedEnvelope,
+        reason: "capacity-reject"
+      };
+    }
+    const needsCleanup = monitorPendingMapNeedsCleanup(legacy.pending, hostname)
+      || monitorFailedMapNeedsCleanup(legacy.failed, hostname);
+    if (additions.length === 0 && !needsCleanup) {
+      return { outcome: "ok", stage: "steady", blocked: false, envelope: loadedEnvelope };
+    }
+    if (typeof options.beforeCommit === "function" && options.beforeCommit() !== true) {
+      return { outcome: "fenced-reject", stage: "preflight", blocked: true, envelope: loadedEnvelope };
+    }
+    let committedEnvelope = loadedEnvelope;
+    let commitResult = null;
+    if (additions.length > 0) {
+      const reconciliationEnvelope = createMonitorEnvelopeV1(
+        hostname,
+        Object.assign({}, loadedEnvelope, {
+          generation: loadedEnvelope.generation + 1,
+          uncertain: nextUncertain
+        })
+      );
+      syncDeliveryAccounting(reconciliationEnvelope);
+      reconciliationEnvelope.integrity = checksumMonitorCanonicalValue(
+        monitorEnvelopeWithoutIntegrity(reconciliationEnvelope)
+      );
+      commitResult = commitMonitorEnvelopeV1({
+        world: hostname,
+        currentEnvelope: loadedEnvelope,
+        candidateEnvelope: reconciliationEnvelope,
+        expectedGeneration: loadedEnvelope.generation,
+        storage: options.storage,
+        nowMs: options.nowMs,
+        beforeCommit: options.beforeCommit
+      });
+      if (commitResult.outcome !== "ok") {
+        return {
+          outcome: "envelope-commit-failed",
+          stage: "envelope-commit",
+          blocked: true,
+          envelope: loadedEnvelope,
+          commit: commitResult,
+          reason: commitResult.outcome
+        };
+      }
+      committedEnvelope = commitResult.envelope;
+    }
+    const cleanup = monitorStagedLegacyCleanupV1(hostname, options);
+    if (cleanup.outcome !== "ok") {
+      return Object.assign({
+        outcome: cleanup.outcome,
+        envelope: committedEnvelope,
+        commit: commitResult
+      }, cleanup);
+    }
+    return {
+      outcome: "reconciled",
+      stage: "released",
+      blocked: false,
+      envelope: committedEnvelope,
+      cleanup
+    };
+  }
   function loadOrMigrateMonitorEnvelopeV1(world, snapshot, options = {}) {
     const loaded = loadMonitorEnvelopeV1(world, options);
     if (loaded.envelope) {
-      return loaded;
+      const hostname2 = normalizeHostname(world);
+      const legacy2 = options.legacy || defaultMonitorLegacyView();
+      if (!monitorLegacyWorldKeyed(legacy2, hostname2)) {
+        return loaded;
+      }
+      return reconcileMonitorLegacyQueuesV1(hostname2, loaded.envelope, {
+        storage: options.storage,
+        legacy: legacy2,
+        snapshot,
+        nowMs: options.nowMs,
+        beforeCommit: options.beforeCommit
+      });
     }
     if (loaded.blocked) {
       return loaded;
     }
     const hostname = normalizeHostname(world);
-    const legacy = options.legacy || {
-      attackState: typeof localStorage === "undefined" ? {} : loadState(),
-      pending: typeof localStorage === "undefined" ? {} : loadPendingBatch(),
-      inFlight: typeof localStorage === "undefined" ? {} : loadInFlightBatch(),
-      failed: typeof localStorage === "undefined" ? {} : loadFailedBatch()
-    };
-    const migration = migrateLegacyMonitorStateV1({
-      world: hostname,
-      snapshot,
-      legacy,
-      nowMs: options.nowMs
-    });
+    const legacy = options.legacy || defaultMonitorLegacyView();
+    let migration;
+    try {
+      migration = migrateLegacyMonitorStateV1({
+        world: hostname,
+        snapshot,
+        legacy,
+        nowMs: options.nowMs
+      });
+    } catch (error) {
+      return {
+        outcome: "malformed-legacy-record",
+        stage: "preflight",
+        blocked: true,
+        envelope: void 0,
+        reason: "malformed-legacy-record",
+        error: String(error && error.message || error)
+      };
+    }
     if (typeof options.beforeCommit === "function" && options.beforeCommit() !== true) {
       return {
         outcome: "fenced-reject",
@@ -5291,14 +5498,36 @@ const RELEASE_ID = "taa-1.0.0";
       storage: options.storage,
       nowMs: options.nowMs
     });
-    return committed.outcome === "ok" ? Object.assign({}, migration, {
+    if (committed.outcome !== "ok") {
+      return Object.assign({}, migration, {
+        outcome: "failed-migration",
+        commit: committed,
+        blocked: true
+      });
+    }
+    const result = Object.assign({}, migration, {
       outcome: "migrated",
       commit: committed
-    }) : Object.assign({}, migration, {
-      outcome: "failed-migration",
-      commit: committed,
-      blocked: true
     });
+    if (monitorLegacyWorldKeyed(legacy, hostname)) {
+      const cleanup = monitorStagedLegacyCleanupV1(hostname, {
+        storage: options.storage,
+        legacy
+      });
+      if (cleanup.outcome !== "ok") {
+        return Object.assign(result, cleanup);
+      }
+      result.cleanup = cleanup;
+    }
+    return result;
+  }
+  function defaultMonitorLegacyView() {
+    return {
+      attackState: typeof localStorage === "undefined" ? {} : loadState(),
+      pending: typeof localStorage === "undefined" ? {} : loadPendingBatch(),
+      inFlight: typeof localStorage === "undefined" ? {} : loadInFlightBatch(),
+      failed: typeof localStorage === "undefined" ? {} : loadFailedBatch()
+    };
   }
   function planAcceptedScanTransition(snapshot, previousBaseline, muteSet, threshold, generation, fence, queue = {}) {
     if (!snapshot || snapshot.status !== "authoritative" || !isPlainMonitorObject(snapshot.membersById)) {
@@ -7451,23 +7680,8 @@ ${entry.line}`;
           saveRoster(nextRoster);
         }
         saveHistory(history, currentHostname);
-        if (monitorPendingEvents.length > 0) {
-          const queued = savePendingBatch(
-            enqueueEvents(
-              loadPendingBatch(),
-              currentHostname,
-              monitorPendingEvents,
-              { enforceQueueContract: true }
-            ),
-            currentHostname
-          );
-          if (!queued) {
-            reportLifecycleHook("onHealth", {
-              kind: "legacy-queue-bridge-failed",
-              observedAtMs
-            });
-          }
-        }
+        // Newly committed monitor events live only in the durable envelope; the
+        // legacy pending-batch key is never dual-written (Task 15 reconciliation).
         previousState = Object.assign({}, currentState, {
           filterVersion: 4
         });

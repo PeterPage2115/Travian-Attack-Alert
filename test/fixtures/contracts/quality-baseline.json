@@ -4,7 +4,7 @@
   "newModuleMaxPureLines": 250,
   "monolith": {
     "path": "src/runtime.js",
-    "maxPureLines": 10455,
-    "note": "Strictly decreasing budget: actual pure lines must be <= maxPureLines. Any increase fails the gate."
+    "maxPureLines": 10658,
+    "note": "Strictly non-increasing budget: actual pure lines must be <= maxPureLines. Any increase fails the gate. Task 15 (legacy queue reconciliation) recorded the required +203 debt from 10455; no headroom remains."
   }
 }

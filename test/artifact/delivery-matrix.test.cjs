@@ -1135,6 +1135,8 @@ test('(k8) malformed legacy record fails the world preflight with zero writes', 
     const storage = controlledStorage();
     seedMigratedEnvelope(storage);
     seedPersistedLegacy(storage);
+    // Isolate the reconciliation write window from the fixture's own seeding.
+    storage.log.sets.length = 0;
     const pending = JSON.parse(storage.values.get(PENDING_KEY));
     const malformed = Object.assign(persistedLegacyEvent(WORLD, '107', 7), { canonicalEventFields: { name: 'tampered' } });
     pending[WORLD].events.push(malformed);
