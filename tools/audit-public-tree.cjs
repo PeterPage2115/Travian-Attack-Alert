@@ -29,6 +29,12 @@
  *   OCR errors, unsupported image/archive types, symlinks, OCR model-hash
  *   drift, dev-dependency pin drift.
  *
+ * Tree/secrets fail-closed triggers (each yields verdict FAIL, never bytes):
+ *   open/read/decode/truncation errors, every non-regular entry (symlinks,
+ *   FIFOs, sockets, devices), secret matches. Oversized text is streamed
+ *   through one stateful matcher; binary files are classified explicitly and
+ *   reported as auditable binary skips (never a silent size skip).
+ *
  * Redaction: every report and every stdout line carries rule/path/offset
  * digests only — matched bytes (tokens, URLs, payloads, snowflakes) are
  * NEVER printed, not even partially.
@@ -101,6 +107,14 @@ const GENERATED = new Set([
 // allowlisty, wyłącznie w test/). Próg 32 znaki daje szeroki margines:
 // krótszy token nie może być żywym sekretem.
 const MIN_REAL_TOKEN_LEN = 32;
+
+// Streaming scan chunk size for oversized text. Exported so boundary tests can
+// split a signature exactly across a chunk boundary.
+const STREAM_CHUNK_BYTES = 64 * 1024;
+
+// Test-only fault injection seam (see testReadFault). Never set in production;
+// any configured fault can only ADD a failure, never skip or weaken a scan.
+const TEST_READ_FAULT_ENV = 'TAA_AUDIT_TEST_READ_FAULT';
 
 // Pinned dev-only evidence decoders (package.json devDependencies must carry
 // these exact versions; evidence mode verifies the installed copies).
@@ -200,6 +214,111 @@ function buildSecretMatchers() {
 const IDENTITY_EXEMPT_RE = /^(?:test\/|docs\/release-history\/)/;
 
 /**
+ * Stateful streaming matcher contract (the ONLY secret matcher implementation).
+ *
+ * A matcher is fed decoded text chunks in order (`push`) and finalized exactly
+ * once (`end`). Complete lines are scanned as soon as their newline arrives;
+ * the trailing partial line stays as state until more text (or `end`) arrives,
+ * so a token split across two chunks is never missed by a chunk-local regex.
+ *
+ * @param {string} rel posix relative path (used only for exemption routing)
+ * @param {{snowflakeExempt?:boolean, identityExempt?:boolean}} opts exemption flags
+ * @returns {{push: (chunk: string) => void, end: () => Array<{kind:string, offset:number, line:number, tokenLen:number}>, hits: Array<{kind:string, offset:number, line:number, tokenLen:number}>}}
+ */
+function createSecretStreamMatcher(rel, opts = {}) {
+  const matchers = buildSecretMatchers();
+  const hits = [];
+  const snowflakeExempt = opts.snowflakeExempt === true;
+  const identityExempt = opts.identityExempt === true;
+  let pending = '';
+  let pendingStart = 0;
+  let lineNumber = 1;
+
+  const record = (line, lineStart, regex, kind) => {
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(line)) !== null) {
+      // Guard against zero-length match loops (legacy-host pattern can
+      // match short fragments; none are zero-length today, but stay safe).
+      if (match[0].length === 0) {
+        regex.lastIndex += 1;
+        continue;
+      }
+      hits.push({
+        kind,
+        offset: lineStart + match.index,
+        line: lineNumber,
+        tokenLen: match[0].length,
+      });
+    }
+  };
+
+  const scanLine = (line, lineStart) => {
+    record(line, lineStart, matchers.privatePathRe, 'private-path');
+    // README i test/ zawierają jawnie syntetyczne identyfikatory kontraktowe.
+    // Pozostałe przejrzane ścieżki nie mogą zawierać Discord snowflakes.
+    if (!snowflakeExempt) {
+      record(line, lineStart, matchers.snowflakeRe, 'discord-snowflake');
+    }
+    matchers.webhookRe.lastIndex = 0;
+    let m;
+    while ((m = matchers.webhookRe.exec(line)) !== null) {
+      const token = m[2];
+      if (!matchers.placeholderRe.test(token) && token.length >= MIN_REAL_TOKEN_LEN) {
+        // Celowo BEZ wartości tokena: tylko lokalizacja i długość.
+        hits.push({
+          kind: 'discord-webhook',
+          offset: lineStart + m.index,
+          line: lineNumber,
+          tokenLen: m[0].length,
+        });
+      }
+      if (m[0].length === 0) {
+        matchers.webhookRe.lastIndex += 1;
+      }
+    }
+    // Tożsamości legacy poza zwolnionymi obszarami (fixtury, archiwa).
+    if (!identityExempt) {
+      record(line, lineStart, matchers.legacyIdentityRe, 'legacy-identity');
+      record(line, lineStart, matchers.legacyHostRe, 'legacy-host');
+    }
+  };
+
+  return {
+    push(chunk) {
+      if (typeof chunk !== 'string' || chunk.length === 0) return;
+      // Invariant: `pending` never contains '\n', so only the new chunk needs
+      // a newline search; `pending` is joined only when a line completes.
+      let rest = chunk;
+      let newline = rest.indexOf('\n');
+      if (newline === -1) {
+        pending += rest;
+        return;
+      }
+      while (newline !== -1) {
+        const tail = rest.slice(0, newline);
+        const line = pending.length > 0 ? pending + tail : tail;
+        scanLine(line, pendingStart);
+        pendingStart += line.length + 1;
+        lineNumber += 1;
+        pending = '';
+        rest = rest.slice(newline + 1);
+        newline = rest.indexOf('\n');
+      }
+      pending = rest;
+    },
+    end() {
+      if (pending.length > 0) {
+        scanLine(pending, pendingStart);
+        pending = '';
+      }
+      return hits;
+    },
+    hits,
+  };
+}
+
+/**
  * Scan text with the single-source secret policy.
  *
  * @param {string} rel posix relative path (used only for exemption routing)
@@ -210,62 +329,167 @@ const IDENTITY_EXEMPT_RE = /^(?:test\/|docs\/release-history\/)/;
  *   never included.
  */
 function scanTextForSecrets(rel, text, opts = {}) {
-  const matchers = buildSecretMatchers();
-  const hits = [];
-  const snowflakeExempt = opts.snowflakeExempt === true;
-  const identityExempt = opts.identityExempt === true;
-  const lines = text.split('\n');
-  let base = 0;
-  lines.forEach((line, idx) => {
-    const record = (regex, kind) => {
-      regex.lastIndex = 0;
-      let match;
-      while ((match = regex.exec(line)) !== null) {
-        // Guard against zero-length match loops (legacy-host pattern can
-        // match short fragments; none are zero-length today, but stay safe).
-        if (match[0].length === 0) {
-          regex.lastIndex += 1;
-          continue;
-        }
-        hits.push({
-          kind,
-          offset: base + match.index,
-          line: idx + 1,
-          tokenLen: match[0].length,
-        });
+  const matcher = createSecretStreamMatcher(rel, opts);
+  matcher.push(text);
+  return matcher.end();
+}
+
+/**
+ * Test-only fault injection seam. Format: `<throw|truncate>[:<rel-substring>]`.
+ * Production never sets the environment variable; a configured fault can only
+ * add a read/truncation failure to the report.
+ *
+ * @param {string} rel posix relative path being scanned
+ * @returns {'throw'|'truncate'|null}
+ */
+function testReadFault(rel) {
+  const raw = process.env[TEST_READ_FAULT_ENV];
+  if (!raw) return null;
+  const separator = raw.indexOf(':');
+  const kind = separator === -1 ? raw : raw.slice(0, separator);
+  const target = separator === -1 ? '' : raw.slice(separator + 1);
+  if (kind !== 'throw' && kind !== 'truncate') return null;
+  if (target !== '' && !rel.includes(target)) return null;
+  return kind;
+}
+
+/**
+ * Stream one regular file through the stateful matcher. Fail closed: every
+ * open/read/decode/truncation error is returned as an error reason and binary
+ * files are classified explicitly (never skipped silently by size).
+ *
+ * @param {string} abs absolute path
+ * @param {string} rel posix relative path
+ * @param {{snowflakeExempt?:boolean, identityExempt?:boolean}} opts exemption flags
+ * @returns {{hits: Array<{kind:string, offset:number, line:number, tokenLen:number}>, binary: boolean, scanned: boolean, error: string|null, bytes: number}}
+ */
+function streamScanFile(abs, rel, opts = {}) {
+  const fault = testReadFault(rel);
+  let size = 0;
+  try {
+    const st = fs.statSync(abs);
+    if (!st.isFile()) return { hits: [], binary: false, scanned: false, error: 'non-regular', bytes: 0 };
+    size = st.size;
+  } catch {
+    return { hits: [], binary: false, scanned: false, error: 'stat-failure', bytes: 0 };
+  }
+  let fd = null;
+  try {
+    // O_NOFOLLOW: an entry swapped for a symlink after traversal fails open.
+    fd = fs.openSync(abs, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+  } catch {
+    return { hits: [], binary: false, scanned: false, error: 'open-failure', bytes: 0 };
+  }
+  const matcher = createSecretStreamMatcher(rel, opts);
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  const buffer = Buffer.allocUnsafe(Math.min(STREAM_CHUNK_BYTES, Math.max(1, size)));
+  let bytes = 0;
+  let chunks = 0;
+  let binary = false;
+  let truncated = false;
+  let error = null;
+  try {
+    for (;;) {
+      let read = 0;
+      try {
+        read = fs.readSync(fd, buffer, 0, buffer.length, null);
+      } catch {
+        error = 'read-failure';
+        break;
       }
-    };
-    record(matchers.privatePathRe, 'private-path');
-    // README i test/ zawierają jawnie syntetyczne identyfikatory kontraktowe.
-    // Pozostałe przejrzane ścieżki nie mogą zawierać Discord snowflakes.
-    if (!snowflakeExempt) {
-      record(matchers.snowflakeRe, 'discord-snowflake');
-    }
-    matchers.webhookRe.lastIndex = 0;
-    let m;
-    while ((m = matchers.webhookRe.exec(line)) !== null) {
-      const token = m[2];
-      if (!matchers.placeholderRe.test(token) && token.length >= MIN_REAL_TOKEN_LEN) {
-        // Celowo BEZ wartości tokena: tylko lokalizacja i długość.
-        hits.push({
-          kind: 'discord-webhook',
-          offset: base + m.index,
-          line: idx + 1,
-          tokenLen: m[0].length,
-        });
+      if (read === 0) break;
+      bytes += read;
+      chunks += 1;
+      const chunk = buffer.subarray(0, read);
+      if (chunk.includes(0)) {
+        binary = true;
+        break;
       }
-      if (m[0].length === 0) {
-        matchers.webhookRe.lastIndex += 1;
+      let text = '';
+      try {
+        text = decoder.decode(chunk, { stream: true });
+      } catch {
+        error = 'decode-failure';
+        break;
+      }
+      matcher.push(text);
+      if (fault === 'throw' && chunks === 1) {
+        error = 'read-failure';
+        break;
+      }
+      if (fault === 'truncate' && chunks === 1) {
+        truncated = true;
+        break;
       }
     }
-    // Tożsamości legacy poza zwolnionymi obszarami (fixtury, archiwa).
-    if (!identityExempt) {
-      record(matchers.legacyIdentityRe, 'legacy-identity');
-      record(matchers.legacyHostRe, 'legacy-host');
+    if (error === null && !binary && !truncated) {
+      try {
+        const tail = decoder.decode();
+        if (tail.length > 0) matcher.push(tail);
+      } catch {
+        error = 'decode-failure';
+      }
     }
-    base += line.length + 1;
-  });
-  return hits;
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // fd already closed
+    }
+  }
+  if (binary) return { hits: [], binary: true, scanned: false, error: null, bytes };
+  if (error !== null) return { hits: [], binary: false, scanned: false, error, bytes };
+  if (truncated || bytes !== size) {
+    return { hits: [], binary: false, scanned: false, error: 'truncated-read', bytes };
+  }
+  return { hits: matcher.end(), binary: false, scanned: true, error: null, bytes };
+}
+
+/**
+ * @param {Array<{file:string, reason:string}>} nonRegularEntries
+ * @returns {{scanned:number, binarySkippedFiles:Array<{file:string, reason:string}>, nonRegularEntries:Array<{file:string, reason:string}>, errorEntries:Array<{file:string, reason:string}>}}
+ */
+function createScanStats(nonRegularEntries = []) {
+  return {
+    scanned: 0,
+    binarySkippedFiles: [],
+    nonRegularEntries,
+    errorEntries: [],
+  };
+}
+
+/** @param {ReturnType<typeof createScanStats>} stats */
+function scanStatsReport(stats) {
+  return {
+    scanned: stats.scanned,
+    binarySkipped: stats.binarySkippedFiles.length,
+    binarySkippedFiles: stats.binarySkippedFiles,
+    nonRegular: stats.nonRegularEntries.length,
+    nonRegularEntries: stats.nonRegularEntries,
+    errors: stats.errorEntries.length,
+    errorEntries: stats.errorEntries,
+  };
+}
+
+/**
+ * @param {ReturnType<typeof createScanStats>} stats
+ * @param {string} rel
+ * @param {ReturnType<typeof streamScanFile>} result
+ * @param {Array<{file:string, line:number, kind:string, tokenLen?:number}>} secretHits
+ */
+function recordScanResult(stats, rel, result, secretHits) {
+  if (result.error !== null) {
+    stats.errorEntries.push({ file: rel, reason: result.error });
+    return;
+  }
+  if (result.binary) {
+    stats.binarySkippedFiles.push({ file: rel, reason: 'binary-nul' });
+    return;
+  }
+  stats.scanned += 1;
+  for (const hit of result.hits) {
+    secretHits.push({ file: rel, line: hit.line, kind: hit.kind, tokenLen: hit.tokenLen });
+  }
 }
 
 /** Tree-mode exemption routing (preserved Todo 2 contract). */
@@ -333,6 +557,33 @@ function listFilesRecursive(absDir, relBase) {
     }
   }
   return out;
+}
+
+/**
+ * Walk a tree collecting regular files while reporting every non-regular
+ * entry (symlink / FIFO / socket / device) instead of silently omitting it.
+ * `.git` is VCS metadata outside the public surface (excluded exactly like the
+ * existing extra-file and scan skips); everything else is traversed so the
+ * denylist still sees nested occurrences by name.
+ *
+ * @param {string} absDir
+ * @param {string} relBase
+ * @param {string[]} files
+ * @param {Array<{file:string, reason:string}>} nonRegular
+ */
+function walkRootEntries(absDir, relBase, files, nonRegular) {
+  for (const ent of fs.readdirSync(absDir, { withFileTypes: true })) {
+    const rel = relBase + ent.name;
+    const abs = path.join(absDir, ent.name);
+    if (ent.isDirectory()) {
+      if (ent.name === '.git') continue;
+      walkRootEntries(abs, `${rel}/`, files, nonRegular);
+    } else if (ent.isFile()) {
+      files.push(rel);
+    } else {
+      nonRegular.push({ file: rel, reason: ent.isSymbolicLink() ? 'symlink' : 'non-regular' });
+    }
+  }
 }
 
 function toPosix(p) {
@@ -427,8 +678,9 @@ function mainTree(root, baseline, outAbs, outRel) {
   // --- (a-bis) brak obcych plików poza allowlistą i generowanymi ---
   const expectedSet = new Set(expectedFiles);
   const actualTop = [];
+  const nonRegularEntries = [];
   try {
-    actualTop.push(...listFilesRecursive(root, '').map(toPosix));
+    walkRootEntries(root, '', actualTop, nonRegularEntries);
   } catch (e) {
     console.error(`audit-public-tree: cannot list --root: ${e.message}`);
     process.exit(2);
@@ -461,29 +713,17 @@ function mainTree(root, baseline, outAbs, outRel) {
   // --- (c) skan prywatnych wzorców (bez znalezionych bajtów w raporcie) ---
   // Single-source: kształty sekretów pochodzą wyłącznie ze wspólnego
   // scanTextForSecrets; tryb tree dokłada jedynie routing zwolnień Todo 2.
+  // Oversized text is streamed (never skipped by size), binary files are
+  // classified explicitly, and every read/decode/truncation error fails closed.
+  const scanStats = createScanStats(nonRegularEntries);
   for (const rel of actualTop) {
     if (rel.startsWith('node_modules/') || rel.startsWith('.git/')) continue;
+    if (rel === outRel) continue; // własny plik wynikowy
     const abs = path.join(root, rel);
-    let text = null;
-    try {
-      const st = fs.statSync(abs);
-      if (!st.isFile() || st.size > 8 * 1024 * 1024) continue;
-      text = fs.readFileSync(abs, 'utf8');
-    } catch {
-      continue; // binarny / nieczytelny — pomijamy
-    }
-    if (text.includes('\u0000')) continue; // binarny
-    for (const hit of scanTextForSecrets(rel, text, treeScanExemptions(rel))) {
-      secretHits.push({
-        file: rel,
-        line: hit.line,
-        kind: hit.kind,
-        tokenLen: hit.tokenLen,
-      });
-    }
+    recordScanResult(scanStats, rel, streamScanFile(abs, rel, treeScanExemptions(rel)), secretHits);
   }
 
-  return { excludedFound, hashMismatches, secretHits };
+  return { excludedFound, hashMismatches, secretHits, scanStats: scanStatsReport(scanStats) };
 }
 
 function writeReport(outAbs, report) {
@@ -497,44 +737,41 @@ function writeReport(outAbs, report) {
 // ---------------------------------------------------------------------------
 
 function collectSecretScanFiles(root) {
-  const out = [];
+  const files = [];
+  const nonRegular = [];
   const visit = (absDir) => {
     for (const ent of fs.readdirSync(absDir, { withFileTypes: true })) {
       const abs = path.join(absDir, ent.name);
-      if (ent.isSymbolicLink()) continue;
       if (ent.isDirectory()) {
         if (ent.name === '.git' || ent.name === 'node_modules') continue;
         visit(abs);
       } else if (ent.isFile()) {
-        out.push(abs);
+        files.push(abs);
+      } else {
+        // Symlink / FIFO / socket / device: reported, never followed or opened.
+        nonRegular.push({
+          file: toPosix(path.relative(root, abs)),
+          reason: ent.isSymbolicLink() ? 'symlink' : 'non-regular',
+        });
       }
     }
   };
   visit(root);
-  return out;
+  return { files, nonRegular };
 }
 
 function mainSecrets(root, outAbs, outRel) {
   const secretHits = [];
-  for (const abs of collectSecretScanFiles(root)) {
+  const { files, nonRegular } = collectSecretScanFiles(root);
+  const scanStats = createScanStats(nonRegular);
+  for (const abs of files) {
     const rel = toPosix(path.relative(root, abs));
     if (rel === outRel) continue; // własny plik wynikowy
-    let text = null;
-    try {
-      const st = fs.statSync(abs);
-      if (!st.isFile() || st.size > 8 * 1024 * 1024) continue;
-      text = fs.readFileSync(abs, 'utf8');
-    } catch {
-      continue;
-    }
-    if (text.includes('\u0000')) continue;
     // Ten sam routing zwolnień co tryb tree (fixtury testowe + README niosą
     // jawnie syntetyczne identyfikatory kontraktowe).
-    for (const hit of scanTextForSecrets(rel, text, treeScanExemptions(rel))) {
-      secretHits.push({ file: rel, line: hit.line, kind: hit.kind });
-    }
+    recordScanResult(scanStats, rel, streamScanFile(abs, rel, treeScanExemptions(rel)), secretHits);
   }
-  return secretHits;
+  return { secretHits, scanStats: scanStatsReport(scanStats) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1176,40 +1413,52 @@ async function main() {
   }
 
   if (args.mode === 'secrets') {
-    let secretHits = [];
+    let outcome = null;
     try {
-      secretHits = mainSecrets(root, outAbs, outRel);
+      outcome = mainSecrets(root, outAbs, outRel);
     } catch (e) {
       console.error(`audit-public-tree: ${e.message}`);
       process.exit(2);
     }
-    const verdict = secretHits.length === 0 ? 'PASS' : 'FAIL';
-    writeReport(outAbs, { verdict, secretHits });
-    console.log(`audit-public-tree secrets verdict:${verdict} secrets:${secretHits.length}`);
+    const { secretHits, scanStats } = outcome;
+    const verdict =
+      secretHits.length === 0 && scanStats.errors === 0 && scanStats.nonRegular === 0 ? 'PASS' : 'FAIL';
+    writeReport(outAbs, { verdict, secretHits, scanStats });
+    console.log(
+      `audit-public-tree secrets verdict:${verdict} secrets:${secretHits.length} scanned:${scanStats.scanned} binarySkipped:${scanStats.binarySkipped} nonRegular:${scanStats.nonRegular} errors:${scanStats.errors}`,
+    );
     for (const s of secretHits.slice(0, 50)) {
       console.log(`  secret-hit: ${s.file}:${s.line} (${s.kind})`);
     }
+    for (const entry of scanStats.nonRegularEntries) console.log(`  non-regular: ${entry.file} (${entry.reason})`);
+    for (const entry of scanStats.errorEntries) console.log(`  scan-error: ${entry.file} (${entry.reason})`);
     process.exit(verdict === 'PASS' ? 0 : 1);
   }
 
   const baseline = path.resolve(args.baseline);
-  const { excludedFound, hashMismatches, secretHits } = mainTree(root, baseline, outAbs, outRel);
+  const { excludedFound, hashMismatches, secretHits, scanStats } = mainTree(root, baseline, outAbs, outRel);
   const verdict =
-    excludedFound.length === 0 && hashMismatches.length === 0 && secretHits.length === 0
+    excludedFound.length === 0 &&
+    hashMismatches.length === 0 &&
+    secretHits.length === 0 &&
+    scanStats.errors === 0 &&
+    scanStats.nonRegular === 0
       ? 'PASS'
       : 'FAIL';
-  const report = { verdict, excludedFound, hashMismatches, secretHits };
+  const report = { verdict, excludedFound, hashMismatches, secretHits, scanStats };
 
   writeReport(outAbs, report);
 
   console.log(
-    `audit-public-tree verdict:${verdict} excluded:${excludedFound.length} mismatches:${hashMismatches.length} secrets:${secretHits.length}`,
+    `audit-public-tree verdict:${verdict} excluded:${excludedFound.length} mismatches:${hashMismatches.length} secrets:${secretHits.length} scanned:${scanStats.scanned} binarySkipped:${scanStats.binarySkipped} nonRegular:${scanStats.nonRegular} errors:${scanStats.errors}`,
   );
   for (const e of excludedFound) console.log(`  excluded-present: ${e}`);
   for (const m of hashMismatches) console.log(`  mismatch: ${m.file} (${m.reason})`);
   for (const s of secretHits) {
     console.log(`  secret-hit: ${s.file}:${s.line} (${s.kind}, tokenLen=${s.tokenLen})`);
   }
+  for (const entry of scanStats.nonRegularEntries) console.log(`  non-regular: ${entry.file} (${entry.reason})`);
+  for (const entry of scanStats.errorEntries) console.log(`  scan-error: ${entry.file} (${entry.reason})`);
 
   process.exit(verdict === 'PASS' ? 0 : 1);
 }
@@ -1227,7 +1476,9 @@ module.exports = {
   DENYLIST,
   GENERATED,
   SETTINGS_BACKUP_RE,
+  STREAM_CHUNK_BYTES,
   scanTextForSecrets,
+  createSecretStreamMatcher,
   treeScanExemptions,
   verifyOcrModel,
   verifyEvidenceDeps,
