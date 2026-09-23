@@ -511,6 +511,16 @@
         "repository-tooling",
         "userscript-build-contract"
       ]
+    },
+    {
+      "id": "suite:test/tools/verify-update-channel.test.cjs",
+      "path": "test/tools/verify-update-channel.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 14,
+      "coverage": [
+        "repository-tooling",
+        "verify-update-channel"
+      ]
     }
   ],
   "relocations": [
@@ -521,8 +531,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 50,
-    "expectedExecutionCount": 1092,
+    "suiteCount": 51,
+    "expectedExecutionCount": 1106,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -537,8 +547,8 @@
         "expectedExecutionCount": 437
       },
       "tool": {
-        "suiteCount": 17,
-        "expectedExecutionCount": 215
+        "suiteCount": 18,
+        "expectedExecutionCount": 229
       }
     }
   },
