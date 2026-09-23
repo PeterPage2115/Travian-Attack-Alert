@@ -57,10 +57,33 @@ async function closeHttpsPage(target: HttpsPage): Promise<void> {
   await target.context.close();
 }
 
+// The sealed evidence is scanned by tools/audit-public-tree.cjs --mode evidence,
+// which applies the repository scanner's secret shapes with NO allowlist and NO
+// evidence-path exemption. The recorded request bodies below legitimately carry
+// the synthetic mapped user and the rendered <@mention>; persisting them
+// verbatim made the sealed evidence fail on `discord-snowflake` (\b\d{17,19}\b).
+// Redaction happens at the persistence boundary only — the live wire assertions
+// above still inspect the real bytes, and non-secret content is preserved.
+const EVIDENCE_SECRET_REDACTIONS: ReadonlyArray<[RegExp, string]> = [
+  [/https:\/\/discord\.com\/api\/webhooks\/\d+\/\S+/gu, '<redacted-discord-webhook>'],
+  [/\b\d{17,19}\b/gu, '<redacted-discord-snowflake>'],
+];
+
+function redactEvidenceSecrets(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return EVIDENCE_SECRET_REDACTIONS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
+  }
+  if (Array.isArray(value)) return value.map(redactEvidenceSecrets);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, redactEvidenceSecrets(entry)]));
+  }
+  return value;
+}
+
 function writeEvidencePhase(phase: string, value: Record<string, unknown>): void {
   fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
   const existing = fs.existsSync(EVIDENCE_PATH) ? JSON.parse(fs.readFileSync(EVIDENCE_PATH, 'utf8')) : {};
-  fs.writeFileSync(EVIDENCE_PATH, `${JSON.stringify({ ...existing, [phase]: value }, null, 2)}\n`);
+  fs.writeFileSync(EVIDENCE_PATH, `${JSON.stringify(redactEvidenceSecrets({ ...existing, [phase]: value }), null, 2)}\n`);
 }
 
 type WireRequest = { attempt: number; startedAt: number; endedAt: number; body: Record<string, unknown> };

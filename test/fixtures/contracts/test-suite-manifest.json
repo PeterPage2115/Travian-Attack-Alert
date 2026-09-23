@@ -230,10 +230,20 @@
       ]
     },
     {
+      "id": "suite:test/e2e/dual-tab-lease-reacquisition.spec.ts",
+      "path": "test/e2e/dual-tab-lease-reacquisition.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 2,
+      "coverage": [
+        "browser-runtime",
+        "dual-tab-lease"
+      ]
+    },
+    {
       "id": "suite:test/e2e/dual-tab-lease.spec.ts",
       "path": "test/e2e/dual-tab-lease.spec.ts",
       "classification": "browser",
-      "expectedExecutionCount": 36,
+      "expectedExecutionCount": 24,
       "coverage": [
         "browser-runtime",
         "dual-tab-lease"
@@ -551,16 +561,16 @@
     }
   ],
   "totals": {
-    "suiteCount": 53,
-    "expectedExecutionCount": 1148,
+    "suiteCount": 54,
+    "expectedExecutionCount": 1138,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
         "expectedExecutionCount": 69
       },
       "browser": {
-        "suiteCount": 12,
-        "expectedExecutionCount": 371
+        "suiteCount": 13,
+        "expectedExecutionCount": 361
       },
       "source-artifact": {
         "suiteCount": 16,

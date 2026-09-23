@@ -625,94 +625,10 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
     }
   });
 
-  // Todo 20 — same-document lease reacquisition around the FIRST scan. A leader
-  // that loses the lease before its first authoritative scan gets a
-  // `lease-lost-before-scan` terminal; the renewal failure at the 30 s cadence
-  // starts the follower watchdog, which reacquires authority in this SAME
-  // document. The accepted-scan terminal must never block that resume.
-  test('pre-scan lease loss then same-document reacquisition performs exactly one accepted scan', async ({ browser }) => {
-    test.setTimeout(150_000);
-    const { context, page } = await newHttpsContext(browser);
-    try {
-      await installPrepHook(page);
-      await bootRealPage(page, { rename101: true, hideTable: true });
-      await page.waitForTimeout(1500); // past boot jitter + readiness window
-      expect(await leaseState(page)).toBe('leader');
-      expect(await eventKinds(page, 'snapshot', 'authoritative')).toEqual([]);
-      expect(await eventKinds(page, 'extraction')).toEqual([]);
-      const bootRecord = await leaseRecord(page);
-      expect(bootRecord).not.toBeNull();
-
-      // Lease loss BEFORE the first scan, then the member table appears: the
-      // readiness check finds no lease owner and records the pre-scan terminal.
-      // The reveal + nudge repeats because the product reschedules readiness
-      // from a quiet-window remainder, so one tick can land the check early.
-      await page.evaluate((key: string) => localStorage.removeItem(key), LEASE_KEY);
-      await expect.poll(async () => {
-        await revealTable(page);
-        await page.evaluate(() => document.body.toggleAttribute('data-taa-readiness-nudge'));
-        return await diagnosticsText(page);
-      }, { timeout: 10_000 }).toContain('lease-lost-before-scan');
-      expect(await eventKinds(page, 'extraction')).toEqual([]);
-
-      // 30 s renewal fails -> standby -> watchdog reacquires in THIS document
-      // (new token, same page, no navigation).
-      await expect.poll(async () => await reacquiredWithNewToken(page, bootRecord?.token), { timeout: 45_000 }).toBe(true);
-      expect(await leaseState(page)).toBe('leader');
-
-      // Exactly one accepted scan, one extraction, no transport, no queue.
-      await waitAuthoritativeSnapshot(page, 15_000);
-      expect(await eventKinds(page, 'extraction')).toHaveLength(1);
-      expect(await eventKinds(page, 'snapshot', 'authoritative')).toHaveLength(1);
-      expect(await transportTargets(page)).toEqual([]);
-      expect((await monitorEnvelope(page)).pending).toEqual([]);
-      expect(await consoleErrors(page)).toEqual([]);
-
-      writeEvidencePhase('t5-prescan-reacquisition', {
-        leaseLostBeforeFirstScan: true,
-        preScanTerminal: 'lease-lost-before-scan',
-        reacquiredSameDocument: true,
-        preReacquireExtractions: 0,
-        acceptedScans: 1,
-        extractions: 1,
-        transportRequests: 0,
-      });
-    } finally {
-      await context.close();
-    }
-  });
-
-  test('reacquisition after an accepted scan performs no second scan and no duplicate event', async ({ browser }) => {
-    test.setTimeout(150_000);
-    const { context, page } = await newHttpsContext(browser);
-    try {
-      await installPrepHook(page);
-      await bootRealPage(page, { rename101: true });
-      await waitAuthoritativeSnapshot(page);
-      expect(await eventKinds(page, 'extraction')).toHaveLength(1);
-      const firstRecord = await leaseRecord(page);
-      expect(firstRecord).not.toBeNull();
-
-      await page.evaluate((key: string) => localStorage.removeItem(key), LEASE_KEY);
-      await expect.poll(async () => await reacquiredWithNewToken(page, firstRecord?.token), { timeout: 45_000 }).toBe(true);
-      expect(await leaseState(page)).toBe('leader');
-      await page.waitForTimeout(6000); // any wrong post-reacquisition scan would fire here
-
-      expect(await eventKinds(page, 'snapshot', 'authoritative')).toHaveLength(1);
-      expect(await eventKinds(page, 'extraction')).toHaveLength(1);
-      expect(await transportTargets(page)).toEqual([]);
-      expect((await monitorEnvelope(page)).pending).toEqual([]);
-      expect(await consoleErrors(page)).toEqual([]);
-
-      writeEvidencePhase('t6-postscan-reacquisition', {
-        acceptedScansBeforeLoss: 1,
-        reacquiredSameDocument: true,
-        acceptedScansAfterReacquire: 1,
-        extractionsAfterReacquire: 1,
-        duplicateEvents: 0,
-      });
-    } finally {
-      await context.close();
-    }
-  });
+  // Task 20's same-document lease reacquisition tests moved, unweakened, to
+  // dual-tab-lease-reacquisition.spec.ts: they wait on the real ~30 s renewal
+  // cadence, and running them on all six projects pushed THIS file over the
+  // runner's hard 480 s per-spec ceiling. They are now project-filtered to
+  // chromium-1280 (see playwright.qa.config.ts), while T1-T4 here keep running
+  // on every project.
 });
