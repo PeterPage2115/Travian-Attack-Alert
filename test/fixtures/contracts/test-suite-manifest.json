@@ -351,6 +351,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/ci-evidence-contract.test.cjs",
+      "path": "test/tools/ci-evidence-contract.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 7,
+      "coverage": [
+        "repository-tooling",
+        "ci-evidence-contract"
+      ]
+    },
+    {
       "id": "suite:test/tools/final-review-receipts.test.cjs",
       "path": "test/tools/final-review-receipts.test.cjs",
       "classification": "tool",
@@ -421,6 +431,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/seal-evidence.test.cjs",
+      "path": "test/tools/seal-evidence.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 11,
+      "coverage": [
+        "repository-tooling",
+        "seal-evidence"
+      ]
+    },
+    {
       "id": "suite:test/tools/task-checkpoint.test.cjs",
       "path": "test/tools/task-checkpoint.test.cjs",
       "classification": "tool",
@@ -479,8 +499,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 46,
-    "expectedExecutionCount": 995,
+    "suiteCount": 48,
+    "expectedExecutionCount": 1013,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -495,8 +515,8 @@
         "expectedExecutionCount": 423
       },
       "tool": {
-        "suiteCount": 14,
-        "expectedExecutionCount": 173
+        "suiteCount": 16,
+        "expectedExecutionCount": 191
       }
     }
   },

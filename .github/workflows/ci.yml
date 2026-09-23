@@ -174,12 +174,41 @@ jobs:
         timeout-minutes: 20
         run: npm run test:e2e
 
-      - name: Upload browser evidence
+      # Evidence pipeline: seal the complete test-results/ tree into ONE
+      # deterministic ZIP outside the mutable directory, scan that exact
+      # archive with the ZIP-recursive evidence scanner (while the pinned
+      # decoder dependencies are installed), then recheck the sealed digest.
+      # `if: always()` captures evidence even when the browser tests fail; the
+      # failed test steps still decide the job status.
+      - name: Seal browser evidence
+        id: evidence-seal
         if: always()
+        run: node tools/seal-evidence.cjs --input test-results --archive ci-evidence/upload/browser-evidence.zip --manifest ci-evidence/browser-evidence.manifest.json
+
+      - name: Scan sealed browser evidence (blocking)
+        id: evidence-scan
+        if: always()
+        run: node tools/audit-public-tree.cjs --mode evidence --root ci-evidence/upload --out ci-evidence/browser-evidence.scan.json
+
+      # Immediately before upload, recompute and compare the ZIP SHA-256
+      # against the seal manifest: a changed or missing digest makes the
+      # upload ineligible.
+      - name: Recheck sealed evidence digest
+        id: evidence-digest
+        if: always()
+        run: node tools/seal-evidence.cjs --verify --archive ci-evidence/upload/browser-evidence.zip --manifest ci-evidence/browser-evidence.manifest.json
+
+      # Upload ONLY the exact sealed ZIP bytes + the separate scan report,
+      # never the mutable test-results/ directory. Upload stays ineligible
+      # unless the seal, the evidence scan, and the digest recheck succeeded.
+      - name: Upload sealed browser evidence
+        if: always() && steps.evidence-seal.outcome == 'success' && steps.evidence-scan.outcome == 'success' && steps.evidence-digest.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: browser-node-20-evidence
-          path: test-results/
+          path: |
+            ci-evidence/upload/browser-evidence.zip
+            ci-evidence/browser-evidence.scan.json
           if-no-files-found: error
           retention-days: 14
 
