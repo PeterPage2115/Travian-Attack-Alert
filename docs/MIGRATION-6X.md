@@ -1,17 +1,17 @@
-# Controlled owner transfer: private 6.x → public 1.0.0
+# Controlled owner transfer: private 6.x → public 1.0.1
 
 Owner-only, optional procedure for moving a fictional 6.2.1 profile to the
-public 1.0.0 distributable. External alliances start clean; this path exists
+public 1.0.1 distributable. External alliances start clean; this path exists
 only for an owner who already runs 6.x on their own device and wants to carry
 their configuration over.
 
 > [!CAUTION]
 > This transfer is NEVER an automatic update.
 >
-> - Public `1.0.0` is numerically LOWER than private `6.2.1` — no userscript
+> - Public `1.0.1` is numerically LOWER than private `6.2.1` — no userscript
 >   manager will (or must) offer it as an update, and it must never be
 >   described as an "update" or "upgrade path".
-> - NEVER run the 6.x script and the 1.0.0 script enabled at the same time.
+> - NEVER run the 6.x script and the 1.0.1 script enabled at the same time.
 >   Two active senders WILL double-send to Discord; the single-browser lease
 >   cannot prevent that across two installations, profiles, or computers.
 > - NEVER clear site data during this transfer. Roster, mappings, baselines,
@@ -25,7 +25,7 @@ their configuration over.
 ## Identities
 
 - 6.x: `@namespace travian-alliance-attacks`, release `taa-6.2.1`.
-- 1.0.0: `@namespace travian-attack-alert-public`, release `taa-1.0.0`.
+- 1.0.1: `@namespace travian-attack-alert-public`, release `taa-1.0.1`.
 
 They are distinct Tampermonkey scripts with isolated GM storage
 (`travianAllianceWebhookUrl_v1` included). `localStorage` site data is shared
@@ -42,7 +42,7 @@ sender but keeps all site data.
    script in the Tampermonkey dashboard (or disable its `@match` host), then
    confirm no new Discord messages arrive for one full monitor cycle
    (60–120 s). Only proceed when the old sender is provably silent.
-3. **Install the 1.0.0 file.** Import `dist/travian-attack-alert.user.js`
+3. **Install the 1.0.1 file.** Import `dist/travian-attack-alert.user.js`
    as a NEW Tampermonkey script (Utilities → Import from file). Keep the
    6.x script disabled; do not delete it until step 6 passes.
 4. **Import the backup file OR manually re-enter the webhook.**
@@ -84,7 +84,7 @@ no cross-installation protection.
 
 ## Rollback
 
-1. Disable the 1.0.0 script in the Tampermonkey dashboard.
+1. Disable the 1.0.1 script in the Tampermonkey dashboard.
 2. Re-enable (or re-import) the prior 6.x `.user.js` file.
 3. Keep all site data untouched — do not clear storage.
 4. Reload the canonical route (`/alliance/profile/members`, no query) and

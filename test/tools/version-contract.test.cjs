@@ -44,6 +44,9 @@ const AUTHORITY_FILES = [
   'test/offline/script.test.cjs',
   'AGENTS.md',
   'README.md',
+  'docs/MIGRATION-6X.md',
+  'docs/OPERATIONS.md',
+  'docs/pl/OPERATIONS.md',
   'docs/architecture.md',
   'docs/release-state.json',
 ];
@@ -135,6 +138,10 @@ describe('version contract (tools/check-versions.cjs)', () => {
         `test/offline/script.test.cjs version assertion: expected ${BUMPED}, got ${VERSION}`,
         `AGENTS current version: expected ${BUMPED}, got ${VERSION}`,
         `README current version: expected ${BUMPED}, got ${VERSION}`,
+        `README migration install instruction: expected ${BUMPED}, got ${VERSION}`,
+        `docs/MIGRATION-6X.md install instruction: expected ${BUMPED}, got ${VERSION}`,
+        `docs/OPERATIONS.md migration install instruction: expected ${BUMPED}, got ${VERSION}`,
+        `docs/pl/OPERATIONS.md migration install instruction: expected ${BUMPED}, got ${VERSION}`,
         `docs/architecture.md release ID claim: expected ${BUMPED_ID}, got ${RELEASE_ID}`,
         `docs/release-state.json version: expected ${BUMPED}, got ${VERSION}`,
       ],
@@ -232,6 +239,36 @@ describe('version contract (tools/check-versions.cjs)', () => {
         `AGENTS current version: expected ${VERSION}, got ${BUMPED}`,
         `README current version: expected ${VERSION}, got ${BUMPED}`,
         `docs/architecture.md release ID claim: expected ${RELEASE_ID}, got ${BUMPED_ID}`,
+      ],
+    );
+  });
+
+  it('a stale README migration install instruction names the README line', () => {
+    expectRejected(
+      'stale README migration instruction',
+      [['README.md', (text) => replaceOnce(text, `then install ${VERSION}.`, `then install ${BUMPED}.`)]],
+      [`README migration install instruction: expected ${VERSION}, got ${BUMPED}`],
+    );
+  });
+
+  it('a stale migration-guide install instruction names docs/MIGRATION-6X.md', () => {
+    expectRejected(
+      'stale migration guide',
+      [['docs/MIGRATION-6X.md', (text) => replaceOnce(text, `**Install the ${VERSION} file.**`, `**Install the ${BUMPED} file.**`)]],
+      [`docs/MIGRATION-6X.md install instruction: expected ${VERSION}, got ${BUMPED}`],
+    );
+  });
+
+  it('stale operations migration instructions name each operations page', () => {
+    expectRejected(
+      'stale operations migration instruction',
+      [
+        ['docs/OPERATIONS.md', (text) => replaceOnce(text, `install the ${VERSION} file as a new script`, `install the ${BUMPED} file as a new script`)],
+        ['docs/pl/OPERATIONS.md', (text) => replaceOnce(text, `zainstaluj plik ${VERSION} jako nowy skrypt`, `zainstaluj plik ${BUMPED} jako nowy skrypt`)],
+      ],
+      [
+        `docs/OPERATIONS.md migration install instruction: expected ${VERSION}, got ${BUMPED}`,
+        `docs/pl/OPERATIONS.md migration install instruction: expected ${VERSION}, got ${BUMPED}`,
       ],
     );
   });

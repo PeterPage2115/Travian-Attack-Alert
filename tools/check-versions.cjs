@@ -24,6 +24,14 @@ function check() {
     const tests = text(testPath); claim(`${testPath} version assertion`, versionFrom(tests, /const version = ["']([^"']+)["']/m, 'test version'), version); claim(`${testPath} release assertion`, versionFrom(tests, /const releaseId = ["']([^"']+)["']/m, 'test release ID'), releaseId); for (const [lineNumber, line] of tests.split('\n').entries()) if (!/historical/i.test(line)) for (const match of line.matchAll(/taa-(\d+\.\d+\.\d+)/g)) claim(`${testPath} release literal line ${lineNumber + 1}`, match[0], releaseId);
     const agents = text('AGENTS.md'); claim('AGENTS current version', versionFrom(agents, /aktualnie\s+([0-9]+\.[0-9]+\.[0-9]+)/i, 'AGENTS current version'), version); claim('AGENTS runtime release ID', versionFrom(agents, /release ID `([^`]+)`/, 'AGENTS release ID'), releaseId);
     const readme = text('README.md'); claim('README current version', versionFrom(readme, /Tampermonkey \*\*([0-9]+\.[0-9]+\.[0-9]+)\*\*/, 'README current version'), version); claim('README runtime release ID', versionFrom(readme, /identified by release ID `([^`]+)`/, 'README release ID'), releaseId);
+    // The migration install instruction must name the CURRENT artifact, so a
+    // future bump cannot leave migrating users pointed at a superseded release.
+    // Historical reinstall wording (old broken `/main/` copies) is deliberately
+    // NOT asserted here: it is intentionally pinned to the old 1.0.0 identity.
+    claim('README migration install instruction', versionFrom(readme, /then install ([0-9]+\.[0-9]+\.[0-9]+)\./, 'README migration install instruction'), version);
+    const migration = text('docs/MIGRATION-6X.md'); claim('docs/MIGRATION-6X.md install instruction', versionFrom(migration, /\*\*Install the ([0-9]+\.[0-9]+\.[0-9]+) file\.\*\*/, 'docs/MIGRATION-6X.md install instruction'), version);
+    const operations = text('docs/OPERATIONS.md'); claim('docs/OPERATIONS.md migration install instruction', versionFrom(operations, /install the ([0-9]+\.[0-9]+\.[0-9]+) file as a new script/, 'docs/OPERATIONS.md migration install instruction'), version);
+    const operationsPl = text('docs/pl/OPERATIONS.md'); claim('docs/pl/OPERATIONS.md migration install instruction', versionFrom(operationsPl, /zainstaluj plik ([0-9]+\.[0-9]+\.[0-9]+) jako nowy skrypt/, 'docs/pl/OPERATIONS.md migration install instruction'), version);
     const design = text('docs/architecture.md'); const designClaims = [...design.matchAll(/release ID [`*]?(taa-[0-9]+\.[0-9]+\.[0-9]+)[`*]?/gi)]; for (const match of designClaims) claim('docs/architecture.md release ID claim', match[1], releaseId);
     return errors;
 }

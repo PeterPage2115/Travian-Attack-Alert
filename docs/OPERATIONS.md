@@ -70,7 +70,7 @@ Failed means a permanent rejection (ordinary 4xx) kept for manual recovery. Unce
 
 ## Transfer from the 6.x line
 
-Anyone moving a private 6.2.1 profile (historical internal development) to public 1.0.0 follows `docs/MIGRATION-6X.md`. Quoted order, not duplicated here: export a private settings backup on the old sender, disable the 6.x script and verify zero sends for a full cycle, install the 1.0.0 file as a new script, import the backup file or re-enter the webhook by hand, verify queue/baseline/config in Diagnostics, and only then enable monitoring. Never clear site data during the transfer; never copy cookies, profiles, or credentials. Public `1.0.0` is numerically lower than private `6.2.1`, so no manager offers it as an update. Rollback is re-importing the prior `.user.js` file, keeping site data, and reloading the canonical route.
+Anyone moving a private 6.2.1 profile (historical internal development) to public 1.0.1 follows `docs/MIGRATION-6X.md`. Quoted order, not duplicated here: export a private settings backup on the old sender, disable the 6.x script and verify zero sends for a full cycle, install the 1.0.1 file as a new script, import the backup file or re-enter the webhook by hand, verify queue/baseline/config in Diagnostics, and only then enable monitoring. Never clear site data during the transfer; never copy cookies, profiles, or credentials. Public `1.0.1` is numerically lower than private `6.2.1`, so no manager offers it as an update. Rollback is re-importing the prior `.user.js` file, keeping site data, and reloading the canonical route.
 
 ## Updates
 

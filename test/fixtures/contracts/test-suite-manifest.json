@@ -576,7 +576,7 @@
       "id": "suite:test/tools/version-contract.test.cjs",
       "path": "test/tools/version-contract.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 11,
+      "expectedExecutionCount": 14,
       "coverage": [
         "repository-tooling",
         "version-contract"
@@ -602,7 +602,7 @@
   ],
   "totals": {
     "suiteCount": 58,
-    "expectedExecutionCount": 1251,
+    "expectedExecutionCount": 1254,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -618,7 +618,7 @@
       },
       "tool": {
         "suiteCount": 24,
-        "expectedExecutionCount": 374
+        "expectedExecutionCount": 377
       }
     }
   },
