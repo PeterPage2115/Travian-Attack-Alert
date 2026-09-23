@@ -47,6 +47,9 @@ const WORLD = 's6.example.travian.com';
 const OLD_WEBHOOK = 'https://discord.com/api/webhooks/100000000000000002/FAKE_TOKEN_MIGRATION_6X_browser_aaaabbbb';
 const NEW_WEBHOOK = 'https://discord.com/api/webhooks/100000000000000003/FAKE_TOKEN_MIGRATION_6X_browser_ccccdddd';
 const EVIDENCE_PATH = path.join('test-results', 'release-1.0.0', 'e2e-evidence-migration-6x.json');
+// Single source of truth for the shipped identity: package.json (never a
+// hardcoded literal that a version bump would silently stale).
+const PACKAGE_VERSION = (JSON.parse(fs.readFileSync('package.json', 'utf8')) as { version: string }).version;
 
 const MAPPINGS_KEY = 'travianAlliancePlayerMappings_v1';
 const DISCORD_CONFIG_KEY = 'travianAllianceDiscordConfig_v1';
@@ -123,9 +126,10 @@ async function loadTransferRuntime(page: Page): Promise<void> {
     async (artifactPath: string) => await (await fetch(artifactPath)).text(),
     DIST_PATH,
   );
-  // Identity: the exact 1.0.0 bytes (header + release marker), not a paraphrase.
-  expect(artifact).toContain('// @version      1.0.0');
-  expect(artifact).toContain('const RELEASE_ID = "taa-1.0.0"');
+  // Identity: the exact shipped bytes (header + release marker) for the
+  // current package version, not a paraphrase.
+  expect(artifact).toContain(`// @version      ${PACKAGE_VERSION}`);
+  expect(artifact).toContain(`const RELEASE_ID = "taa-${PACKAGE_VERSION}"`);
   await page.addScriptTag({ content: artifact });
   const hasSurface = await page.evaluate(
     () => {
