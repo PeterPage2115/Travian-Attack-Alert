@@ -441,6 +441,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/test-inventory-v2.test.cjs",
+      "path": "test/tools/test-inventory-v2.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 14,
+      "coverage": [
+        "repository-tooling",
+        "test-inventory-v2"
+      ]
+    },
+    {
       "id": "suite:test/tools/test-inventory.test.cjs",
       "path": "test/tools/test-inventory.test.cjs",
       "classification": "tool",
@@ -469,8 +479,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 45,
-    "expectedExecutionCount": 949,
+    "suiteCount": 46,
+    "expectedExecutionCount": 963,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -485,8 +495,8 @@
         "expectedExecutionCount": 423
       },
       "tool": {
-        "suiteCount": 13,
-        "expectedExecutionCount": 127
+        "suiteCount": 14,
+        "expectedExecutionCount": 141
       }
     }
   },
