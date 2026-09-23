@@ -162,6 +162,7 @@ This page documents the Tampermonkey **1.0.1** userscript, identified by release
 - Architecture and design tokens: [`docs/architecture.md`](docs/architecture.md) (module graph §10).
 - Detector behavior audit (historical `1.0.0` record): [`docs/AUDIT.md`](docs/AUDIT.md).
 - Code-review verification rules: [`docs/CODE-REVIEW.md`](docs/CODE-REVIEW.md).
+- Development environment (WSL/DrvFS): [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — Node/npm selection, test tiers, evidence roots, line endings, protected canonical checkout.
 - Repository settings owner checklist: [`docs/REPOSITORY-SETTINGS.md`](docs/REPOSITORY-SETTINGS.md).
 - Owner release runbook: [`docs/RELEASE-RUNBOOK.md`](docs/RELEASE-RUNBOOK.md).
 - Release history (historical archived `1.0.0-rc` candidate records): [`docs/release-history/1.0.0-rc/`](docs/release-history/1.0.0-rc/).

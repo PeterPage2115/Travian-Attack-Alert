@@ -34,7 +34,13 @@ const WORKFLOW_DIR = path.join(ROOT, '.github', 'workflows');
 const DEPENDABOT_REL = path.join('.github', 'dependabot.yml');
 const DEPENDABOT_PATH = path.join(ROOT, DEPENDABOT_REL);
 
+// Task 34 adds one informational development-major leg; the four required
+// check names and every other ci.yml job name must survive verbatim.
 const REQUIRED_JOBS = ['offline-node-18', 'offline-node-20', 'browser-node-20', 'cross-node-determinism'];
+const DEVELOPMENT_JOB = 'offline-node-22';
+const EXPECTED_CI_JOBS = [...REQUIRED_JOBS, DEVELOPMENT_JOB];
+const DEVELOPMENT_NODE_MAJOR = '22';
+const RELEASE_GATE_COMMAND = 'npm run check:release -- --offline';
 const RELEASE_BRANCH = 'release/public-1.0.0';
 const RELEASE_WORKFLOW_NAME = 'release.yml';
 const ALLOWED_ACTION_OWNERS = ['actions'];
@@ -301,9 +307,52 @@ function dependabotEntries(config) {
   return config.updates;
 }
 
-test('workflow declares exactly the four required check job names', () => {
+test('workflow declares the four required check job names plus the Node 22 development leg', () => {
   const jobs = parseWorkflow(read(path.join('.github', 'workflows', 'ci.yml')), 'ci.yml');
-  assert.deepEqual([...jobs.keys()].sort(), [...REQUIRED_JOBS].sort());
+  assert.deepEqual([...jobs.keys()].sort(), [...EXPECTED_CI_JOBS].sort());
+  for (const name of REQUIRED_JOBS) {
+    assert.ok(jobs.has(name), `required check job ${name} must survive verbatim`);
+  }
+});
+
+test('the Node 22 development leg is bounded and runs the offline release gate once', () => {
+  const source = read(path.join('.github', 'workflows', 'ci.yml'));
+  const jobs = parseWorkflow(source, 'ci.yml');
+  const job = jobs.get(DEVELOPMENT_JOB);
+  assert.ok(job, `${DEVELOPMENT_JOB} job must exist`);
+  const timeout = jobTimeoutMinutes(job);
+  assert.ok(timeout !== null && timeout >= 1 && timeout <= MAX_JOB_TIMEOUT_MINUTES, `${DEVELOPMENT_JOB} must be bounded`);
+  const steps = parseSteps(job);
+  const setup = steps.find((step) => step.uses && step.uses.startsWith('actions/setup-node@'));
+  assert.equal(setup?.with['node-version'], DEVELOPMENT_NODE_MAJOR, `${DEVELOPMENT_JOB} must run the documented development major`);
+  const runs = steps.map((step) => step.run);
+  const requiredRuns = [
+    'npm ci',
+    'npm run build',
+    'npm run test:offline',
+    'npm run test:tools',
+    'npm run test:artifact',
+    'npm run test:characterization',
+    'npm run check',
+    'npm run check:types',
+    'npm run quality',
+    'npx playwright install --with-deps chromium',
+    RELEASE_GATE_COMMAND,
+  ];
+  let cursor = 0;
+  for (const expected of requiredRuns) {
+    const index = runs.findIndex((run, position) => position >= cursor && run.includes(expected));
+    assert.notEqual(index, -1, `${DEVELOPMENT_JOB} must run "${expected}" after the previous gate`);
+    cursor = index;
+  }
+  const releaseStep = steps.find((step) => step.run.includes(RELEASE_GATE_COMMAND));
+  assert.equal(releaseStep.continueOnError, false, 'the offline release gate must stay blocking');
+  assert.equal(releaseStep.condition, null, 'the offline release gate must not be conditionally skipped');
+  assert.equal(
+    source.split(RELEASE_GATE_COMMAND).length - 1,
+    1,
+    'the offline release gate must be wired exactly once in CI',
+  );
 });
 
 test('workflow triggers target only the release branch and never pull_request_target', () => {

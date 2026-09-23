@@ -15,6 +15,7 @@ Start with the English [`README.md`](../README.md) (primary): what the script do
 - Architecture and design tokens: [`architecture.md`](architecture.md) — module graph (§10), panel tokens, WCAG targets.
 - Detector behavior audit (historical `1.0.0` audit-time record): [`AUDIT.md`](AUDIT.md) — locked behaviors and limitations as audited on 2026-09-13; `script.txt` citations are audit-time references to the authority removed by the repository cleanup.
 - Code-review verification (standing rules): [`CODE-REVIEW.md`](CODE-REVIEW.md) — the 11 verified items and their existing gates.
+- Development environment (WSL/DrvFS and Linux): [`DEVELOPMENT.md`](DEVELOPMENT.md) — Node/npm selection, `npm ci`, Playwright test tiers, evidence roots, frozen provenance, line endings, protected canonical checkout.
 - Repository settings owner checklist: [`REPOSITORY-SETTINGS.md`](REPOSITORY-SETTINGS.md) — observed public state, required targets, and owner attestations.
 - Machine-readable release state (owner gates): [`release-state.json`](release-state.json) — `stable: false` until the owner records the pre-publication evidence.
 - Changelog: [`../CHANGELOG.md`](../CHANGELOG.md).

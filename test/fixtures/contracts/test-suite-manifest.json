@@ -383,6 +383,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/developer-workflow.test.cjs",
+      "path": "test/tools/developer-workflow.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 10,
+      "coverage": [
+        "repository-tooling",
+        "developer-workflow"
+      ]
+    },
+    {
       "id": "suite:test/tools/final-review-receipts.test.cjs",
       "path": "test/tools/final-review-receipts.test.cjs",
       "classification": "tool",
@@ -476,7 +486,7 @@
       "id": "suite:test/tools/repository-essentials.test.cjs",
       "path": "test/tools/repository-essentials.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 18,
+      "expectedExecutionCount": 19,
       "coverage": [
         "repository-tooling",
         "repository-essentials"
@@ -586,7 +596,7 @@
       "id": "suite:test/tools/workflow-security.test.cjs",
       "path": "test/tools/workflow-security.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 17,
+      "expectedExecutionCount": 18,
       "coverage": [
         "repository-tooling",
         "workflow-security"
@@ -601,8 +611,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 58,
-    "expectedExecutionCount": 1263,
+    "suiteCount": 59,
+    "expectedExecutionCount": 1275,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -617,8 +627,8 @@
         "expectedExecutionCount": 440
       },
       "tool": {
-        "suiteCount": 24,
-        "expectedExecutionCount": 386
+        "suiteCount": 25,
+        "expectedExecutionCount": 398
       }
     }
   },

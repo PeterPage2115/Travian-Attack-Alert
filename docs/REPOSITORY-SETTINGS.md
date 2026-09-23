@@ -6,19 +6,21 @@ Settings; verify from a clean clone. The ordered owner publication procedure
 that consumes these settings is `docs/RELEASE-RUNBOOK.md`.
 
 Public-state observation (read-only GitHub API GETs on 2026-09-23): the
-default branch is `release/public-1.0.0` and it is the only branch on the
-remote (`main` and `master` do not exist); that branch is protected with the
-four required status checks `offline-node-18`, `offline-node-20`,
-`browser-node-20`, and `cross-node-determinism`; no repository ruleset is
-installed; no deployment environment exists (`GET /environments` reports
-`total_count: 0`); private vulnerability reporting is reported disabled
+default branch is `release/public-1.0.0`; `main` and `master` do not exist, and
+the fresh read also sees eight open `dependabot/*` dependency branches next to
+it; that branch is protected with the four required status checks
+`offline-node-18`, `offline-node-20`, `browser-node-20`, and
+`cross-node-determinism`; no repository ruleset is installed; no deployment
+environment exists (`GET /environments` reports `total_count: 0`); private
+vulnerability reporting is reported disabled
 (`GET /private-vulnerability-reporting` returns `enabled: false`); the
-description, homepage, and topics are set. Authenticated endpoints (branch
-protection detail, immutable releases, Actions workflow permissions) answer
-401 anonymously, so those requirements are owner attestations in §8, not
-observed facts. This is a point-in-time API observation, not owner
-attestation. The separate owner-manual record in `docs/release-state.json`
-still holds `ownerManual.branchProtection: false`,
+description, homepage, and topics are set. Anonymous requests to authenticated
+endpoints (branch protection detail, immutable releases, Actions workflow
+permissions) answer 401, so §8 now records a separate authenticated read-only
+owner comparison (GET-only, no setting changed) instead of owner attestation.
+This is a point-in-time API observation, not owner attestation. The separate
+owner-manual record in `docs/release-state.json` still holds
+`ownerManual.branchProtection: false`,
 `ownerManual.releaseEnvironment: false`,
 `ownerManual.immutableReleases: false`, and `stable: false` until the owner
 completes the pilot and records the evidence. This file is an owner checklist,
@@ -147,24 +149,47 @@ digest-bound to the tagged commit, per §9); no automated job can verify or
 change these settings. Each one is an owner-only checklist item, not an implied
 setting.
 
+Fresh authenticated read-only comparison (GET-only with the owner's token,
+2026-09-23; no setting was changed, and the response digests are recorded in
+the Task 34 evidence root):
+
+- Branch protection detail is now observable: require-pull-request is enabled
+  with `required_approving_review_count: 0`, stale approvals dismissed, force
+  pushes and deletions blocked, `enforce_admins` enabled, and linear history
+  disabled. Owner-only recommendation: raise the required approving review
+  count to at least 1 — the observed 0 does not meet the §2 target.
+- Required status checks: exactly the four contexts above; the Task 34
+  `offline-node-22` CI job is informational and is NOT a required check, so it
+  implies no branch-protection change.
+- Actions policy: default workflow permissions are already `read` (target met);
+  `allowed_actions` is `all` and `sha_pinning_required` is `false`. Owner-only
+  recommendation: restrict allowed actions to selected/verified actions and
+  enable the SHA-pinning requirement.
+- Private vulnerability reporting: observed `enabled: false` (target =
+  enabled).
+- Immutable releases: observed `enabled: false` (target = enabled).
+- Release environment: none exists (target = protected `release` environment).
+- Tag protection / ruleset: no ruleset installed (target = a `v*` tag ruleset);
+  zero remote tags and no GitHub Release exist.
+
 - [ ] Required status checks: observed via the public API as protected with
       the four exact contexts `offline-node-18`, `offline-node-20`,
-      `browser-node-20`, and `cross-node-determinism`; target state = exactly
-      those four checks required on `release/public-1.0.0`. Owner attestation
-      pending an authenticated read — the anonymous protection endpoint is 401.
-- [ ] Required approving reviews (approval count): the public API does not
-      expose review requirements; target state = at least 1 approving review,
-      stale approvals dismissed on new commits. Owner attestation pending.
-- [ ] Private vulnerability reporting: the public API reported
-      `enabled: false` on 2026-09-23; target state = enabled, so the private
+      `browser-node-20`, and `cross-node-determinism`, and confirmed by the
+      authenticated read; target state = exactly those four checks required on
+      `release/public-1.0.0`. Owner attestation pending.
+- [ ] Required approving reviews (approval count): observed as 0 with stale
+      approvals dismissed; target state = at least 1 approving review. Owner
+      attestation pending.
+- [ ] Private vulnerability reporting: observed as `enabled: false` on
+      2026-09-23; target state = enabled, so the private
       link in `SECURITY.md` and `.github/ISSUE_TEMPLATE/config.yml` works
       (Settings → Code security). Owner attestation pending.
 - [ ] Protected `release` environment: no environment exists on 2026-09-23
       (`GET /environments` reports `total_count: 0`); target state = an
       environment named `release` with a required reviewer, prevent
       self-review, and a deployment tag rule `v*`. Owner attestation pending.
-- [ ] Immutable releases: the public API does not expose this (401
-      anonymously); target state = immutable releases enabled, so a published
+- [ ] Immutable releases: observed as `enabled: false` on 2026-09-23; target
+      state = immutable releases enabled, so a published
       asset or tag cannot be silently replaced. Owner attestation pending.
 - [ ] Tag protection / ruleset: no repository ruleset is installed
       (`GET /rulesets` returns `[]`); target state = a ruleset (or tag

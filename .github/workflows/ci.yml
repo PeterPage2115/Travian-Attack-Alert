@@ -153,6 +153,65 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Development-major leg (Task 34): the documented development major
+  # (`.node-version` = 22.19.0) runs the same offline suites plus the complete
+  # offline release gate exactly once in CI. This job is informational: the
+  # four required status checks and the branch-protection settings are
+  # unchanged until the owner separately updates them.
+  offline-node-22:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (locked dependencies)
+        run: npm ci
+
+      - name: Build generated artifacts
+        run: npm run build
+
+      - name: Offline unit gates
+        run: npm run test:offline
+
+      - name: Tools gates
+        run: npm run test:tools
+
+      - name: Artifact gates
+        run: npm run test:artifact
+
+      # Receipt-backed accounting: every manifest-owned characterization suite
+      # must execute and leave a HEAD-bound receipt before the inventory gate
+      # (npm run check) consumes test-results/suite-receipts. Registration in
+      # the manifest alone is not execution proof.
+      - name: Characterization receipts (blocking)
+        run: npm run test:characterization
+
+      - name: Checks (versions, artifact, inventory)
+        run: npm run check
+
+      - name: Type gate (blocking; Todo-6 ratchet vs type-error-baseline.json)
+        run: npm run check:types
+
+      - name: Quality gate (blocking; Todo-6 ratchet vs quality-baseline.json)
+        run: npm run quality
+
+      # The offline release gate rebuilds, then runs the full build/check/type/
+      # quality matrix plus the loopback browser and e2e gates, so Chromium
+      # must be installed first. There is no NOT_EXECUTED verdict: a gate that
+      # cannot execute fails this job instead of being reclassified as skipped.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Offline release gate (blocking)
+        run: npm run check:release -- --offline
+
   browser-node-20:
     runs-on: ubuntu-latest
     timeout-minutes: 90
