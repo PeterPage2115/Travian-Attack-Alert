@@ -56,13 +56,35 @@ function runTsc() {
   if (result.status !== 0 && result.status !== 1 && result.status !== 2) {
     throw new Error(`type ratchet failed: tsc crashed with exit ${result.status}`);
   }
-  return `${result.stdout || ''}\n${result.stderr || ''}`;
+  return { status: result.status, output: `${result.stdout || ''}\n${result.stderr || ''}` };
+}
+
+const DIAGNOSTIC_RE = /^(.*?)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
+
+// Global/compiler-level failures carry no file(line,col) position, so the
+// baseline ratchet would otherwise see zero parsed diagnostics and report
+// PASS with actualTotal:0. Any nonzero compiler result with an unparsed
+// diagnostic (TS18003 no inputs, TS5xxx config errors), or with empty
+// output, must fail closed with a typed reason.
+function detectGlobalFailure(output, status) {
+  if (status === 0) return null;
+  const unparsed = [];
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    if (DIAGNOSTIC_RE.test(line)) continue;
+    if (/error\s+TS\d+/i.test(line) || /no inputs were found/i.test(line)) {
+      unparsed.push(line.trim().slice(0, 200));
+    }
+  }
+  if (unparsed.length > 0) return { reason: 'compiler-global-failure', detail: unparsed };
+  if (output.trim() === '') return { reason: 'compiler-empty-output', detail: [] };
+  return null;
 }
 
 function parseDiagnostics(output) {
   const diagnostics = [];
   for (const line of output.split(/\r?\n/)) {
-    const match = /^(.*?)\((\d+),(\d+)\): error (TS\d+): (.*)$/.exec(line);
+    const match = DIAGNOSTIC_RE.exec(line);
     if (!match) continue;
     const absolute = path.resolve(ROOT, match[1].trim());
     diagnostics.push({
@@ -77,8 +99,16 @@ function parseDiagnostics(output) {
 
 function check() {
   const baseline = loadBaseline();
-  const diagnostics = parseDiagnostics(runTsc());
+  const { status, output } = runTsc();
+  const globalFailure = detectGlobalFailure(output, status);
+  const diagnostics = parseDiagnostics(output);
   const failures = [];
+  if (globalFailure) {
+    const sample = globalFailure.detail.slice(0, 3).join('; ');
+    failures.push(
+      `${globalFailure.reason}: tsc exited ${status} with ${globalFailure.detail.length} unparsed compiler error(s)${sample ? `: ${sample}` : ' and no output'}`,
+    );
+  }
   const byCategory = baseline.legacy.map((entry) => ({ entry, actual: 0 }));
   const baselinedFiles = new Set(baseline.legacy.map((entry) => entry.file));
   const unmatched = [];
@@ -112,6 +142,7 @@ function check() {
     actualTotal: diagnostics.length,
     categories,
     verdict: failures.length ? 'FAIL' : 'PASS',
+    reason: failures.length ? (globalFailure ? globalFailure.reason : 'baseline-exceeded') : null,
   };
   if (failures.length) {
     process.stderr.write(`type ratchet failed: ${failures.join('; ')}\n`);
@@ -123,4 +154,4 @@ function check() {
 }
 
 if (require.main === module) check();
-module.exports = { check, parseDiagnostics };
+module.exports = { check, parseDiagnostics, detectGlobalFailure };
