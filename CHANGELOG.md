@@ -6,6 +6,14 @@ rewritten here; it is noted as lineage only.
 
 ## Unreleased — repository cleanup: `src/` runtime authority
 
+- Owner release runbook and readiness verifier: `docs/RELEASE-RUNBOOK.md`
+  documents the ordered owner-gated publication procedure (merged PR through
+  verified published release, with rollback/stop behavior at each stage), and
+  `tools/check-release-readiness.cjs` reports the machine-readable states
+  `BLOCKED`, `READY_FOR_OWNER_TAG`, `DRAFT_READY_FOR_APPROVAL`, and
+  `PUBLISHED_VERIFIED` from a self-contained bundle. The task performs no tag,
+  Release, or repository-settings change; `docs/release-state.json` stays
+  `stable: false`.
 - The checked-in root monolith authority is removed: `src/runtime.js` is the
   sole editable runtime authority and `dist/travian-attack-alert.user.js` is
   generated from `src/userscript-entry.js` via `npm run build`. The
