@@ -433,6 +433,26 @@
       ]
     },
     {
+      "id": "suite:test/tools/release-assets.test.cjs",
+      "path": "test/tools/release-assets.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 25,
+      "coverage": [
+        "repository-tooling",
+        "release-assets"
+      ]
+    },
+    {
+      "id": "suite:test/tools/release-readiness.test.cjs",
+      "path": "test/tools/release-readiness.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 17,
+      "coverage": [
+        "repository-tooling",
+        "release-readiness"
+      ]
+    },
+    {
       "id": "suite:test/tools/release-state.test.cjs",
       "path": "test/tools/release-state.test.cjs",
       "classification": "tool",
@@ -440,6 +460,16 @@
       "coverage": [
         "repository-tooling",
         "release-state"
+      ]
+    },
+    {
+      "id": "suite:test/tools/release-workflow.test.cjs",
+      "path": "test/tools/release-workflow.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 36,
+      "coverage": [
+        "repository-tooling",
+        "release-workflow"
       ]
     },
     {
@@ -543,6 +573,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/version-contract.test.cjs",
+      "path": "test/tools/version-contract.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 14,
+      "coverage": [
+        "repository-tooling",
+        "version-contract"
+      ]
+    },
+    {
       "id": "suite:test/tools/workflow-security.test.cjs",
       "path": "test/tools/workflow-security.test.cjs",
       "classification": "tool",
@@ -561,8 +601,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 54,
-    "expectedExecutionCount": 1162,
+    "suiteCount": 58,
+    "expectedExecutionCount": 1254,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -577,8 +617,8 @@
         "expectedExecutionCount": 440
       },
       "tool": {
-        "suiteCount": 20,
-        "expectedExecutionCount": 285
+        "suiteCount": 24,
+        "expectedExecutionCount": 377
       }
     }
   },

@@ -36,6 +36,7 @@ const DEPENDABOT_PATH = path.join(ROOT, DEPENDABOT_REL);
 
 const REQUIRED_JOBS = ['offline-node-18', 'offline-node-20', 'browser-node-20', 'cross-node-determinism'];
 const RELEASE_BRANCH = 'release/public-1.0.0';
+const RELEASE_WORKFLOW_NAME = 'release.yml';
 const ALLOWED_ACTION_OWNERS = ['actions'];
 const ACTION_REFERENCE_RE = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)@(\S+)$/u;
 const COMMIT_SHA_RE = /^[0-9a-f]{40}$/u;
@@ -308,6 +309,14 @@ test('workflow declares exactly the four required check job names', () => {
 test('workflow triggers target only the release branch and never pull_request_target', () => {
   for (const workflow of workflowSources()) {
     assert.doesNotMatch(workflow.source, /^\s*pull_request_target\s*:/mu, `${workflow.relative} must not use pull_request_target`);
+    if (workflow.name === RELEASE_WORKFLOW_NAME) {
+      // release.yml is the owner-gated tag-only pipeline. Its full trigger
+      // contract is owned by test/tools/release-workflow.test.cjs; this test only
+      // pins that it can never gain a branch or PR trigger.
+      assert.doesNotMatch(workflow.source, /^\s{2}(pull_request|workflow_dispatch|schedule|workflow_run|repository_dispatch):/mu, `${workflow.relative} must stay tag-only`);
+      assert.doesNotMatch(workflow.source, /^\s{4}branches:/mu, `${workflow.relative} must not trigger on branches`);
+      continue;
+    }
     const onBlock = parseOnBlock(workflow.source);
     assert.deepEqual(eventBranches(onBlock, 'pull_request'), [RELEASE_BRANCH], `${workflow.relative} pull_request branch trigger changed`);
     assert.deepEqual(eventBranches(onBlock, 'push'), [RELEASE_BRANCH], `${workflow.relative} push branch trigger changed`);
@@ -316,6 +325,12 @@ test('workflow triggers target only the release branch and never pull_request_ta
 
 test('workflow keeps workflow-level read-only permissions and grants no write scope', () => {
   for (const workflow of workflowSources()) {
+    if (workflow.name === RELEASE_WORKFLOW_NAME) {
+      // release.yml denies every scope by default and grants exact per-job
+      // scopes; the separation contract is owned by release-workflow.test.cjs.
+      assert.match(workflow.source, /^permissions:\s*\{\}\s*$/mu, `${workflow.relative} must deny all default permissions`);
+      continue;
+    }
     const lines = workflow.source.split(/\r?\n/u);
     const start = lines.findIndex((line) => /^permissions:\s*$/u.test(line));
     assert.notEqual(start, -1, `${workflow.relative} must declare workflow-level permissions`);
@@ -334,6 +349,17 @@ test('workflow keeps workflow-level read-only permissions and grants no write sc
 
 test('no workflow can receive repository secrets', () => {
   for (const workflow of workflowSources()) {
+    if (workflow.name === RELEASE_WORKFLOW_NAME) {
+      // release.yml may reference ONLY the two environment-scoped release
+      // secrets (available only after the protected environment approves).
+      const names = [...workflow.source.matchAll(/\bsecrets\.([A-Za-z0-9_]+)/gu)].map((match) => match[1]);
+      assert.deepEqual(
+        [...new Set(names)].sort(),
+        ['TAA_RELEASE_APPROVAL_PROOF', 'TAA_RELEASE_SETTINGS_READ_TOKEN'],
+        `${workflow.relative} may only reference the two release environment secrets`,
+      );
+      continue;
+    }
     assert.doesNotMatch(workflow.source, /\bsecrets\./u, `${workflow.relative} must not reference repository secrets`);
   }
 });
@@ -449,6 +475,12 @@ test('Task 18 characterization receipts remain blocking in both offline jobs', (
 
 test('no workflow can publish or release', () => {
   for (const workflow of workflowSources()) {
+    if (workflow.name === RELEASE_WORKFLOW_NAME) {
+      // release.yml publishes ONLY through the environment-gated publish job; the
+      // full mutation/idempotency contract is owned by release-workflow.test.cjs.
+      assert.match(workflow.source, /^\s{4}environment:\s*release\s*$/mu, `${workflow.relative} publication must be environment-gated`);
+      continue;
+    }
     for (const signature of PUBLISH_SIGNATURES) {
       assert.doesNotMatch(workflow.source, signature, `${workflow.relative} must not publish or release`);
     }

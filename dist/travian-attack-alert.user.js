@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Travian Attack Alert
 // @namespace    travian-attack-alert-public
-// @version      1.0.0
+// @version      1.0.1
 // @description  Notifies on Discord about new attacks on alliance members
 // @match        https://*.travian.com/alliance*
 // @grant        GM_xmlhttpRequest
@@ -30,8 +30,8 @@ var require_runtime = __commonJS({
   "src/runtime.js"(exports2, module2) {
     (function() {
       "use strict";
-      const RELEASE_VERSION = "1.0.0";
-      const RELEASE_ID = "taa-1.0.0";
+      const RELEASE_VERSION = "1.0.1";
+      const RELEASE_ID = "taa-1.0.1";
       const CONFIG = {
         // Losowe odświeżanie strony co 1–2 minuty.
         reloadMinSeconds: 60,

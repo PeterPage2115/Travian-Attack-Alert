@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-23T20:30:00Z",
+  "note": "Point-in-time truthful snapshot of the 1.0.1 release candidate at the Task 30 worktree head. Every owner-only prerequisite is still absent (no tag, stable:false, unrecorded owner gates, unverified live update channel, no pilot, no seed/update receipts, no DEV-deletion record, no protected release environment, immutable releases disabled, no owner evidence, unverified assets), so the readiness verifier must report BLOCKED. This fixture is offline and deterministic: it never contacts GitHub and never mutates anything.",
+  "identity": {
+    "version": "1.0.1",
+    "releaseId": "taa-1.0.1",
+    "tag": "v1.0.1",
+    "repository": "PeterPage2115/Travian-Attack-Alert",
+    "commit": "ae534e2897ceb984a2f36f2b2eb5ed5a04e537e1",
+    "artifactSha256": "0c187870841a62d9b5d064fe242c00c648eaac6936cb6a830207239114045824"
+  },
+  "repository": {
+    "name": "PeterPage2115/Travian-Attack-Alert",
+    "releaseBranch": "release/public-1.0.0",
+    "headCommit": "ae534e2897ceb984a2f36f2b2eb5ed5a04e537e1",
+    "headTree": "35b134aad1893dbcac0c7bbb530c75c88c9fe476",
+    "worktreeClean": true,
+    "tag": {
+      "present": false,
+      "name": null,
+      "annotated": false,
+      "onReleaseBranch": false,
+      "targetCommit": null
+    },
+    "branchProtection": {
+      "protected": true,
+      "requiredChecks": [
+        "offline-node-18",
+        "offline-node-20",
+        "browser-node-20",
+        "cross-node-determinism"
+      ],
+      "checksGreen": true,
+      "requirePullRequest": false,
+      "blockForcePush": false,
+      "blockDeletion": false
+    }
+  },
+  "updateChannel": {
+    "verified": false,
+    "httpStatus": null,
+    "sha256": null,
+    "sidecarSha256": null,
+    "version": null,
+    "directivesMatch": false,
+    "verifiedAt": null
+  },
+  "pilot": {
+    "completed": false,
+    "installBySecondPerson": false,
+    "updatedInPlace": false,
+    "manager": null,
+    "installVersion": null,
+    "updateVersion": null,
+    "evidenceDigest": null
+  },
+  "seedReceipt": {
+    "present": false,
+    "task": 23,
+    "sha256": null
+  },
+  "updateReceipt": {
+    "present": false,
+    "task": 31,
+    "sha256": null
+  },
+  "devDeletion": {
+    "executed": false,
+    "noArchive": false,
+    "devArchivalAttested": false,
+    "recordDigest": null
+  },
+  "releaseEnvironment": {
+    "exists": false,
+    "name": null,
+    "autoCreated": false,
+    "requiredReviewer": false,
+    "distinctReviewer": false,
+    "preventSelfReview": false,
+    "tagPolicyVStar": false,
+    "environmentSecretsOnly": false,
+    "approvalProofSecret": false,
+    "settingsReadToken": false,
+    "settingsReadTokenExpiresAt": null
+  },
+  "immutableReleases": {
+    "enabled": false,
+    "evidenceDigest": null
+  },
+  "ownerEvidence": {
+    "timestamp": null,
+    "actor": null,
+    "repository": null,
+    "ref": null,
+    "tag": null,
+    "commit": null,
+    "apiResponseDigest": null
+  },
+  "releaseState": {
+    "schemaVersion": 2,
+    "version": "1.0.1",
+    "releaseId": "taa-1.0.1",
+    "stable": false,
+    "ownerManual": {
+      "pilotInstallBySecondPerson": false,
+      "evidenceRecord": null,
+      "branchProtection": false,
+      "devArchival": false,
+      "releaseEnvironment": false,
+      "immutableReleases": false
+    },
+    "publication": {
+      "tagAndRelease": false
+    }
+  },
+  "assets": {
+    "verified": false,
+    "assetCount": 0,
+    "checksumsVerified": false,
+    "sourceArchiveSubstituted": false,
+    "sha256": null
+  },
+  "draft": {
+    "exists": false,
+    "isDraft": false,
+    "assetCount": 0,
+    "assetsMatchWorkflowArtifact": false,
+    "attestationVerified": false
+  },
+  "published": {
+    "exists": false,
+    "isDraft": false,
+    "immutableVerified": false,
+    "releaseAttestationVerified": false,
+    "assetDigestsMatch": false
+  }
+}

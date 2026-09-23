@@ -6,6 +6,14 @@ rewritten here; it is noted as lineage only.
 
 ## Unreleased — repository cleanup: `src/` runtime authority
 
+- Owner release runbook and readiness verifier: `docs/RELEASE-RUNBOOK.md`
+  documents the ordered owner-gated publication procedure (merged PR through
+  verified published release, with rollback/stop behavior at each stage), and
+  `tools/check-release-readiness.cjs` reports the machine-readable states
+  `BLOCKED`, `READY_FOR_OWNER_TAG`, `DRAFT_READY_FOR_APPROVAL`, and
+  `PUBLISHED_VERIFIED` from a self-contained bundle. The task performs no tag,
+  Release, or repository-settings change; `docs/release-state.json` stays
+  `stable: false`.
 - The checked-in root monolith authority is removed: `src/runtime.js` is the
   sole editable runtime authority and `dist/travian-attack-alert.user.js` is
   generated from `src/userscript-entry.js` via `npm run build`. The
@@ -30,6 +38,28 @@ rewritten here; it is noted as lineage only.
   and `downloadURL` both point at the default release branch
   `release/public-1.0.0`, and the generated header carries both directives.
   The stale `/main/` channel URL is gone; `main` does not exist on the remote.
+
+## 1.0.1 — update-channel verification candidate (unpublished)
+
+No tag, no GitHub Release, and no download link exist for this entry yet.
+This candidate exists to prove the in-place `1.0.0 → 1.0.1` update through the
+managers' own update check. The live update has NOT been executed or verified
+yet; `docs/release-state.json` stays `stable: false` and every owner gate
+stays unfulfilled until the owner runs and records that verification.
+
+- Version identity moved to `1.0.1` / `taa-1.0.1` across `package.json`,
+  `package-lock.json`, the runtime, the generated artifact, sidecar, metadata,
+  and module manifest, the `tools/*` fallbacks, `docs/release-state.json`, and
+  the current-version test assertions.
+- No behavior change relative to the installed `1.0.0` seed: storage keys and
+  schemas, detector semantics, grants, namespace, script name, `@match`, and
+  both update directives are unchanged. `updateURL`/`downloadURL` remain
+  byte-identical to the corrected release-branch raw URL, so the version
+  increase alone is what a manager must discover.
+- The version-contract gate now also covers `docs/release-state.json`, and
+  `test/tools/version-contract.test.cjs` proves that a partial bump
+  (package-only, runtime-only, stale fallback, stale release state, or stale
+  generated header) fails closed with the exact stale authority path.
 
 ## 1.0.0 — first public release based on historical internal 6.x development (release candidate, unpublished)
 

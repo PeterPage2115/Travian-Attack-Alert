@@ -2,7 +2,8 @@
 
 Owner-only checklist for protecting the userscript update channel. All items
 refer to https://github.com/PeterPage2115/Travian-Attack-Alert. Apply in
-Settings; verify from a clean clone.
+Settings; verify from a clean clone. The ordered owner publication procedure
+that consumes these settings is `docs/RELEASE-RUNBOOK.md`.
 
 Public-state observation (read-only GitHub API GETs on 2026-09-23): the
 default branch is `release/public-1.0.0` and it is the only branch on the

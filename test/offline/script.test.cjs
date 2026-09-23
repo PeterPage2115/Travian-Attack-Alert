@@ -118,8 +118,8 @@ function readDocumentMarker(source, name) {
 }
 
 function contract610ReleaseIdentity({ scriptSource, readme, packageJson, metadata, manifest, diagnostics, incidentBundle }) {
-const version = '1.0.0';
-const releaseId = 'taa-1.0.0';
+const version = '1.0.1';
+const releaseId = 'taa-1.0.1';
     assert.match(scriptSource, new RegExp(`^// @version\\s+${version.replaceAll('.', '\\.')}$`, 'm'));
     assert.match(readme, new RegExp(`Tampermonkey \\*\\*${version.replaceAll('.', '\\.')}`));
     assert.equal(packageJson.version, version);
@@ -140,8 +140,8 @@ const manifest = JSON.parse(fs.readFileSync(require.resolve('../../module-manife
     const diagnostics = script.buildDiagnosticsPanelModel({ atMs: 0, statusOrError: 'ok' });
     const incidentBundle = script.buildIncidentBundle({ envelope: {}, diagnostics: {}, traces: [] });
      assert.deepEqual(contract610ReleaseIdentity({ scriptSource, readme, packageJson, metadata, manifest, diagnostics, incidentBundle }), {
-     version: '1.0.0',
-     releaseId: 'taa-1.0.0'
+     version: '1.0.1',
+     releaseId: 'taa-1.0.1'
     });
 });
 
@@ -5850,7 +5850,7 @@ test('buildDiagnosticsPanelModel: null bez failure; pola z failure', () => {
         }),
         {
             at: new Date(1700000000000).toLocaleString(),
-    releaseId: 'taa-1.0.0',
+    releaseId: 'taa-1.0.1',
             statusOrError: 'timeout',
             eventCount: 3
         }
@@ -5860,7 +5860,7 @@ test('buildDiagnosticsPanelModel: null bez failure; pola z failure', () => {
         script.buildDiagnosticsPanelModel({ atMs: 1 }),
         {
             at: new Date(1).toLocaleString(),
-    releaseId: 'taa-1.0.0',
+    releaseId: 'taa-1.0.1',
             statusOrError: '—',
             eventCount: 0
         }
@@ -7886,7 +7886,7 @@ test('Todo 8 migration is one-shot and keeps baseline, accounting, and schema ke
     assert.equal(script.monitorActiveStorageKey(HOST), 'travianAllianceMonitor_v1:world.example.invalid');
 });
 
-// Public 1.0.0 identity: neutral host scope. The userscript installs on exactly
+// Public 1.0.1 identity: neutral host scope. The userscript installs on exactly
 // one neutral match (https://*.travian.com/alliance*), carries the public
 // @name/@namespace/@version, propagates the configured release-branch
 // @updateURL/@downloadURL from config/userscript.json, and opts out of
@@ -7909,11 +7909,11 @@ function matchPatternToRegExp(match) {
     return new RegExp(`^${escaped}$`);
 }
 
-test('public 1.0.0 header: single neutral @match, public identity, release-branch update URLs, @noframes', () => {
+test('public 1.0.1 header: single neutral @match, public identity, release-branch update URLs, @noframes', () => {
     const { header, value } = readPublicHeader();
     assert.equal(value('@name'), 'Travian Attack Alert');
     assert.equal(value('@namespace'), 'travian-attack-alert-public');
-    assert.equal(value('@version'), '1.0.0');
+    assert.equal(value('@version'), '1.0.1');
     const matches = header.split('\n').filter((line) => line.startsWith('// @match'));
     assert.equal(matches.length, 1, 'exactly one neutral @match line');
     assert.equal(matches[0].slice('// @match'.length).trim(), 'https://*.travian.com/alliance*');

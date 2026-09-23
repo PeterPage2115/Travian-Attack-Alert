@@ -17,6 +17,9 @@ test-results/
 # Generated-and-ignored module manifest. tools/build.cjs is its sole writer;
 # read-only checks consume the deterministic root copy and never recreate it.
 module-manifest.json
+# Release preparation output (ignored, disposable; tools/prepare-release.cjs).
+/release/
+/release-determinism-*/
 .dane/
 .codegraph/
 backups/

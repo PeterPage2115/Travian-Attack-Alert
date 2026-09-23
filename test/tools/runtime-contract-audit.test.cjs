@@ -8,12 +8,13 @@ const test = require('node:test');
 const { deriveContract, deriveSnapshot, extractSingletons } = require('./runtime-contract-audit.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
 test('source and rebuilt dist independently derive the same 325-export contract', () => {
   const result = deriveContract(path.join(ROOT, 'src/runtime.js'), path.join(ROOT, 'dist/travian-attack-alert.user.js'));
   assert.equal(result.contract.exports.length, 325);
   assert.equal(result.derivation.independentlyEqual, true);
-  assert.equal(result.contract.releaseId, 'taa-1.0.0');
+  assert.equal(result.contract.releaseId, `taa-${pkg.version}`);
   assert.equal(result.contract.routeFixtures.every(item => item.url === 'not a URL' || item.url.includes('world.example')), true);
 });
 

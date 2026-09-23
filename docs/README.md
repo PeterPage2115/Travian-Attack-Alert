@@ -6,6 +6,7 @@ Start with the English `README.md` (primary): install, update, quick start, priv
 
 - Daily operations (English): `OPERATIONS.md` — morning routine, queue recovery, handover, troubleshooting, incident template.
 - Daily operations (Polish): `pl/OPERATIONS.md` — polski odpowiednik strony `OPERATIONS.md`; w razie rozbieżności obowiązuje tekst angielski.
+- Owner release runbook (ordered, owner-gated publication): `RELEASE-RUNBOOK.md`.
 - Owner transfer from the 6.x line: `MIGRATION-6X.md`.
 
 ## Technical records
