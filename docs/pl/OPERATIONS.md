@@ -76,7 +76,15 @@ Każdy, kto przenosi prywatny profil 6.2.1 (historyczny rozwój wewnętrzny) do 
 
 ## Aktualizacje
 
-Skrypt ma kanał `@updateURL` wskazujący na surowy plik dist chronionego maina, więc menedżery, które go honorują, aktualizują się automatycznie. Nową wersję można też zastosować, powtarzając kroki instalacji z pliku z `README.md` z nowym plikiem i potwierdzając wersję pokazywaną przez menedżera. Podczas aktualizacji nigdy nie włączaj dwóch nadawców naraz.
+Skrypt ma kanał `@updateURL` wskazujący na domyślną gałąź wydania `release/public-1.0.0` (`main` nie istnieje w repozytorium zdalnym), więc menedżery, które go honorują, aktualizują się automatycznie z poprawionego surowego pliku dist:
+
+```text
+https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
+```
+
+Nową wersję można też zastosować, powtarzając kroki instalacji z pliku z `README.md` z nowym plikiem i potwierdzając wersję pokazywaną przez menedżera. Podczas aktualizacji nigdy nie włączaj dwóch nadawców naraz.
+
+Już zainstalowane kopie `1.0.0`, które zawierały stary, błędny URL, nie mogą naprawić się same przy tej samej wersji: instalacja tej samej wersji nigdy nie uruchamia aktualizacji, a nieaktualny wpisany URL nigdy się nie rozwiązuje. Zainstaluj ponownie `1.0.0` z poprawionego URL-a lub pliku powyżej (albo powtórz kroki instalacji z pliku), zachowaj wszystkie dane stron w całości i potwierdź wersję pokazywaną przez menedżera.
 
 Jeśli nowa wersja zachowuje się źle, wycofaj: wyłącz nowy skrypt, zaimportuj ponownie poprzedni plik `.user.js` (albo włącz zachowany stary wpis skryptu), zachowaj wszystkie dane stron w całości (nie czyść magazynu: skład, mapowania, linie bazowe i stan kolejki znajdują się tam), przeładuj trasę kanoniczną i sprawdź, czy monitor wznawia pracę z nienaruszoną kolejką.
 
@@ -103,6 +111,7 @@ Wyeksportuj pakiet incydentu NAJPIERW, zanim dotkniesz czegokolwiek: karta Diagn
 
 Potem dopasuj swój stan:
 
+- Skrypt w ogóle nie działa: w Chrome 138 i nowszych Tampermonkey 5.3+ wymaga włączonego przełącznika przeglądarki `Allow User Scripts` (albo trybu Developer Mode); to Tampermonkey FAQ Q209. Przy wyłączonym uprawnieniu przeglądarka nie uruchamia żadnego userscriptu: nie ma panelu, nie ma wpisu w menu Tampermonkey, nie ma skanu i nie ma alarmu, a skrypt nie może zdiagnozować tego stanu, bo nigdy się nie wykonuje. Włącz `Allow User Scripts` (albo Developer Mode), przeładuj stronę, a następnie zainstaluj skrypt ponownie.
 - Brak webhooka: Overview Delivery mówi `webhook missing — configuration required; queue preserved`. Ustaw webhook przez menu Tampermonkey. Kolejka jest zachowana, nic nie ginie.
 - Zła strona: panel pokazuje bierne wskazówki zamiast stanu skanu. Otwórz dokładną trasę `/alliance/profile/members` bez zapytania.
 - Strona logowania: zaloguj się najpierw na stronie Traviana. Monitor nigdy nie skanuje strony logowania i nigdy nie zmienia tam stanu.
