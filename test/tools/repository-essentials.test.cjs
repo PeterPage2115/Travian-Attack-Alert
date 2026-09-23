@@ -6,6 +6,11 @@
 // routing only, never required code-owner review), and release-note categories
 // (.github/release.yml with an explicit catch-all).
 //
+// Task 27 extension: the issue chooser (.github/ISSUE_TEMPLATE/config.yml)
+// must route security reports to GitHub Private Vulnerability Reporting,
+// support to a labelled public issue, keep both normal templates, and declare
+// an intentional blank-issue policy — with no invented email address or SLA.
+//
 // Every assertion is offline and deterministic. The permitted release labels
 // are pinned to the labels that exist on the public repository (read-only API
 // snapshot recorded in the Task 25 evidence root); release.yml may reference no
@@ -28,6 +33,13 @@ const BUGS_URL = `https://github.com/${REPOSITORY_SLUG}/issues`;
 const HOMEPAGE_URL = `https://github.com/${REPOSITORY_SLUG}#readme`;
 const OWNER = '@PeterPage2115';
 const CATCH_ALL = '*';
+const ISSUE_TEMPLATE_CONFIG = '.github/ISSUE_TEMPLATE/config.yml';
+const ISSUE_TEMPLATES = ['.github/ISSUE_TEMPLATE/bug_report.yml', '.github/ISSUE_TEMPLATE/feature_request.yml'];
+// Task 27: the only accepted security path is GitHub Private Vulnerability
+// Reporting / Security Advisories on this repository; support is a normal
+// labelled public issue. No email address or response-time promise exists.
+const SECURITY_REPORT_URL = `https://github.com/${REPOSITORY_SLUG}/security/advisories/new`;
+const SUPPORT_URL = `https://github.com/${REPOSITORY_SLUG}/issues/new?labels=question`;
 
 // Snapshot of GET /repos/PeterPage2115/Travian-Attack-Alert/labels (2026-09-23,
 // evidence: task-25/labels-api.json). A release category or exclusion may
@@ -54,7 +66,7 @@ const KNOWN_BINARY_EXTENSIONS = [
 ];
 // Representative repository text formats; none may be declared binary.
 const TEXT_EXTENSIONS = ['md', 'js', 'cjs', 'mjs', 'json', 'ts', 'yml', 'yaml', 'html', 'css', 'txt'];
-const POLICY_FILES = ['.editorconfig', '.gitattributes', '.github/CODEOWNERS', '.github/release.yml'];
+const POLICY_FILES = ['.editorconfig', '.gitattributes', '.github/CODEOWNERS', '.github/release.yml', ISSUE_TEMPLATE_CONFIG];
 
 function filePath(relative) {
   return path.join(ROOT, relative);
@@ -181,6 +193,51 @@ function parseReleaseConfig(source) {
     assert.fail(`unexpected release.yml indentation: ${raw}`);
   }
   return { topLevelKeys, excludeLabels, excludeAuthors, categories };
+}
+
+/**
+ * Parse the small, fixed-shape issue chooser config. Fails closed on any line
+ * or key it does not understand, so a malformed or drifted config cannot pass.
+ */
+function parseIssueTemplateConfig(source) {
+  const config = { blankIssuesEnabled: null, contactLinks: [] };
+  let current = null;
+  let inContactLinks = false;
+  for (const raw of source.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const indent = raw.length - raw.trimStart().length;
+    if (indent === 0) {
+      const pair = /^([a-z][a-z_]*):(?:\s*(.*))?$/u.exec(line);
+      assert.ok(pair, `unexpected issue-template config line: ${raw}`);
+      const key = pair[1];
+      const value = (pair[2] ?? '').trim();
+      if (key === 'blank_issues_enabled') {
+        assert.match(value, /^(?:true|false)$/u, `blank_issues_enabled must be an explicit boolean, got: ${value}`);
+        config.blankIssuesEnabled = value === 'true';
+        inContactLinks = false;
+        current = null;
+        continue;
+      }
+      assert.equal(key, 'contact_links', `unexpected issue-template config key: ${key}`);
+      assert.equal(value, '', `contact_links must be a block list: ${raw}`);
+      inContactLinks = true;
+      current = null;
+      continue;
+    }
+    assert.ok(inContactLinks, `issue-template config entry outside contact_links: ${raw}`);
+    const item = /^-\s+([a-z]+):\s*(.+)$/u.exec(line);
+    if (item) {
+      current = { [item[1]]: unquote(item[2].trim()) };
+      config.contactLinks.push(current);
+      continue;
+    }
+    const field = /^([a-z]+):\s*(.+)$/u.exec(line);
+    assert.ok(field && current, `unexpected issue-template config entry: ${raw}`);
+    assert.equal(Object.hasOwn(current, field[1]), false, `duplicate issue-template config key: ${field[1]}`);
+    current[field[1]] = unquote(field[2].trim());
+  }
+  return config;
 }
 
 /** First matching category wins; exclusion labels remove the PR entirely. */
@@ -376,4 +433,69 @@ test('every synthetic pull-request label set is excluded or categorized', () => 
     );
   }
   assert.equal(releaseVerdict(config, ['invalid']), 'excluded', 'exclusion labels are deliberate omissions');
+});
+
+test('issue chooser declares an intentional blank-issue policy and preserves both templates', () => {
+  const config = parseIssueTemplateConfig(read(ISSUE_TEMPLATE_CONFIG));
+  assert.equal(
+    config.blankIssuesEnabled,
+    true,
+    'blank issues stay deliberately enabled for reports that fit neither template; the policy must be explicit',
+  );
+  for (const relative of ISSUE_TEMPLATES) {
+    const source = read(relative);
+    assert.match(source, /^name:\s*\S+/mu, `${relative} must keep a display name`);
+    assert.match(source, /^body:$/mu, `${relative} must keep its form body`);
+  }
+});
+
+test('issue chooser routes security privately and support to a labelled issue, never email', () => {
+  const config = parseIssueTemplateConfig(read(ISSUE_TEMPLATE_CONFIG));
+  assert.equal(config.contactLinks.length, 2, 'exactly two contact links: private security and support');
+  for (const link of config.contactLinks) {
+    assert.ok(link.name && link.name.length <= 40, `contact link needs a name (<=40 chars): ${JSON.stringify(link)}`);
+    assert.ok(link.about && link.about.length <= 200, `contact link needs an about (<=200 chars): ${link.name}`);
+    assert.ok(link.url.startsWith(`https://github.com/${REPOSITORY_SLUG}/`), `contact link must stay on this repository: ${link.url}`);
+    assert.ok(!/mailto:/iu.test(link.url), `contact link must never be an email: ${link.url}`);
+  }
+  const security = config.contactLinks.find((link) => link.url === SECURITY_REPORT_URL);
+  assert.ok(security, `security contact link must be ${SECURITY_REPORT_URL}`);
+  assert.match(security.about, /private/iu, 'the security link must say the report is private');
+  assert.match(
+    security.about,
+    /never\s+(?:post|paste|include)/iu,
+    'the security link must warn against posting secrets or player data in public',
+  );
+  const support = config.contactLinks.find((link) => link.url === SUPPORT_URL);
+  assert.ok(support, `support contact link must be ${SUPPORT_URL}`);
+});
+
+test('security policy documents the private path, the release-candidate support state, and no invented contact or SLA', () => {
+  const security = read('SECURITY.md');
+  assert.ok(security.includes(SECURITY_REPORT_URL), 'SECURITY.md must link GitHub Private Vulnerability Reporting');
+  assert.match(security, /security advisories/iu, 'SECURITY.md must name Security Advisories');
+  assert.match(security, /\|\s*Version\s*\|/u, 'SECURITY.md must carry a supported-versions table');
+  assert.match(security, /stable:\s*false/u, 'the supported-versions table must match the machine state stable:false');
+  assert.match(security, /release candidate/iu, 'supported versions must not claim stable support prematurely');
+  assert.match(
+    security,
+    /never\s+(?:open|post|file)[^.]{0,80}public\s+issue/iu,
+    'SECURITY.md must explicitly prohibit public-issue disclosure of a vulnerability',
+  );
+  assert.match(
+    security,
+    /no\s+(?:dedicated\s+security\s+contact\s+email|response-time)/iu,
+    'SECURITY.md must state that no contact email or response-time promise exists',
+  );
+  for (const source of [read(ISSUE_TEMPLATE_CONFIG), security]) {
+    assert.ok(!/mailto:/iu.test(source), 'no mailto link may be invented');
+    assert.ok(
+      !/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/u.test(source),
+      'no email address may be invented',
+    );
+    assert.ok(
+      !/(?:within|in)\s+\d+\s*(?:hours?|days?|business\s+days?)/iu.test(source),
+      'no response-time SLA may be invented',
+    );
+  }
 });

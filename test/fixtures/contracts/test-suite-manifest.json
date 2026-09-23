@@ -426,7 +426,7 @@
       "id": "suite:test/tools/release-state.test.cjs",
       "path": "test/tools/release-state.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 4,
+      "expectedExecutionCount": 8,
       "coverage": [
         "repository-tooling",
         "release-state"
@@ -436,7 +436,7 @@
       "id": "suite:test/tools/repository-essentials.test.cjs",
       "path": "test/tools/repository-essentials.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 15,
+      "expectedExecutionCount": 18,
       "coverage": [
         "repository-tooling",
         "repository-essentials"
@@ -552,7 +552,7 @@
   ],
   "totals": {
     "suiteCount": 53,
-    "expectedExecutionCount": 1138,
+    "expectedExecutionCount": 1145,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -568,7 +568,7 @@
       },
       "tool": {
         "suiteCount": 20,
-        "expectedExecutionCount": 261
+        "expectedExecutionCount": 268
       }
     }
   },

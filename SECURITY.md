@@ -1,14 +1,43 @@
 # Security Policy
 
-## Reporting a Vulnerability
+## Supported versions
 
-Report vulnerabilities via **GitHub Issues**:
+`docs/release-state.json` currently records `stable: false`: the published
+`1.0.0` is a release candidate, not a stable release. Security fixes are
+best-effort, and no response-time promise is made.
 
-- https://github.com/PeterPage2115/Travian-Attack-Alert/issues
+| Version | Supported |
+| --- | --- |
+| 1.0.0 (release candidate; `docs/release-state.json` `stable: false`) | Best-effort security fixes |
+| Older than 1.0.0 | No |
 
-Open a new issue describing the suspected vulnerability. There is no
-dedicated security contact email and no responsible-disclosure timeline for
-this project.
+Nothing here claims stable or long-term support. `stable` may become `true`
+only through the owner-only process documented in `docs/release-state.json`
+and `docs/REPOSITORY-SETTINGS.md`.
+
+## Reporting a vulnerability
+
+Report vulnerabilities privately through GitHub Private Vulnerability
+Reporting / Security Advisories:
+
+- https://github.com/PeterPage2115/Travian-Attack-Alert/security/advisories/new
+
+That is the repository Security tab → "Report a vulnerability" form. The
+report stays private between you and the owner until an advisory is published;
+GitHub Security Advisories are the only publication path for a confirmed
+vulnerability.
+
+**Never open a public issue for a vulnerability.** Public issues are for
+ordinary bugs only, and a public issue must never contain secrets or player
+data. Private vulnerability reporting is an owner-gated repository setting
+(`docs/REPOSITORY-SETTINGS.md` §8) that the public API reported as disabled on
+2026-09-23; if the private form is unavailable to you, open a public issue that
+says only that you have a security report and asks the owner to enable private
+vulnerability reporting — with no vulnerability detail, no secret, and no
+player data.
+
+There is no dedicated security contact email and no responsible-disclosure
+timeline for this project.
 
 This is a client-side userscript (Tampermonkey) with no server component,
 no hosted service, and no user accounts. Do not include real secrets in any
@@ -16,6 +45,8 @@ report:
 
 - Never paste Discord webhook URLs, tokens, cookies, passwords, raw page
   HTML, or full settings exports.
+- Never paste player data (roster names, coordinates, alliance data) into a
+  public issue.
 - Attach only the redacted incident bundle from the Diagnostics tab
   (Export incident bundle), after verifying it holds no webhook, token,
   cookie, or raw DOM.

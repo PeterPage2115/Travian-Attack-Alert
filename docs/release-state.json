@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "version": "1.0.0",
   "releaseId": "taa-1.0.0",
   "stable": false,
@@ -19,8 +19,12 @@
     "pilotInstallBySecondPerson": false,
     "evidenceRecord": null,
     "branchProtection": false,
-    "tagAndRelease": false,
-    "devArchival": false
+    "devArchival": false,
+    "releaseEnvironment": false,
+    "immutableReleases": false
   },
-  "flipRule": "stable may become true only through an owner edit that populates every ownerManual field with pilot evidence, together with the matching edit to test/tools/release-state.test.cjs. No npm script, test, build step, or CI job may set stable:true."
+  "publication": {
+    "tagAndRelease": false
+  },
+  "flipRule": "stable may become true only through an owner edit that populates every ownerManual pre-publication field with owner-written evidence, together with the matching edit to test/tools/release-state.test.cjs. The six pre-publication gates are pilotInstallBySecondPerson, evidenceRecord, branchProtection, devArchival, releaseEnvironment, and immutableReleases; none of them requires a tag or Release that cannot exist before tagging. publication.tagAndRelease is separate post-publication evidence and is required only for PUBLISHED_VERIFIED, never for stable:true. No npm script, test, build step, or CI job may set stable:true or publication.tagAndRelease."
 }

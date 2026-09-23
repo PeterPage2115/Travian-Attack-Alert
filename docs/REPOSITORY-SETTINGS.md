@@ -9,14 +9,20 @@ default branch is `release/public-1.0.0` and it is the only branch on the
 remote (`main` and `master` do not exist); that branch is protected with the
 four required status checks `offline-node-18`, `offline-node-20`,
 `browser-node-20`, and `cross-node-determinism`; no repository ruleset is
-installed; the description, homepage, and topics are set; and the default
-Actions workflow permission is read-only. This is a point-in-time API
-observation, not owner attestation. The separate owner-manual record in
-`docs/release-state.json` still holds `ownerManual.branchProtection: false`
-and `stable: false` until the owner completes the pilot and records the
-evidence. This file is an owner checklist, not that owner-attestation record;
-checked items below are API-observed public state, and unchecked items are
-pending owner actions.
+installed; no deployment environment exists (`GET /environments` reports
+`total_count: 0`); private vulnerability reporting is reported disabled
+(`GET /private-vulnerability-reporting` returns `enabled: false`); the
+description, homepage, and topics are set. Authenticated endpoints (branch
+protection detail, immutable releases, Actions workflow permissions) answer
+401 anonymously, so those requirements are owner attestations in §8, not
+observed facts. This is a point-in-time API observation, not owner
+attestation. The separate owner-manual record in `docs/release-state.json`
+still holds `ownerManual.branchProtection: false`,
+`ownerManual.releaseEnvironment: false`,
+`ownerManual.immutableReleases: false`, and `stable: false` until the owner
+completes the pilot and records the evidence. This file is an owner checklist,
+not that owner-attestation record; checked items below are API-observed public
+state, and unchecked items are pending owner actions.
 
 ## 0. Gate ownership — AGENT-AUTOMATED vs OWNER-MANUAL
 
@@ -28,13 +34,13 @@ pending owner actions.
 
 ### OWNER-MANUAL (owner only — everything below)
 
-- Every numbered section (§1–§6) plus §7 DEV archival is applied and
-  verified by the owner in GitHub Settings and on a clean clone. No npm
-  script, test, build step, or CI job applies these settings or flips any
-  field in `docs/release-state.json`; the pilot evidence, tag/Release, and
-  archival record it references are owner-written. Until recorded,
-  `docs/release-state.json` stays `stable:false` and the README keeps its
-  release-candidate warning even though the target version is 1.0.0.
+- Every numbered section (§1–§9) is applied and verified by the owner in
+  GitHub Settings and on a clean clone. No npm script, test, build step, or CI
+  job applies these settings or flips any field in `docs/release-state.json`;
+  the pilot evidence, tag/Release, and archival record it references are
+  owner-written. Until recorded, `docs/release-state.json` stays `stable:false`
+  and the README keeps its release-candidate warning even though the target
+  version is 1.0.0.
 
 ## 1. Branch and update-channel identity
 
@@ -68,7 +74,11 @@ pending owner actions.
 
 - [x] `.github/workflows/ci.yml` is named `CI` and runs on push to
       `release/public-1.0.0` and PRs targeting `release/public-1.0.0`.
-- [x] Repository Actions default workflow permissions are read-only.
+- [ ] Repository Actions default workflow permissions are read-only.
+      Owner-verify: the public API does not expose workflow permissions (401
+      anonymously); target state = read-only (Settings → Actions → General →
+      Workflow permissions), and `docs/release-state.json`
+      `ownerManual.branchProtection` stays `false` until it is attested.
 - [x] Workflow permissions are read-only (`contents: read`); no
       `permissions: write`, no release/publish step — CI uploads
       fixed 14-day `determinism-node-18`, `determinism-node-20`,
@@ -124,6 +134,69 @@ for 1.0.0.
 - [ ] Retirement is recorded only in the owner-written fields of
       `docs/release-state.json` (`devArchival`); until then `stable` stays
       `false`.
+
+## 8. Authenticated settings reconciliation (owner-only, all unchecked)
+
+The public API exposes only part of the protection story. Each item below
+separates the observed public API state (2026-09-23), the required target
+state, and the owner attestation. Every attestation stays unchecked until the
+owner records authenticated evidence (an authenticated settings export,
+digest-bound to the tagged commit, per §9); no automated job can verify or
+change these settings. Each one is an owner-only checklist item, not an implied
+setting.
+
+- [ ] Required status checks: observed via the public API as protected with
+      the four exact contexts `offline-node-18`, `offline-node-20`,
+      `browser-node-20`, and `cross-node-determinism`; target state = exactly
+      those four checks required on `release/public-1.0.0`. Owner attestation
+      pending an authenticated read — the anonymous protection endpoint is 401.
+- [ ] Required approving reviews (approval count): the public API does not
+      expose review requirements; target state = at least 1 approving review,
+      stale approvals dismissed on new commits. Owner attestation pending.
+- [ ] Private vulnerability reporting: the public API reported
+      `enabled: false` on 2026-09-23; target state = enabled, so the private
+      link in `SECURITY.md` and `.github/ISSUE_TEMPLATE/config.yml` works
+      (Settings → Code security). Owner attestation pending.
+- [ ] Protected `release` environment: no environment exists on 2026-09-23
+      (`GET /environments` reports `total_count: 0`); target state = an
+      environment named `release` with a required reviewer, prevent
+      self-review, and a deployment tag rule `v*`. Owner attestation pending.
+- [ ] Immutable releases: the public API does not expose this (401
+      anonymously); target state = immutable releases enabled, so a published
+      asset or tag cannot be silently replaced. Owner attestation pending.
+- [ ] Tag protection / ruleset: no repository ruleset is installed
+      (`GET /rulesets` returns `[]`); target state = a ruleset (or tag
+      protection) restricting creation, update, and deletion of `v*` tags to
+      the owner. Owner attestation pending.
+
+## 9. Release-environment secrets and evidence (owner-only)
+
+Two environment-scoped secrets belong to the protected `release` environment
+(§8). They must never be repository-scoped, committed, logged, or reused:
+
+- `TAA_RELEASE_APPROVAL_PROOF` — a random value generated by the owner. It
+  proves owner approval of a release run.
+- `TAA_RELEASE_SETTINGS_READ_TOKEN` — a fine-grained owner token that expires
+  within 24 hours and carries exactly these repository permissions:
+  `Administration: read`, `Environments: read`, `Secrets: read metadata`,
+  `Actions variables: read`, and `Actions: read`. It must have **no** Contents,
+  Issues, or Pull requests write permission, and no other write permission.
+
+A bearer token cannot introspect its own grants or expiry, and repository
+credentials cannot prove the absence of an organization-level setting.
+Therefore the owner also generates a digest-bound settings export covering:
+the token's grants and expiry, and any organization secret or variable whose
+name collides with `TAA_RELEASE_APPROVAL_PROOF` or
+`TAA_RELEASE_SETTINGS_READ_TOKEN`.
+
+A release workflow may use `TAA_RELEASE_SETTINGS_READ_TOKEN` only to prove
+repository and environment state and the absence of same-named repository
+secrets or variables. It must verify the owner's organization-settings
+evidence digest from the tagged commit instead of querying organization scope.
+
+Fail-closed rules: missing or expired evidence, or any API denial, leaves
+publication blocked. The owner rotates or deletes the read token immediately
+after the release.
 
 > Naming note: the `../`-relative spelling of that DEV directory is never
 > written literally in this tree — the frozen privacy scanner
