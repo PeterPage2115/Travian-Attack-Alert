@@ -25,7 +25,7 @@
       "id": "suite:test/artifact/detector-matrix.test.cjs",
       "path": "test/artifact/detector-matrix.test.cjs",
       "classification": "dist-artifact",
-      "expectedExecutionCount": 17,
+      "expectedExecutionCount": 20,
       "coverage": [
         "dist-runtime",
         "detector-matrix"
@@ -87,6 +87,17 @@
       "expectedExecutionCount": 1,
       "coverage": [
         "test-characterization-aggregator-cutover"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/attack-memory-reset.test.cjs",
+      "path": "test/characterization/attack-memory-reset.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 6,
+      "coverage": [
+        "attack-memory-reset",
+        "menu-command",
+        "envelope-writer"
       ]
     },
     {
@@ -509,20 +520,20 @@
     }
   ],
   "totals": {
-    "suiteCount": 49,
-    "expectedExecutionCount": 1060,
+    "suiteCount": 50,
+    "expectedExecutionCount": 1069,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
-        "expectedExecutionCount": 66
+        "expectedExecutionCount": 69
       },
       "browser": {
         "suiteCount": 12,
         "expectedExecutionCount": 353
       },
       "source-artifact": {
-        "suiteCount": 15,
-        "expectedExecutionCount": 427
+        "suiteCount": 16,
+        "expectedExecutionCount": 433
       },
       "tool": {
         "suiteCount": 17,

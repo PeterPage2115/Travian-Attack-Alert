@@ -4723,6 +4723,71 @@ var require_runtime = __commonJS({
           quarantineKeys
         };
       }
+      function monitorRawValueEquals(storage, key, expected) {
+        const read = monitorReadRaw(storage, key);
+        return read.ok && read.value === expected;
+      }
+      function restoreMonitorRawVerified(storage, key, raw) {
+        if (raw === void 0) {
+          return monitorRestoreRaw(storage, key, void 0);
+        }
+        return monitorWriteReadback(storage, key, raw).ok;
+      }
+      function rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, reason) {
+        const activeKey = monitorActiveStorageKey(world);
+        const backupKey = monitorBackupStorageKey(world);
+        const activeRestored = restoreMonitorRawVerified(void 0, activeKey, activeRawBefore);
+        const backupRestored = restoreMonitorRawVerified(void 0, backupKey, backupRawBefore);
+        const verified = activeRestored && backupRestored && monitorRawValueEquals(void 0, activeKey, activeRawBefore) && monitorRawValueEquals(void 0, backupKey, backupRawBefore);
+        return verified ? { outcome: "reset-rolled-back", reason, rescan: false } : { outcome: "baseline-reset-indeterminate", reason, rescan: false };
+      }
+      function resetCurrentWorldAttackBaseline() {
+        if (!isCurrentLeaseOwner()) {
+          return { outcome: "reset-fenced", reason: "lease-lost", rescan: false };
+        }
+        const world = normalizeHostname(location.hostname);
+        const loaded = loadMonitorEnvelopeV1(world);
+        if (!loaded.envelope) {
+          if (loaded.blocked) {
+            return { outcome: "baseline-reset-indeterminate", reason: loaded.outcome || "monitor-blocked", rescan: false };
+          }
+          return { outcome: "no-envelope", rescan: true };
+        }
+        const original = loaded.envelope;
+        const activeKey = monitorActiveStorageKey(world);
+        const backupKey = monitorBackupStorageKey(world);
+        const activeRead = monitorReadRaw(void 0, activeKey);
+        const backupRead = monitorReadRaw(void 0, backupKey);
+        const activeRawBefore = activeRead.ok ? activeRead.value : void 0;
+        const backupRawBefore = backupRead.ok ? backupRead.value : void 0;
+        const resetEnvelope = createMonitorEnvelopeV1(world, Object.assign({}, original, {
+          generation: original.generation + 1,
+          baselineByPlayerId: {},
+          metrics: Object.assign({}, original.metrics, {
+            lastAuthoritativeScanAtMs: null,
+            observedAtMs: null
+          })
+        }));
+        const commit = commitMonitorEnvelopeV1({
+          world,
+          currentEnvelope: original,
+          candidateEnvelope: resetEnvelope,
+          expectedGeneration: original.generation
+        });
+        if (commit.outcome === "ok") {
+          const readback = loadMonitorEnvelopeV1(world);
+          const verified = Boolean(readback.envelope) && readback.envelope.generation === original.generation + 1 && Object.keys(readback.envelope.baselineByPlayerId).length === 0;
+          if (verified) {
+            return { outcome: "ok", rescan: true, generation: readback.envelope.generation, previous: original };
+          }
+          return rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, "readback-unverified");
+        }
+        const writeAttempted = commit.outcome === "wrote-failed" || commit.outcome === "readback-mismatch";
+        if (!writeAttempted && monitorRawValueEquals(void 0, activeKey, activeRawBefore) && monitorRawValueEquals(void 0, backupKey, backupRawBefore)) {
+          return { outcome: "reset-failed", reason: commit.outcome, rescan: false };
+        }
+        return rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, commit.outcome);
+      }
       function monitorEventPlayerId(event) {
         if (!event || typeof event !== "object") {
           return null;
@@ -10041,12 +10106,29 @@ ${entry.line}`;
               GM_registerMenuCommand(
                 "Clear attack memory",
                 () => {
-                  localStorage.removeItem(STORAGE_KEY);
-                  previousState = {};
+                  const reset = resetCurrentWorldAttackBaseline();
+                  if (reset.outcome === "ok" || reset.outcome === "no-envelope") {
+                    localStorage.removeItem(STORAGE_KEY);
+                    previousState = {};
+                    scanAttemptedForDocument = false;
+                    lastScanTerminalForDocument = null;
+                    authoritativeScanForDocument = false;
+                    scanCycleId = null;
+                    alert(
+                      "Attack memory cleared for this world. The next accepted scan establishes a fresh baseline and does not clear site data."
+                    );
+                    scanAttacks(true);
+                    return;
+                  }
+                  if (reset.outcome === "baseline-reset-indeterminate") {
+                    alert(
+                      "Attack memory reset could not be verified — no fresh scan was started. Export the incident bundle and use the Tampermonkey recovery actions after a fresh storage read."
+                    );
+                    return;
+                  }
                   alert(
-                    "Attack memory has been cleared."
+                    "Attack memory reset failed; the previous baseline was restored and no fresh scan was started."
                   );
-                  scanAttacks(true);
                 }
               );
               GM_registerMenuCommand(

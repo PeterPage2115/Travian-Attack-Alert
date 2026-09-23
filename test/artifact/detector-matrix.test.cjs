@@ -458,3 +458,136 @@ test('matrix: single accepted scan over the queue bound keeps the bound and repo
     assert.equal(world.events[world.events.length - 1].name, `Player ${limit + 9}`);
     assert.equal(world.events[0].name, 'Player 10');
 });
+
+// ---------------------------------------------------------------------------
+// Attack-memory reset matrix (plan Task 21): the shipped envelope writer is the
+// only thing "Clear attack memory" is allowed to mutate, and it must clear just
+// the normalized current world's baseline while preserving every other byte.
+// ---------------------------------------------------------------------------
+
+function queueEvent(world, playerId, type, attacks, raids) {
+    return {
+        world,
+        playerId,
+        name: `Player ${playerId}`,
+        url: `/profile/${playerId}`,
+        attackCount: attacks,
+        raidCount: raids,
+        oldAttackCount: 0,
+        oldRaidCount: 0,
+        addedAttackCount: attacks,
+        addedRaidCount: raids,
+        eventType: type
+    };
+}
+
+function resetEnvelopeFor(world, envelope) {
+    return runtime.createMonitorEnvelopeV1(world, Object.assign({}, envelope, {
+        generation: envelope.generation + 1,
+        baselineByPlayerId: {},
+        metrics: Object.assign({}, envelope.metrics, {
+            lastAuthoritativeScanAtMs: null,
+            observedAtMs: null
+        })
+    }));
+}
+
+test('reset matrix: baseline reset clears only the current world baseline and preserves every other byte', () => {
+    const storage = memoryStorage();
+    const worldB = seededEnvelope(WORLD_B, 9);
+    storage.set(runtime.monitorActiveStorageKey(WORLD_B), worldB.storage.get(runtime.monitorActiveStorageKey(WORLD_B)));
+    storage.set(runtime.monitorBackupStorageKey(WORLD_B), worldB.storage.get(runtime.monitorBackupStorageKey(WORLD_B)));
+    const worldBBytesBefore = storageBytes(worldB.storage);
+
+    const envelopeA = runtime.createMonitorEnvelopeV1(WORLD_A, {
+        generation: 5,
+        baselineByPlayerId: { '101': { name: 'Alpha', url: '/profile/101', attackCount: 7, raidCount: 3 } },
+        rosterByPlayerId: { '101': { name: 'Alpha', url: '/profile/101' } },
+        pending: [queueEvent(WORLD_A, '201', 'attack', 1, 0)],
+        inFlight: [queueEvent(WORLD_A, '202', 'raid', 0, 2)],
+        failed: [queueEvent(WORLD_A, '203', 'attack', 3, 0)],
+        uncertain: [queueEvent(WORLD_A, '204', 'mixed', 1, 1)],
+        diagnostics: { migrationAmbiguities: 2, lastCorruption: 'none', blockedQueueAtMs: null },
+        metrics: {
+            lastAuthoritativeScanAtMs: T0,
+            observedAtMs: T0,
+            deliveryAccounting: {
+                recoverable: [queueEvent(WORLD_A, '205', 'attack', 1, 0)],
+                terminal: [queueEvent(WORLD_A, '206', 'raid', 0, 1)],
+                compactedTerminalTotals: [],
+                dispatchPlans: []
+            }
+        }
+    });
+    storage.set(runtime.monitorActiveStorageKey(WORLD_A), runtime.serializeMonitorEnvelopeV1(envelopeA));
+    storage.set(runtime.monitorBackupStorageKey(WORLD_A), runtime.serializeMonitorEnvelopeV1(envelopeA));
+
+    const preserved = {
+        pending: runtime.canonicalSerializeMonitorValue(envelopeA.pending),
+        inFlight: runtime.canonicalSerializeMonitorValue(envelopeA.inFlight),
+        failed: runtime.canonicalSerializeMonitorValue(envelopeA.failed),
+        uncertain: runtime.canonicalSerializeMonitorValue(envelopeA.uncertain),
+        accounting: runtime.canonicalSerializeMonitorValue(envelopeA.metrics.deliveryAccounting),
+        roster: runtime.canonicalSerializeMonitorValue(envelopeA.rosterByPlayerId),
+        diagnostics: runtime.canonicalSerializeMonitorValue(envelopeA.diagnostics)
+    };
+
+    const committed = runtime.commitMonitorEnvelopeV1({
+        world: WORLD_A,
+        currentEnvelope: envelopeA,
+        candidateEnvelope: resetEnvelopeFor(WORLD_A, envelopeA),
+        expectedGeneration: 5,
+        storage
+    });
+    assert.equal(committed.outcome, 'ok');
+    assert.equal(committed.memorySwapped, true);
+
+    const live = runtime.parseMonitorEnvelopeV1(storage.get(runtime.monitorActiveStorageKey(WORLD_A)), WORLD_A);
+    assert.equal(live.ok, true);
+    assert.deepEqual(live.envelope.baselineByPlayerId, {}, 'only the baseline is cleared');
+    assert.equal(live.envelope.generation, 6, 'the reset advances the generation fence');
+    assert.equal(runtime.canonicalSerializeMonitorValue(live.envelope.pending), preserved.pending);
+    assert.equal(runtime.canonicalSerializeMonitorValue(live.envelope.inFlight), preserved.inFlight);
+    assert.equal(runtime.canonicalSerializeMonitorValue(live.envelope.failed), preserved.failed);
+    assert.equal(runtime.canonicalSerializeMonitorValue(live.envelope.uncertain), preserved.uncertain);
+    assert.equal(runtime.canonicalSerializeMonitorValue(live.envelope.metrics.deliveryAccounting), preserved.accounting);
+    assert.equal(runtime.canonicalSerializeMonitorValue(live.envelope.rosterByPlayerId), preserved.roster);
+    assert.equal(runtime.canonicalSerializeMonitorValue(live.envelope.diagnostics), preserved.diagnostics);
+    assert.equal(storageBytes(worldB.storage), worldBBytesBefore, 'the other world is byte-identical');
+});
+
+test('reset matrix: a fenced reset leaves the envelope bytes unchanged', () => {
+    const storage = memoryStorage();
+    const envelope = runtime.createMonitorEnvelopeV1(WORLD_A, {
+        generation: 4,
+        baselineByPlayerId: { '101': { name: 'Alpha', url: '/profile/101', attackCount: 2, raidCount: 0 } }
+    });
+    storage.set(runtime.monitorActiveStorageKey(WORLD_A), runtime.serializeMonitorEnvelopeV1(envelope));
+    storage.set(runtime.monitorBackupStorageKey(WORLD_A), runtime.serializeMonitorEnvelopeV1(envelope));
+    const before = storageBytes(storage);
+    // A stale generation fence rejects the reset write before it reaches storage.
+    const stale = runtime.createMonitorEnvelopeV1(WORLD_A, Object.assign({}, envelope, { baselineByPlayerId: {} }));
+    const committed = runtime.commitMonitorEnvelopeV1({
+        world: WORLD_A,
+        currentEnvelope: envelope,
+        candidateEnvelope: stale,
+        expectedGeneration: envelope.generation,
+        storage
+    });
+    assert.equal(committed.outcome, 'fenced-reject');
+    assert.equal(committed.memorySwapped, false);
+    assert.equal(storageBytes(storage), before, 'a pre-write rejection preserves the original bytes');
+});
+
+test('artifact: Clear attack memory routes through the envelope writer with explicit fresh-baseline wording', () => {
+    const distText = fs.readFileSync(DIST_FILE, 'utf8');
+    const start = distText.indexOf('"Clear attack memory"');
+    assert.ok(start > 0, 'the shipped artifact registers the menu command');
+    const handler = distText.slice(start, distText.indexOf('GM_registerMenuCommand', start + 1));
+    assert.match(handler, /resetCurrentWorldAttackBaseline\(\)/u, 'the handler must route through the reset helper');
+    assert.match(handler, /scanAttacks\(true\)/u, 'a verified reset starts exactly one fresh scan');
+    assert.match(handler, /fresh baseline/u);
+    assert.match(handler, /does not clear site data/u);
+    assert.match(handler, /baseline-reset-indeterminate/u);
+    assert.match(distText, /commitMonitorEnvelopeV1\(\{[\s\S]{0,120}currentEnvelope: original/u, 'the reset uses the existing envelope writer');
+});
