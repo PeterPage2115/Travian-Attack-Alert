@@ -506,7 +506,7 @@
       "id": "suite:test/tools/userscript-build-contract.test.cjs",
       "path": "test/tools/userscript-build-contract.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 7,
+      "expectedExecutionCount": 8,
       "coverage": [
         "repository-tooling",
         "userscript-build-contract"
@@ -522,7 +522,7 @@
   ],
   "totals": {
     "suiteCount": 50,
-    "expectedExecutionCount": 1091,
+    "expectedExecutionCount": 1092,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -538,7 +538,7 @@
       },
       "tool": {
         "suiteCount": 17,
-        "expectedExecutionCount": 214
+        "expectedExecutionCount": 215
       }
     }
   },

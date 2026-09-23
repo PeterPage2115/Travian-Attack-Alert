@@ -11,12 +11,15 @@ const CONFIG_FILE = path.join(ROOT, 'config', 'userscript.json');
 const DIST_DIR = path.join(ROOT, 'dist');
 const DIST_BASENAME = 'travian-attack-alert.user.js';
 const DIST_FILE = path.join(DIST_DIR, DIST_BASENAME);
-const UPDATE_URL =
-  'https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js';
+// Desired distribution contract: both metadata URLs must resolve to the
+// release branch artifact (the old `main` channel returns HTTP 404).
+const RELEASE_URL =
+  'https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js';
 
 const buildSource = fs.readFileSync(BUILD_FILE, 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const dist = fs.readFileSync(DIST_FILE, 'utf8');
+const userscriptConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
 
 function metadataValues(source, directive) {
   const pattern = new RegExp(`^//\\s+@${directive}\\s+(.+)$`, 'gm');
@@ -117,16 +120,39 @@ describe('generated userscript build contract', () => {
     );
   });
 
-  it('uses the protected main dist URL for updateURL and downloadURL', () => {
+  it('propagates the configured updateURL and downloadURL into the generated header', () => {
     assert.deepEqual(
       metadataValues(dist, 'updateURL'),
-      [UPDATE_URL],
-      '@updateURL must point exactly to the generated userscript on main',
+      [userscriptConfig.updateURL],
+      'generated @updateURL must equal config/userscript.json updateURL',
     );
     assert.deepEqual(
       metadataValues(dist, 'downloadURL'),
-      [UPDATE_URL],
-      '@downloadURL must point exactly to the generated userscript on main',
+      [userscriptConfig.downloadURL],
+      'generated @downloadURL must equal config/userscript.json downloadURL',
+    );
+  });
+
+  it('locks updateURL and downloadURL to the release-branch dist URL', () => {
+    assert.equal(
+      userscriptConfig.updateURL,
+      RELEASE_URL,
+      'config updateURL must target the release branch, not the old main channel',
+    );
+    assert.equal(
+      userscriptConfig.downloadURL,
+      RELEASE_URL,
+      'config downloadURL must target the release branch, not the old main channel',
+    );
+    assert.deepEqual(
+      metadataValues(dist, 'updateURL'),
+      [RELEASE_URL],
+      '@updateURL must point exactly to the generated userscript on the release branch',
+    );
+    assert.deepEqual(
+      metadataValues(dist, 'downloadURL'),
+      [RELEASE_URL],
+      '@downloadURL must point exactly to the generated userscript on the release branch',
     );
   });
 });
