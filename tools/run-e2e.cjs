@@ -159,9 +159,13 @@ function specCommand(spec, env) {
   };
 }
 
-// A readable Playwright JSON report has a stats object with non-negative
-// integer counters. Anything else (missing file, truncated stdout, forged
-// shape) is unreadable and can never contribute to PASS.
+// A readable Playwright JSON report has a stats object carrying ALL FOUR
+// counters as own, non-negative integer properties. Anything else (missing
+// file, truncated stdout, forged shape, or a partial report that only carries
+// `expected`) is unreadable and can never contribute to PASS: absent, null,
+// negative, or non-integer counters are rejected, never defaulted to zero.
+const REPORT_COUNT_FIELDS = ['expected', 'unexpected', 'flaky', 'skipped'];
+
 function parseReportCounts(reportPath) {
   let report = null;
   try {
@@ -171,14 +175,17 @@ function parseReportCounts(reportPath) {
   }
   if (!report || typeof report !== 'object' || !report.stats || typeof report.stats !== 'object') return null;
   const stats = report.stats;
-  const counts = {
-    expected: stats.expected || 0,
-    unexpected: stats.unexpected || 0,
-    flaky: stats.flaky || 0,
-    skipped: stats.skipped || 0,
+  for (const field of REPORT_COUNT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(stats, field)) return null;
+    const value = stats[field];
+    if (!Number.isInteger(value) || value < 0) return null;
+  }
+  return {
+    expected: stats.expected,
+    unexpected: stats.unexpected,
+    flaky: stats.flaky,
+    skipped: stats.skipped,
   };
-  if (Object.values(counts).some((value) => !Number.isInteger(value) || value < 0)) return null;
-  return counts;
 }
 
 function classifySpec({ counts, exitCode, release }) {

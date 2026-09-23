@@ -446,7 +446,7 @@
       "id": "suite:test/tools/run-e2e-contract.test.cjs",
       "path": "test/tools/run-e2e-contract.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 13,
+      "expectedExecutionCount": 16,
       "coverage": [
         "repository-tooling",
         "run-e2e-contract"
@@ -552,7 +552,7 @@
   ],
   "totals": {
     "suiteCount": 53,
-    "expectedExecutionCount": 1145,
+    "expectedExecutionCount": 1148,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -568,7 +568,7 @@
       },
       "tool": {
         "suiteCount": 20,
-        "expectedExecutionCount": 268
+        "expectedExecutionCount": 271
       }
     }
   },

@@ -7,11 +7,23 @@
 // impersonating one Playwright invocation. The fixtures live under
 // os.tmpdir(); nothing under test/e2e or the repository is touched.
 //
+// Browser independence (CI never downloads Playwright browsers): the runner
+// refuses to execute any spec unless `chromiumBinaryPresent()` sees a
+// `chromium-*` entry under PLAYWRIGHT_BROWSERS_PATH or ~/.cache/ms-playwright.
+// `fixtureEnv()` therefore points PLAYWRIGHT_BROWSERS_PATH at a fake
+// `chromium-<version>` directory created under os.tmpdir(), so every fixture
+// case reaches the fixture command on any machine. The production precheck is
+// NOT weakened: one case proves it still fails closed when both the configured
+// cache and the home cache are empty.
+//
 // Covered failure classes:
 //   - a skipped-only report is SKIPPED in release mode and is never counted as
 //     executed (ordinary mode reports skips without counting them either),
 //   - a flaky-only report is FLAKY in release mode,
 //   - a malformed report is UNREADABLE_REPORT,
+//   - a partial stats object (only `expected`) and every missing/null/negative/
+//     non-integer counter is UNREADABLE_REPORT: counters never default to 0,
+//   - no Chromium in any cache is NOT EXECUTED and a release-mode failure,
 //   - release mode requires a positive expected count,
 //   - a hanging child is TIMED_OUT, its process group is reaped, and the
 //     configured loopback port is free again (the next spec is not launched),
@@ -45,10 +57,17 @@ const HANG_SPEC = 'test/e2e/fixture-hang.spec.ts';
 const IGNORE_TERM_SPEC = 'test/e2e/fixture-ignore-term.spec.ts';
 const ESCAPED_SPEC = 'test/e2e/fixture-escaped.spec.ts';
 const MARKER_SPEC = 'test/e2e/fixture-marker.spec.ts';
+const STATS_SPEC = 'test/e2e/fixture-stats.spec.ts';
 
 const FIXTURE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-e2e-contract-'));
 const FIXTURE_RUNNER = path.join(FIXTURE_ROOT, 'fixture-runner.cjs');
 const FIXTURE_DAEMON = path.join(FIXTURE_ROOT, 'fixture-daemon.cjs');
+
+// Test-only browser seam: a fake Playwright cache with one `chromium-*` entry.
+// `chromiumBinaryPresent()` (tools/run-e2e.cjs) only inspects directory names,
+// so this satisfies the real precheck without downloading anything.
+const FAKE_BROWSERS_ROOT = path.join(FIXTURE_ROOT, 'browsers');
+fs.mkdirSync(path.join(FAKE_BROWSERS_ROOT, 'chromium-9999.0.0'), { recursive: true });
 
 fs.writeFileSync(FIXTURE_RUNNER, `'use strict';
 // Test-only fixture for test/tools/run-e2e-contract.test.cjs. argv[2] is the
@@ -98,6 +117,12 @@ switch (behavior) {
     process.exit(0);
     break;
   case 'zero': emitReport(0, 0, 0, 0); break;
+  case 'stats': {
+    const stats = JSON.parse(process.env.TAA_FIXTURE_STATS_JSON || '{}');
+    fs.writeSync(1, JSON.stringify({ config: {}, suites: [], errors: [], stats }) + '\\n');
+    process.exit(0);
+    break;
+  }
   case 'hang': holdPort(); break;
   case 'ignore-term':
     process.on('SIGTERM', () => {});
@@ -225,8 +250,8 @@ function markerPath(ctx, spec) {
   return path.join(ctx.markerDir, `${path.basename(spec)}.ran`);
 }
 
-function fixtureEnv({ specs, ctx, port, timeoutMs }) {
-  return {
+function fixtureEnv({ specs, ctx, port, timeoutMs, stats }) {
+  const env = {
     TAA_E2E_SPEC_COMMAND: FIXTURE_RUNNER,
     TAA_E2E_SPECS: specs.join(','),
     TAA_E2E_OUT_DIR: ctx.outDir,
@@ -236,17 +261,21 @@ function fixtureEnv({ specs, ctx, port, timeoutMs }) {
     TAA_FIXTURE_PID_FILE: ctx.pidFile,
     TAA_FIXTURE_DAEMON_PID_FILE: ctx.daemonPidFile,
     TAA_FIXTURE_MARKER_DIR: ctx.markerDir,
+    // Fake Playwright cache: lets the real precheck pass without a browser.
+    PLAYWRIGHT_BROWSERS_PATH: FAKE_BROWSERS_ROOT,
   };
+  if (stats !== undefined) env.TAA_FIXTURE_STATS_JSON = JSON.stringify(stats);
+  return env;
 }
 
-function runRunner({ specs, ctx, port, release = true, timeoutMs = 2_000, spawnTimeoutMs = 60_000 }) {
+function runRunner({ specs, ctx, port, release = true, timeoutMs = 2_000, spawnTimeoutMs = 60_000, stats }) {
   const args = [RUNNER, ...(release ? ['--release'] : [])];
   const result = spawnSync(process.execPath, args, {
     cwd: ROOT,
     encoding: 'utf8',
     timeout: spawnTimeoutMs,
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, ...fixtureEnv({ specs, ctx, port, timeoutMs }) },
+    env: { ...process.env, ...fixtureEnv({ specs, ctx, port, timeoutMs, stats }) },
   });
   return {
     status: result.status,
@@ -329,6 +358,61 @@ test('a malformed report yields UNREADABLE_REPORT', async () => {
     assert.match(run.output, /\[UNREADABLE_REPORT\]/u);
     assert.match(run.output, /unreadable JSON report/u);
     assert.match(run.output, /executed=0 across 1 specs/u);
+  } finally {
+    killPids(ctx.pidFile);
+    await waitPortFree(port);
+  }
+});
+
+test('a partial report that only carries expected yields UNREADABLE_REPORT', async () => {
+  const ctx = newCase();
+  const port = await getFreePort();
+  try {
+    const partial = runRunner({ specs: [STATS_SPEC], ctx, port, release: true, stats: { expected: 2 } });
+    assert.notEqual(partial.status, 0);
+    assert.match(partial.output, /\[UNREADABLE_REPORT\]/u);
+    assert.match(partial.output, /unreadable JSON report/u);
+    assert.match(partial.output, /executed=0 across 1 specs/u);
+    assert.match(partial.output, /expected=n\/a unexpected=n\/a flaky=n\/a skipped=n\/a/u, 'partial counters must never default to 0');
+
+    // The same shape with all four counters (plus unrelated keys) still passes:
+    // the strictness targets the four counters, not extra report fields.
+    const complete = runRunner({
+      specs: [STATS_SPEC], ctx, port, release: true,
+      stats: { expected: 2, unexpected: 0, flaky: 0, skipped: 0, duration: 5 },
+    });
+    assert.equal(complete.status, 0, complete.output);
+    assert.match(complete.output, /\[PASS\]/u);
+    assert.match(complete.output, /executed=2 across 1 specs/u);
+  } finally {
+    killPids(ctx.pidFile);
+    await waitPortFree(port);
+  }
+});
+
+test('missing, null, negative, or non-integer stats fields yield UNREADABLE_REPORT', async () => {
+  const ctx = newCase();
+  const port = await getFreePort();
+  const variants = [
+    ['missing expected', { unexpected: 0, flaky: 0, skipped: 0 }],
+    ['missing unexpected', { expected: 2, flaky: 0, skipped: 0 }],
+    ['missing flaky', { expected: 2, unexpected: 0, skipped: 0 }],
+    ['missing skipped', { expected: 2, unexpected: 0, flaky: 0 }],
+    ['null expected', { expected: null, unexpected: 0, flaky: 0, skipped: 0 }],
+    ['null skipped', { expected: 2, unexpected: 0, flaky: 0, skipped: null }],
+    ['negative expected', { expected: -1, unexpected: 0, flaky: 0, skipped: 0 }],
+    ['negative flaky', { expected: 2, unexpected: 0, flaky: -2, skipped: 0 }],
+    ['non-integer expected', { expected: 1.5, unexpected: 0, flaky: 0, skipped: 0 }],
+    ['non-integer skipped (string)', { expected: 2, unexpected: 0, flaky: 0, skipped: '0' }],
+  ];
+  try {
+    for (const [name, stats] of variants) {
+      const run = runRunner({ specs: [STATS_SPEC], ctx, port, release: true, stats });
+      assert.notEqual(run.status, 0, `${name}: release mode must fail\n${run.output}`);
+      assert.match(run.output, /\[UNREADABLE_REPORT\]/u, `${name}: must be UNREADABLE_REPORT`);
+      assert.match(run.output, /unreadable JSON report/u, name);
+      assert.match(run.output, /expected=n\/a unexpected=n\/a flaky=n\/a skipped=n\/a/u, `${name}: counters must not default to 0`);
+    }
   } finally {
     killPids(ctx.pidFile);
     await waitPortFree(port);
@@ -434,6 +518,44 @@ test('an occupied loopback port fails closed before any spec starts', async () =
     await new Promise((resolve) => blocker.close(resolve));
     killPids(ctx.pidFile);
   }
+});
+
+test('the real browser precheck fails closed when no Chromium exists in any cache', async () => {
+  const ctx = newCase();
+  const port = await getFreePort();
+  const emptyBrowsers = fs.mkdtempSync(path.join(FIXTURE_ROOT, 'empty-browsers-'));
+  const emptyHome = fs.mkdtempSync(path.join(FIXTURE_ROOT, 'empty-home-'));
+  // Production precheck isolation: PLAYWRIGHT_BROWSERS_PATH points at an empty
+  // directory and HOME/USERPROFILE at an empty home, so no `chromium-*` entry
+  // exists anywhere the runner looks (the real CI condition). The production
+  // precheck must stay fail-closed: NOT EXECUTED, and a failure in release mode.
+  const env = {
+    ...process.env,
+    ...fixtureEnv({ specs: [PASS_SPEC], ctx, port, timeoutMs: 2_000 }),
+    PLAYWRIGHT_BROWSERS_PATH: emptyBrowsers,
+    HOME: emptyHome,
+    USERPROFILE: emptyHome,
+  };
+  const spawnRunner = (release) => spawnSync(process.execPath, [RUNNER, ...(release ? ['--release'] : [])], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: 30_000,
+    env,
+  });
+
+  const release = spawnRunner(true);
+  const releaseOutput = `${release.stdout || ''}${release.stderr || ''}`;
+  assert.equal(release.status, 1, releaseOutput);
+  assert.match(releaseOutput, /e2e: NOT EXECUTED \(no browser binary in Playwright cache; browsers were not downloaded\)/u);
+  assert.match(releaseOutput, /failing: a required suite was skipped in release mode/u);
+
+  const ordinary = spawnRunner(false);
+  const ordinaryOutput = `${ordinary.stdout || ''}${ordinary.stderr || ''}`;
+  assert.equal(ordinary.status, 0, ordinaryOutput);
+  assert.match(ordinaryOutput, /e2e: NOT EXECUTED \(no browser binary in Playwright cache/u);
+
+  assert.equal(fs.existsSync(markerPath(ctx, PASS_SPEC)), false, 'no spec may start without a browser');
+  assert.equal(fs.existsSync(ctx.outDir), false, 'the precheck must exit before creating the report directory');
 });
 
 test('a timeout override above the hard ceiling is clamped to 480000ms', async () => {
