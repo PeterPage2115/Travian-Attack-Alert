@@ -317,6 +317,8 @@ const RELEASE_ID = "taa-1.0.0";
   let activeLeaseOwnerId = null;
   let lifecycleEpoch = 0;
   let scanAttemptedForDocument = false;
+  let lastScanTerminalForDocument = null;
+  let authoritativeScanForDocument = false;
   let readinessObserver = null;
   let readinessTimerId = null;
   let scanDeadlineTimerId = null;
@@ -780,6 +782,7 @@ const RELEASE_ID = "taa-1.0.0";
           if (resumeSameDocument) {
             startLeaseRenewal(worldHostname, ownerId);
             flushPendingBatch();
+            resumePreScanLeaseTerminalForDocument();
             if (!scanAttemptedForDocument) {
               installReadinessObserver();
             }
@@ -7173,6 +7176,10 @@ ${entry.line}`;
   function emitScanCycleTerminal(outcome) {
     if (!isScanTerminalRecord(outcome) || scanAttemptedForDocument) return false;
     scanAttemptedForDocument = true;
+    lastScanTerminalForDocument = outcome;
+    if (outcome.stage === "snapshot" && outcome.status === "ok" && outcome.reason === "authoritative") {
+      authoritativeScanForDocument = true;
+    }
     clearScanDeadlineTimer();
     if (readinessTimerId !== null) {
       clearTimeout(readinessTimerId);
@@ -7192,6 +7199,15 @@ ${entry.line}`;
   }
   function finishScanCycle(outcome) {
     return emitScanCycleTerminal(Object.assign({}, outcome, { scanId: scanCycleId }));
+  }
+  function resumePreScanLeaseTerminalForDocument() {
+    const terminal = lastScanTerminalForDocument;
+    if (authoritativeScanForDocument || !terminal) return false;
+    if (terminal.stage !== "lease" || terminal.status !== "rejected" || terminal.reason !== "lease-lost-before-scan") return false;
+    scanAttemptedForDocument = false;
+    lastScanTerminalForDocument = null;
+    scanCycleId = null;
+    return true;
   }
   function pageLooksLoaded() {
     const selection = selectMemberTable(document);

@@ -120,7 +120,7 @@
       "id": "suite:test/characterization/lease-fence-matrix.test.cjs",
       "path": "test/characterization/lease-fence-matrix.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 17,
+      "expectedExecutionCount": 21,
       "coverage": [
         "lease-contract",
         "lease-fencing",
@@ -221,7 +221,7 @@
       "id": "suite:test/e2e/dual-tab-lease.spec.ts",
       "path": "test/e2e/dual-tab-lease.spec.ts",
       "classification": "browser",
-      "expectedExecutionCount": 24,
+      "expectedExecutionCount": 36,
       "coverage": [
         "browser-runtime",
         "dual-tab-lease"
@@ -510,7 +510,7 @@
   ],
   "totals": {
     "suiteCount": 49,
-    "expectedExecutionCount": 1044,
+    "expectedExecutionCount": 1060,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -518,11 +518,11 @@
       },
       "browser": {
         "suiteCount": 12,
-        "expectedExecutionCount": 341
+        "expectedExecutionCount": 353
       },
       "source-artifact": {
         "suiteCount": 15,
-        "expectedExecutionCount": 423
+        "expectedExecutionCount": 427
       },
       "tool": {
         "suiteCount": 17,

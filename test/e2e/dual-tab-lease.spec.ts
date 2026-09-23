@@ -68,7 +68,7 @@ const EVIDENCE_PATH = path.join('test-results', 'release-1.0.0', 'e2e-evidence-d
 // profile WILL double-send; the local lock cannot prevent it."
 const OPERATOR_RULE = 'one active monitoring installation per alliance/world; a second computer or browser profile WILL double-send; the local lock cannot prevent it.';
 
-type PrepConfig = { rename101?: boolean; attackIcon101?: boolean; rename102?: boolean; raidIcon102?: boolean };
+type PrepConfig = { rename101?: boolean; attackIcon101?: boolean; rename102?: boolean; raidIcon102?: boolean; hideTable?: boolean };
 type SnapshotEvent = { kind: string; status?: string; reason?: string };
 type LeaseRecord = { ownerId?: string; token?: string; generation?: number; term?: number; expiresAtMs?: number } | null;
 type Envelope = {
@@ -119,7 +119,7 @@ async function installPrepHook(page: Page): Promise<void> {
         const raw = localStorage.getItem('__taa_dual_prep');
         if (!raw) return;
         localStorage.removeItem('__taa_dual_prep');
-        const cfg = JSON.parse(raw) as { rename101?: boolean; attackIcon101?: boolean; rename102?: boolean; raidIcon102?: boolean };
+        const cfg = JSON.parse(raw) as { rename101?: boolean; attackIcon101?: boolean; rename102?: boolean; raidIcon102?: boolean; hideTable?: boolean };
         const rename = (from: string, to: string, name: string) => {
           const link = document.querySelector(`a[href="${from}"]`);
           if (link) { link.setAttribute('href', to); link.textContent = name; }
@@ -137,6 +137,15 @@ async function installPrepHook(page: Page): Promise<void> {
         };
         if (cfg.attackIcon101) addIcon('/profile/101', '1 attack');
         if (cfg.raidIcon102) addIcon('/profile/102', '1 raid');
+        // Pre-scan lease-loss scenario: keep the member table OUT of the DOM
+        // for the whole boot readiness window, stashed for a later reveal.
+        if (cfg.hideTable) {
+          const table = document.querySelector('table.allianceMembers');
+          if (table) {
+            (window as unknown as { __taaHiddenTable?: Element }).__taaHiddenTable = table;
+            table.remove();
+          }
+        }
       } catch { /* test scaffolding only; never masks product behavior */ }
     });
   });
@@ -144,6 +153,27 @@ async function installPrepHook(page: Page): Promise<void> {
 
 async function stagePrep(page: Page, cfg: PrepConfig): Promise<void> {
   await page.evaluate((config: PrepConfig) => localStorage.setItem('__taa_dual_prep', JSON.stringify(config)), cfg);
+}
+
+async function revealTable(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const table = (window as unknown as { __taaHiddenTable?: Element }).__taaHiddenTable;
+    if (table && !table.isConnected) document.body.appendChild(table);
+  });
+}
+
+async function diagnosticsText(page: Page): Promise<string> {
+  return await page.evaluate(() => localStorage.getItem('travianAllianceDiagnostics_v2') ?? '');
+}
+
+async function eventKinds(page: Page, kind: string, status?: string): Promise<SnapshotEvent[]> {
+  const events = await snapshotEvents(page);
+  return events.filter((event) => event.kind === kind && (status === undefined || event.status === status));
+}
+
+async function reacquiredWithNewToken(page: Page, previousToken: string | undefined): Promise<boolean> {
+  const record = await leaseRecord(page);
+  return Boolean(record && record.token && record.token !== previousToken);
 }
 
 // First boot of a page under REAL locks. The bare goto establishes the origin
@@ -592,6 +622,97 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
     } finally {
       await first.context.close();
       await second.context.close();
+    }
+  });
+
+  // Todo 20 — same-document lease reacquisition around the FIRST scan. A leader
+  // that loses the lease before its first authoritative scan gets a
+  // `lease-lost-before-scan` terminal; the renewal failure at the 30 s cadence
+  // starts the follower watchdog, which reacquires authority in this SAME
+  // document. The accepted-scan terminal must never block that resume.
+  test('pre-scan lease loss then same-document reacquisition performs exactly one accepted scan', async ({ browser }) => {
+    test.setTimeout(150_000);
+    const { context, page } = await newHttpsContext(browser);
+    try {
+      await installPrepHook(page);
+      await bootRealPage(page, { rename101: true, hideTable: true });
+      await page.waitForTimeout(1500); // past boot jitter + readiness window
+      expect(await leaseState(page)).toBe('leader');
+      expect(await eventKinds(page, 'snapshot', 'authoritative')).toEqual([]);
+      expect(await eventKinds(page, 'extraction')).toEqual([]);
+      const bootRecord = await leaseRecord(page);
+      expect(bootRecord).not.toBeNull();
+
+      // Lease loss BEFORE the first scan, then the member table appears: the
+      // readiness check finds no lease owner and records the pre-scan terminal.
+      // The reveal + nudge repeats because the product reschedules readiness
+      // from a quiet-window remainder, so one tick can land the check early.
+      await page.evaluate((key: string) => localStorage.removeItem(key), LEASE_KEY);
+      await expect.poll(async () => {
+        await revealTable(page);
+        await page.evaluate(() => document.body.toggleAttribute('data-taa-readiness-nudge'));
+        return await diagnosticsText(page);
+      }, { timeout: 10_000 }).toContain('lease-lost-before-scan');
+      expect(await eventKinds(page, 'extraction')).toEqual([]);
+
+      // 30 s renewal fails -> standby -> watchdog reacquires in THIS document
+      // (new token, same page, no navigation).
+      await expect.poll(async () => await reacquiredWithNewToken(page, bootRecord?.token), { timeout: 45_000 }).toBe(true);
+      expect(await leaseState(page)).toBe('leader');
+
+      // Exactly one accepted scan, one extraction, no transport, no queue.
+      await waitAuthoritativeSnapshot(page, 15_000);
+      expect(await eventKinds(page, 'extraction')).toHaveLength(1);
+      expect(await eventKinds(page, 'snapshot', 'authoritative')).toHaveLength(1);
+      expect(await transportTargets(page)).toEqual([]);
+      expect((await monitorEnvelope(page)).pending).toEqual([]);
+      expect(await consoleErrors(page)).toEqual([]);
+
+      writeEvidencePhase('t5-prescan-reacquisition', {
+        leaseLostBeforeFirstScan: true,
+        preScanTerminal: 'lease-lost-before-scan',
+        reacquiredSameDocument: true,
+        preReacquireExtractions: 0,
+        acceptedScans: 1,
+        extractions: 1,
+        transportRequests: 0,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('reacquisition after an accepted scan performs no second scan and no duplicate event', async ({ browser }) => {
+    test.setTimeout(150_000);
+    const { context, page } = await newHttpsContext(browser);
+    try {
+      await installPrepHook(page);
+      await bootRealPage(page, { rename101: true });
+      await waitAuthoritativeSnapshot(page);
+      expect(await eventKinds(page, 'extraction')).toHaveLength(1);
+      const firstRecord = await leaseRecord(page);
+      expect(firstRecord).not.toBeNull();
+
+      await page.evaluate((key: string) => localStorage.removeItem(key), LEASE_KEY);
+      await expect.poll(async () => await reacquiredWithNewToken(page, firstRecord?.token), { timeout: 45_000 }).toBe(true);
+      expect(await leaseState(page)).toBe('leader');
+      await page.waitForTimeout(6000); // any wrong post-reacquisition scan would fire here
+
+      expect(await eventKinds(page, 'snapshot', 'authoritative')).toHaveLength(1);
+      expect(await eventKinds(page, 'extraction')).toHaveLength(1);
+      expect(await transportTargets(page)).toEqual([]);
+      expect((await monitorEnvelope(page)).pending).toEqual([]);
+      expect(await consoleErrors(page)).toEqual([]);
+
+      writeEvidencePhase('t6-postscan-reacquisition', {
+        acceptedScansBeforeLoss: 1,
+        reacquiredSameDocument: true,
+        acceptedScansAfterReacquire: 1,
+        extractionsAfterReacquire: 1,
+        duplicateEvents: 0,
+      });
+    } finally {
+      await context.close();
     }
   });
 });
