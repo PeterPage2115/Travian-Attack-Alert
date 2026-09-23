@@ -36,10 +36,12 @@ const ROOT = path.resolve(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'test-results', 'release-1.0.0');
 const SUMMARY_PATH = path.join(OUT_DIR, 'offline-summary.json');
 
-for (const arg of process.argv.slice(2)) {
-  if (arg !== '--offline' && arg !== '--release') {
-    console.error(`check-release: unknown flag ${arg} (only --offline/--release are supported)`);
-    process.exit(2);
+function parseFlags(argv) {
+  for (const arg of argv) {
+    if (arg !== '--offline' && arg !== '--release') {
+      console.error(`check-release: unknown flag ${arg} (only --offline/--release are supported)`);
+      process.exit(2);
+    }
   }
 }
 
@@ -109,22 +111,37 @@ function artifactTestFiles() {
     .map((f) => path.join('test', 'artifact', f));
 }
 
+// Release e2e gate (Task 19): the runner must report separated counters and
+// PASS is granted only for exit 0 with a positive executed count and zero
+// unexpected/flaky/skipped executions. Missing counters fail closed: a runner
+// that cannot prove what it executed can never make the release gate pass.
 function runE2EGate() {
   const started = Date.now();
   const cmd = [process.execPath, 'tools/run-e2e.cjs', '--release'];
   const result = spawnSync(cmd[0], cmd.slice(1), { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const output = `${result.stdout || ''}${result.stderr || ''}`;
-  const executed = /executed=(\d+) across (\d+) specs/.exec(output);
+  const summary = /executed=(\d+) across (\d+) specs\s*\(expected=(\d+) unexpected=(\d+) flaky=(\d+) skipped=(\d+)/.exec(output);
   if (result.error) {
     return { name: 'e2e', cmd: cmd.join(' '), exitCode: result.status, verdict: 'FAIL', reason: `runner did not complete: ${result.error.message}`, durationMs: Date.now() - started, outputTail: tail(output) };
   }
-  if (result.status === 0 && executed) {
-    return { name: 'e2e', cmd: cmd.join(' '), exitCode: 0, verdict: 'PASS', reason: `all specs passed; executed=${executed[1]} across ${executed[2]} specs on the loopback QA config`, durationMs: Date.now() - started, outputTail: '' };
+  if (!summary) {
+    return { name: 'e2e', cmd: cmd.join(' '), exitCode: result.status, verdict: 'FAIL', reason: 'runner passed without explicit separated counts (executed/expected/unexpected/flaky/skipped)', durationMs: Date.now() - started, outputTail: tail(output) };
   }
-  return { name: 'e2e', cmd: cmd.join(' '), exitCode: result.status, verdict: 'FAIL', reason: result.status === 0 ? 'runner passed without an explicit executed count' : `exit ${result.status}${executed ? ` executed=${executed[1]}` : ''}; a skipped or failing e2e suite fails the release`, durationMs: Date.now() - started, outputTail: tail(output) };
+  const [, executed, specs, expected, unexpected, flaky, skipped] = summary;
+  const clean = result.status === 0
+    && Number(executed) > 0
+    && Number(expected) === Number(executed)
+    && Number(unexpected) === 0
+    && Number(flaky) === 0
+    && Number(skipped) === 0;
+  if (clean) {
+    return { name: 'e2e', cmd: cmd.join(' '), exitCode: 0, verdict: 'PASS', reason: `all specs passed; executed=${executed} across ${specs} specs (expected=${expected} unexpected=0 flaky=0 skipped=0) on the loopback QA config`, durationMs: Date.now() - started, outputTail: '' };
+  }
+  return { name: 'e2e', cmd: cmd.join(' '), exitCode: result.status, verdict: 'FAIL', reason: `exit ${result.status} executed=${executed} expected=${expected} unexpected=${unexpected} flaky=${flaky} skipped=${skipped}; release requires exit 0, a positive executed count, and zero unexpected/flaky/skipped executions`, durationMs: Date.now() - started, outputTail: tail(output) };
 }
 
 function main() {
+  parseFlags(process.argv.slice(2));
   const gates = [];
   // Build FIRST: every gate below consumes freshly rebuilt output.
   gates.push(runGate('build', ['npm', 'run', 'build'], 'deterministic dist rebuild'));
@@ -170,4 +187,8 @@ function main() {
   process.exit(overall === 'PASS' ? 0 : 1);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { runE2EGate, runGate, parseFlags };

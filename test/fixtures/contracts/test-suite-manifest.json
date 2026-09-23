@@ -421,6 +421,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/run-e2e-contract.test.cjs",
+      "path": "test/tools/run-e2e-contract.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 13,
+      "coverage": [
+        "repository-tooling",
+        "run-e2e-contract"
+      ]
+    },
+    {
       "id": "suite:test/tools/runtime-contract-audit.test.cjs",
       "path": "test/tools/runtime-contract-audit.test.cjs",
       "classification": "tool",
@@ -499,8 +509,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 48,
-    "expectedExecutionCount": 1023,
+    "suiteCount": 49,
+    "expectedExecutionCount": 1036,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -515,8 +525,8 @@
         "expectedExecutionCount": 423
       },
       "tool": {
-        "suiteCount": 16,
-        "expectedExecutionCount": 201
+        "suiteCount": 17,
+        "expectedExecutionCount": 214
       }
     }
   },
