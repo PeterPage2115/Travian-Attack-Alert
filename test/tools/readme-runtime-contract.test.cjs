@@ -23,9 +23,23 @@ const operationsPl = fs.readFileSync(path.join(ROOT, 'docs', 'pl', 'OPERATIONS.m
 const runtime = fs.readFileSync(path.join(ROOT, 'dist', 'travian-attack-alert.user.js'), 'utf8');
 const runtimeApiSource = fs.readFileSync(path.join(ROOT, 'src', 'runtime-api.js'), 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+const userscriptConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'userscript.json'), 'utf8'));
 
 const VERSION = String(pkg.version);
 const RELEASE_ID = `taa-${VERSION}`;
+
+// The update/download channel is a long-lived branch name
+// (`release/public-1.0.0`): its embedded token identifies the channel, not the
+// artifact version, so the configured URLs and the branch path are exempt from
+// the historical-label rule below.
+const RELEASE_CHANNEL_TOKENS = [...new Set(
+  [userscriptConfig.updateURL, userscriptConfig.downloadURL]
+    .filter((value) => typeof value === 'string' && value.length > 0)
+    .flatMap((url) => {
+      const branchPath = /\/release\/[^/]+\//.exec(url)?.[0];
+      return branchPath ? [url, branchPath, branchPath.slice(0, -1), branchPath.slice(1, -1)] : [url];
+    }),
+)];
 
 assert.match(VERSION, /^\d+\.\d+\.\d+$/, 'package.json version must be semver');
 
@@ -215,12 +229,13 @@ describe('readme-runtime contract (Panel vs menu recovery boundary)', () => {
     const lines = readme.split('\n');
     const bad = [];
     lines.forEach((line, index) => {
-      for (const match of line.matchAll(/\b\d+\.\d+\.\d+\b/g)) {
+      const scanned = RELEASE_CHANNEL_TOKENS.reduce((text, token) => text.split(token).join('<release-channel>'), line);
+      for (const match of scanned.matchAll(/\b\d+\.\d+\.\d+\b/g)) {
         if (match[0] === VERSION) continue;
         if (/historical/i.test(line)) continue;
         bad.push(`line ${index + 1}: "${match[0]}" without a historical label`);
       }
-      for (const match of line.matchAll(/\btaa-\d+\.\d+\.\d+\b/g)) {
+      for (const match of scanned.matchAll(/\btaa-\d+\.\d+\.\d+\b/g)) {
         if (match[0] === RELEASE_ID) continue;
         if (/historical/i.test(line)) continue;
         bad.push(`line ${index + 1}: "${match[0]}" without a historical label`);

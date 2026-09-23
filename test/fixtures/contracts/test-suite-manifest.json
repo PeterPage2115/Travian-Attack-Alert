@@ -543,6 +543,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/version-contract.test.cjs",
+      "path": "test/tools/version-contract.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 11,
+      "coverage": [
+        "repository-tooling",
+        "version-contract"
+      ]
+    },
+    {
       "id": "suite:test/tools/workflow-security.test.cjs",
       "path": "test/tools/workflow-security.test.cjs",
       "classification": "tool",
@@ -561,8 +571,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 54,
-    "expectedExecutionCount": 1162,
+    "suiteCount": 55,
+    "expectedExecutionCount": 1173,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -577,8 +587,8 @@
         "expectedExecutionCount": 440
       },
       "tool": {
-        "suiteCount": 20,
-        "expectedExecutionCount": 285
+        "suiteCount": 21,
+        "expectedExecutionCount": 296
       }
     }
   },

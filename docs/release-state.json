@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "version": "1.0.0",
-  "releaseId": "taa-1.0.0",
+  "version": "1.0.1",
+  "releaseId": "taa-1.0.1",
   "stable": false,
   "gateDocs": [
     "docs/release-history/1.0.0-rc/PILOT.md",

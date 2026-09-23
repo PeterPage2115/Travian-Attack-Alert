@@ -3,7 +3,7 @@
 /*
  * Detector behavior matrix for public release 1.0.0 (plan Todo 7).
  *
- * Loads the BUILT ARTIFACT (dist/travian-attack-alert.user.js, 1.0.0 bytes)
+ * Loads the BUILT ARTIFACT (dist/travian-attack-alert.user.js, 1.0.1 bytes)
  * via the same require mechanism the suite uses for the src runtime — dist is the
  * byte-identical committed copy of the runtime authority (see the
  * 'artifact authority' test below), so every assertion below locks shipped
@@ -135,13 +135,13 @@ function storageBytes(storage) {
 // Artifact authority.
 // ---------------------------------------------------------------------------
 
-test('artifact authority: dist is the generated 1.0.0 installable', () => {
+test('artifact authority: dist is the generated 1.0.1 installable', () => {
     const distBytes = fs.readFileSync(DIST_FILE);
     const digest = crypto.createHash('sha256').update(distBytes).digest('hex');
     const sidecar = fs.readFileSync(DIST_SIDECAR, 'utf8').trim();
     assert.equal(sidecar, `${digest}  dist/travian-attack-alert.user.js`);
-    assert.match(distBytes.toString('utf8'), /^\/\/ @version\s+1\.0\.0$/m);
-    assert.ok(distBytes.includes('const RELEASE_ID = "taa-1.0.0"'));
+    assert.match(distBytes.toString('utf8'), /^\/\/ @version\s+1\.0\.1$/m);
+    assert.ok(distBytes.includes('const RELEASE_ID = "taa-1.0.1"'));
     assert.deepEqual(Object.keys(runtime).sort(), Object.keys(require(RUNTIME_FILE)).sort());
 });
 

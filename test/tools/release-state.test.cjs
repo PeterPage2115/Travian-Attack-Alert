@@ -85,6 +85,9 @@ describe('release gate (stable-1.0, schema v2)', () => {
     assert.equal(state.schemaVersion, 2, 'release-state schemaVersion must be 2');
     assert.equal(state.version, String(pkg.version), 'release-state version must track package.json');
     assert.equal(state.releaseId, `taa-${pkg.version}`, 'release-state releaseId must track package.json');
+    const metadata = JSON.parse(fs.readFileSync(path.join(ROOT, 'metadata.json'), 'utf8'));
+    assert.equal(metadata.release?.version, state.version, 'release-state version must match the generated artifact metadata');
+    assert.equal(metadata.release?.releaseId, state.releaseId, 'release-state releaseId must match the generated artifact metadata');
   });
 
   it('keeps agent-automated work separate from owner-manual and publication gates', () => {

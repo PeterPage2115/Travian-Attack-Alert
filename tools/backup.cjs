@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 
 const ROOT = process.env.TAA_ROOT ? path.resolve(process.env.TAA_ROOT) : path.resolve(__dirname, '..');
 const BACKUPS = path.join(ROOT, 'backups');
-const FALLBACK_VERSION = '1.0.0';
+const FALLBACK_VERSION = '1.0.1';
 let RELEASE_VERSION = FALLBACK_VERSION;
 try { RELEASE_VERSION = require(path.join(ROOT, 'package.json')).version || FALLBACK_VERSION; } catch {}
 

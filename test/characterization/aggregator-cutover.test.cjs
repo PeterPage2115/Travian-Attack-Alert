@@ -70,7 +70,7 @@ test('runtime-api.select is removed', () => {
 test('runtime.js retains all 325 exports and pinned literals', () => {
   assert.equal(Object.keys(runtime).length, 325);
   const source = fs.readFileSync(path.join(SRC, 'runtime.js'), 'utf8');
-  assert.ok(source.includes('const RELEASE_ID = "taa-1.0.0";'), 'release ID literal stays in the authority text');
+  assert.ok(source.includes('const RELEASE_ID = "taa-1.0.1";'), 'release ID literal stays in the authority text');
   assert.ok(source.includes('let previousState'), 'mutable singleton declarations stay');
   assert.ok(source.includes('function startBrowserRuntime'), 'boot function stays');
   assert.equal(runtime.WEBHOOK_STORAGE_KEY, 'travianAllianceWebhookUrl_v1');

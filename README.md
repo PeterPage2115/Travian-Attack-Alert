@@ -2,9 +2,9 @@
 
 Alliance attack, raid, and departure alerts from Travian to your own Discord server.
 
-**Version 1.0.0, release ID `taa-1.0.0`. Release candidate under pilot, not yet declared public.**
+**Version 1.0.1, release ID `taa-1.0.1`. Release candidate under pilot; the in-place update is not yet verified or published.**
 
-Release candidate under pilot; stable publication requires owner pilot evidence (pilot checklist and machine-readable gate: `docs/release-history/1.0.0-rc/PILOT.md`, `docs/release-state.json`).
+Release candidate under pilot; stable publication requires owner pilot evidence (historical pilot checklist `docs/release-history/1.0.0-rc/PILOT.md` plus the machine-readable gate `docs/release-state.json`).
 
 The script (`Travian Attack Alert`, namespace `travian-attack-alert-public`) periodically reads the alliance members table on the canonical page and sends Discord alerts when attacks, raids, or departures appear. No bundler, framework, or runtime dependency is required in the browser. The installable file is `dist/travian-attack-alert.user.js`, generated from `src/` via `npm run build`.
 
@@ -28,7 +28,7 @@ Build the installable file from source (`src/` is the editable authority — `di
 npm run build
 ```
 
-Then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window). Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version `1.0.0`.
+Then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window). Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version `1.0.1`.
 
 On Chrome 138 and newer, Tampermonkey 5.3+ additionally needs the browser's `Allow User Scripts` toggle (or Developer Mode) enabled; this is Tampermonkey FAQ Q209. With that permission off, the browser runs no userscript at all: there is no panel, no Tampermonkey menu entry, no scan, and no alert, and the script cannot diagnose or report the condition because it never executes. To recover, enable `Allow User Scripts` (or Developer Mode), reload the page, then reinstall the script.
 
@@ -42,7 +42,7 @@ The script therefore supports automatic updates from that URL; a new version can
 
 The remote branch is observed protected through the public GitHub API with four required checks, while `docs/release-state.json` still records the owner attestation as unrecorded (`ownerManual.branchProtection: false`), so `stable` stays `false`. The API observation and the owner attestation are separate facts.
 
-Already-installed `1.0.0` copies that embedded the old broken URL cannot self-heal at the same version: a same-version install never triggers an update, and the stale embedded URL never resolves. Reinstall `1.0.0` from the corrected URL or file above (or re-run the install-from-file steps), keep all site data untouched, and confirm the version shown by the manager.
+Historical `1.0.0` copies that embedded the old broken `/main/` URL cannot self-heal at the same version: a same-version install never triggers an update, and the stale embedded URL never resolves. Reinstall from the corrected URL or file above (or re-run the install-from-file steps), keep all site data untouched, and confirm the version shown by the manager.
 
 Anyone migrating from the internal 6.2.1 line (historical internal development) should read `docs/MIGRATION-6X.md`: export settings first, disable the old sender, keep site data, then install 1.0.0.
 
@@ -131,7 +131,7 @@ Timestamp: 2026-08-23T09:46:01.000Z
 
 No historical or guessed time is invented. Missing observation time remains `Observation time unavailable`; inherited timestamps remain marked approximate observation. Delivery is at-least-once: a lost acknowledgement can produce a duplicate. HTTP 200 with a message ID acknowledges; network, timeout, abort, 429 and 5xx responses are retried, ordinary 4xx stays failed, and a malformed or ID-less 200 is uncertain and is not retried automatically. `wait=true` exists only in the in-memory send URL.
 
-The superseded 5.2.6-era contract is historical; the 1.0.0 contract above is the one this candidate implements.
+The superseded 5.2.6-era contract is historical; the 1.0.1 contract above is the one this candidate implements.
 
 ## Privacy
 
@@ -143,13 +143,13 @@ The superseded 5.2.6-era contract is historical; the 1.0.0 contract above is the
 
 ## Support
 
-Include the script version (`1.0.0`), your browser and userscript manager versions, steps to reproduce, what you expected, and what happened instead. Attach the redacted incident bundle. NEVER include a webhook URL or token, cookies, passwords, raw page HTML, or player data beyond what the bundle already contains in redacted form.
+Include the script version (`1.0.1`), your browser and userscript manager versions, steps to reproduce, what you expected, and what happened instead. Attach the redacted incident bundle. NEVER include a webhook URL or token, cookies, passwords, raw page HTML, or player data beyond what the bundle already contains in redacted form.
 
 To file a report, use the issue templates: [bug report](.github/ISSUE_TEMPLATE/bug_report.yml) or [feature request](.github/ISSUE_TEMPLATE/feature_request.yml). Please follow [CONTRIBUTING.md](CONTRIBUTING.md) and the [security policy](SECURITY.md) (synthetic/redacted data only, no secrets).
 
 Support for this project is entirely voluntary and optional. It has no influence on features, priorities, or fix timelines. There is no paid tier and nothing is locked behind support. The destination for voluntary support will be added by the maintainer.
 
-This page documents the Tampermonkey **1.0.0** userscript, identified by release ID `taa-1.0.0`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
+This page documents the Tampermonkey **1.0.1** userscript, identified by release ID `taa-1.0.1`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
 
 ## Documentation
 
@@ -159,7 +159,7 @@ This page documents the Tampermonkey **1.0.0** userscript, identified by release
 - Migration from the 6.x line: `docs/MIGRATION-6X.md`.
 - Detector behavior audit: `docs/AUDIT.md`.
 - Module graph (post-extraction): `docs/architecture.md` §10.
-- Release history (archived 1.0.0 candidate records): `docs/release-history/1.0.0-rc/`.
+- Release history (historical archived `1.0.0-rc` candidate records): `docs/release-history/1.0.0-rc/`.
 - Changelog: `CHANGELOG.md`.
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md) (workflow, tests, backup, PR checklist).
 - Pull request template: [.github/pull_request_template.md](.github/pull_request_template.md).
@@ -167,4 +167,4 @@ This page documents the Tampermonkey **1.0.0** userscript, identified by release
 
 ## Source layout
 
-`src/` is the editable authority; `dist/travian-attack-alert.user.js` is generated (`npm run build`) and never hand-edited. The runtime is 13 domain modules (`storage`, `lease`, `parser`, `snapshot`, `envelope`, `migration`, `discord`, `transport`, `dispatch`, `conservation`, `diagnostics`, `panel`, `acquisition`): each `X.js` facade re-exports its `X-impl.js` contract by reference (`storage` spans 12 sub-modules), while `constants`/`text`/`route` are pure modules covered by `pure-module-parity`. `src/runtime-api.js` is a thin aggregator over the 13 facades (reference-equal, no `select()` indirection) and does not depend on the legacy authority. Mutable lifecycle state has a single owner, `src/lifecycle.js` (`createLifecycleController`), fed through the seven-factory seam in `src/adapters.js`; `src/runtime.js` remains the legacy authority (325 exports, release ID `taa-1.0.0`) and production wiring is unchanged. Boundaries are enforced by `test/tools/module-architecture.test.cjs`; the panel-vs-menu boundary on this page is enforced by `test/tools/readme-runtime-contract.test.cjs`.
+`src/` is the editable authority; `dist/travian-attack-alert.user.js` is generated (`npm run build`) and never hand-edited. The runtime is 13 domain modules (`storage`, `lease`, `parser`, `snapshot`, `envelope`, `migration`, `discord`, `transport`, `dispatch`, `conservation`, `diagnostics`, `panel`, `acquisition`): each `X.js` facade re-exports its `X-impl.js` contract by reference (`storage` spans 12 sub-modules), while `constants`/`text`/`route` are pure modules covered by `pure-module-parity`. `src/runtime-api.js` is a thin aggregator over the 13 facades (reference-equal, no `select()` indirection) and does not depend on the legacy authority. Mutable lifecycle state has a single owner, `src/lifecycle.js` (`createLifecycleController`), fed through the seven-factory seam in `src/adapters.js`; `src/runtime.js` remains the legacy authority (325 exports, release ID `taa-1.0.1`) and production wiring is unchanged. Boundaries are enforced by `test/tools/module-architecture.test.cjs`; the panel-vs-menu boundary on this page is enforced by `test/tools/readme-runtime-contract.test.cjs`.

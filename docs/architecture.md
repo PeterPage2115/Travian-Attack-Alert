@@ -1,6 +1,6 @@
-# TravianAttackAlert Design System — 1.0.0 attack-only
+# TravianAttackAlert Design System — 1.0.1 attack-only
 
-This is the source of truth for the vanilla operations console at **1.0.0**. Values marked **EXTRACTED** are preserved from `initAdminPanel` and its helper seam in `src/runtime.js`; **PROPOSED** values complete the approved warm-charcoal + brass/olive direction and must be used as tokens rather than ad-hoc overrides.
+This is the source of truth for the vanilla operations console at **1.0.1**. Values marked **EXTRACTED** are preserved from `initAdminPanel` and its helper seam in `src/runtime.js`; **PROPOSED** values complete the approved warm-charcoal + brass/olive direction and must be used as tokens rather than ad-hoc overrides.
 
 ## 1. Atmosphere & Identity
 
@@ -182,9 +182,9 @@ The strategy is **mixed, restrained**: tonal shifts establish the base hierarchy
 | Host Travian typography/forced-colors can influence injected context | injected panel root | Existing host page cannot be controlled; root isolation and Chromium evidence mitigate it | Critical/Major finding blocks release |
 | Vanilla userscript ships as one generated file | `dist/*.user.js` (built from `src/`) | Required single-file installable constraint | Keep helper seam token-backed and covered by showcase |
 
-## 9. Release 1.0.0 attack-only operations contract
+## 9. Release 1.0.1 attack-only operations contract
 
-This section is the design contract for the shipped **1.0.0** attack-only userscript. The old `.omo/plans/refine-discord-alert-hierarchy.md` and `.omo/plans/redesign-alliance-news-discord-format.md` are historical input and are superseded; their 5.2.6-era contract is historical, and neither is an independent implementation plan. Previous news data remains inert until you clear site data and no news tab, route, webhook, or storage is active.
+This section is the design contract for the shipped **1.0.1** attack-only userscript. The old `.omo/plans/refine-discord-alert-hierarchy.md` and `.omo/plans/redesign-alliance-news-discord-format.md` are historical input and are superseded; their 5.2.6-era contract is historical, and neither is an independent implementation plan. Previous news data remains inert until you clear site data and no news tab, route, webhook, or storage is active.
 
 ### One-tab route and lifecycle topology
 
@@ -234,4 +234,4 @@ Pure modules `constants`/`text`/`route` keep independent implementations verifie
 - `src/runtime-api.js` is a thin aggregator: direct re-exports of the 13 domain facades. Every domain object IS the facade module itself (reference-equal), never a copied subset. The legacy `select()` indirection is removed and `runtime-api.js` does not depend on `src/runtime.js`.
 - `src/lifecycle.js` is the sole owner of mutable lifecycle state (`createLifecycleController` is its only export; 13 named singletons + 10 timer/listener handles live exactly once here). All other domains receive the controller object and never retain copies of its fields.
 - `src/adapters.js` is the seven-factory extraction seam (`createStorageAdapter`, `createClockAdapter`, `createSleepAdapter`, `createGmRequestAdapter`, `createDocumentLocationAdapter`, `createWebLocksAdapter`, `createSessionStorageAdapter`); domain modules never name host globals directly.
-- `src/runtime.js` remains the legacy authority: 325 exports pinned by the frozen `runtime-contract.json` oracle, release ID `taa-1.0.0`. Production wiring is unchanged (`src/userscript-entry.js` → `src/runtime.js` → `startBrowserRuntime`); `dist/*.user.js` is generated output, never hand-edited.
+- `src/runtime.js` remains the legacy authority: 325 exports pinned by the frozen `runtime-contract.json` oracle, release ID `taa-1.0.1`. Production wiring is unchanged (`src/userscript-entry.js` → `src/runtime.js` → `startBrowserRuntime`); `dist/*.user.js` is generated output, never hand-edited.
