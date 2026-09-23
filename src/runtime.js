@@ -4629,25 +4629,30 @@ const RELEASE_ID = "taa-1.0.0";
     const read = monitorReadRaw(storage, key);
     return read.ok && read.value === expected;
   }
-  function restoreMonitorRawVerified(storage, key, raw) {
-    if (raw === void 0) {
-      return monitorRestoreRaw(storage, key, void 0);
-    }
-    return monitorWriteReadback(storage, key, raw).ok;
+  // A captured pre-reset read keeps its success flag next to its value: a read
+  // that failed must never be treated as a key that was proven absent, because
+  // only a proven-absent key may be deleted on restore.
+  function restoreMonitorRawVerified(storage, key, capture) {
+    if (!capture.ok) return false;
+    return capture.value === void 0
+      ? monitorRestoreRaw(storage, key, void 0)
+      : monitorWriteReadback(storage, key, capture.value).ok;
   }
   // Bounded rollback for a reset whose write returned but could not be verified:
   // re-write the exact pre-reset bytes through the same verified write path the
   // envelope writer uses, then re-read both keys. The source backup selector is
   // never consulted here — it is a filesystem snapshot, not a browser-storage
-  // rollback mechanism.
-  function rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, reason) {
+  // rollback mechanism. A capture that was never read reports the existing
+  // indeterminate outcome instead of deleting bytes of unknown content.
+  function rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, reason) {
+    if (!activeCapture.ok || !backupCapture.ok) return { outcome: "baseline-reset-indeterminate", reason, rescan: false };
     const activeKey = monitorActiveStorageKey(world);
     const backupKey = monitorBackupStorageKey(world);
-    const activeRestored = restoreMonitorRawVerified(void 0, activeKey, activeRawBefore);
-    const backupRestored = restoreMonitorRawVerified(void 0, backupKey, backupRawBefore);
+    const activeRestored = restoreMonitorRawVerified(void 0, activeKey, activeCapture);
+    const backupRestored = restoreMonitorRawVerified(void 0, backupKey, backupCapture);
     const verified = activeRestored && backupRestored
-      && monitorRawValueEquals(void 0, activeKey, activeRawBefore)
-      && monitorRawValueEquals(void 0, backupKey, backupRawBefore);
+      && monitorRawValueEquals(void 0, activeKey, activeCapture.value)
+      && monitorRawValueEquals(void 0, backupKey, backupCapture.value);
     return verified
       ? { outcome: "reset-rolled-back", reason, rescan: false }
       : { outcome: "baseline-reset-indeterminate", reason, rescan: false };
@@ -4674,10 +4679,12 @@ const RELEASE_ID = "taa-1.0.0";
     const original = loaded.envelope;
     const activeKey = monitorActiveStorageKey(world);
     const backupKey = monitorBackupStorageKey(world);
-    const activeRead = monitorReadRaw(void 0, activeKey);
-    const backupRead = monitorReadRaw(void 0, backupKey);
-    const activeRawBefore = activeRead.ok ? activeRead.value : void 0;
-    const backupRawBefore = backupRead.ok ? backupRead.value : void 0;
+    const activeCapture = monitorReadRaw(void 0, activeKey);
+    const backupCapture = monitorReadRaw(void 0, backupKey);
+    // Both pre-reset snapshots are required for a bounded rollback. If either
+    // cannot be read, abort before any write: the reset must never write over
+    // (or later delete) bytes whose pre-reset content was not captured.
+    if (!activeCapture.ok || !backupCapture.ok) return { outcome: "baseline-reset-indeterminate", reason: "pre-reset-read-failed", rescan: false };
     const resetEnvelope = createMonitorEnvelopeV1(world, Object.assign({}, original, {
       generation: original.generation + 1,
       baselineByPlayerId: {},
@@ -4700,15 +4707,15 @@ const RELEASE_ID = "taa-1.0.0";
       if (verified) {
         return { outcome: "ok", rescan: true, generation: readback.envelope.generation, previous: original };
       }
-      return rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, "readback-unverified");
+      return rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, "readback-unverified");
     }
     const writeAttempted = commit.outcome === "wrote-failed" || commit.outcome === "readback-mismatch";
     if (!writeAttempted
-      && monitorRawValueEquals(void 0, activeKey, activeRawBefore)
-      && monitorRawValueEquals(void 0, backupKey, backupRawBefore)) {
+      && monitorRawValueEquals(void 0, activeKey, activeCapture.value)
+      && monitorRawValueEquals(void 0, backupKey, backupCapture.value)) {
       return { outcome: "reset-failed", reason: commit.outcome, rescan: false };
     }
-    return rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, commit.outcome);
+    return rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, commit.outcome);
   }
   function monitorEventPlayerId(event) {
     if (!event || typeof event !== "object") {

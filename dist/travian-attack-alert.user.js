@@ -4727,18 +4727,17 @@ var require_runtime = __commonJS({
         const read = monitorReadRaw(storage, key);
         return read.ok && read.value === expected;
       }
-      function restoreMonitorRawVerified(storage, key, raw) {
-        if (raw === void 0) {
-          return monitorRestoreRaw(storage, key, void 0);
-        }
-        return monitorWriteReadback(storage, key, raw).ok;
+      function restoreMonitorRawVerified(storage, key, capture) {
+        if (!capture.ok) return false;
+        return capture.value === void 0 ? monitorRestoreRaw(storage, key, void 0) : monitorWriteReadback(storage, key, capture.value).ok;
       }
-      function rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, reason) {
+      function rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, reason) {
+        if (!activeCapture.ok || !backupCapture.ok) return { outcome: "baseline-reset-indeterminate", reason, rescan: false };
         const activeKey = monitorActiveStorageKey(world);
         const backupKey = monitorBackupStorageKey(world);
-        const activeRestored = restoreMonitorRawVerified(void 0, activeKey, activeRawBefore);
-        const backupRestored = restoreMonitorRawVerified(void 0, backupKey, backupRawBefore);
-        const verified = activeRestored && backupRestored && monitorRawValueEquals(void 0, activeKey, activeRawBefore) && monitorRawValueEquals(void 0, backupKey, backupRawBefore);
+        const activeRestored = restoreMonitorRawVerified(void 0, activeKey, activeCapture);
+        const backupRestored = restoreMonitorRawVerified(void 0, backupKey, backupCapture);
+        const verified = activeRestored && backupRestored && monitorRawValueEquals(void 0, activeKey, activeCapture.value) && monitorRawValueEquals(void 0, backupKey, backupCapture.value);
         return verified ? { outcome: "reset-rolled-back", reason, rescan: false } : { outcome: "baseline-reset-indeterminate", reason, rescan: false };
       }
       function resetCurrentWorldAttackBaseline() {
@@ -4756,10 +4755,9 @@ var require_runtime = __commonJS({
         const original = loaded.envelope;
         const activeKey = monitorActiveStorageKey(world);
         const backupKey = monitorBackupStorageKey(world);
-        const activeRead = monitorReadRaw(void 0, activeKey);
-        const backupRead = monitorReadRaw(void 0, backupKey);
-        const activeRawBefore = activeRead.ok ? activeRead.value : void 0;
-        const backupRawBefore = backupRead.ok ? backupRead.value : void 0;
+        const activeCapture = monitorReadRaw(void 0, activeKey);
+        const backupCapture = monitorReadRaw(void 0, backupKey);
+        if (!activeCapture.ok || !backupCapture.ok) return { outcome: "baseline-reset-indeterminate", reason: "pre-reset-read-failed", rescan: false };
         const resetEnvelope = createMonitorEnvelopeV1(world, Object.assign({}, original, {
           generation: original.generation + 1,
           baselineByPlayerId: {},
@@ -4780,13 +4778,13 @@ var require_runtime = __commonJS({
           if (verified) {
             return { outcome: "ok", rescan: true, generation: readback.envelope.generation, previous: original };
           }
-          return rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, "readback-unverified");
+          return rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, "readback-unverified");
         }
         const writeAttempted = commit.outcome === "wrote-failed" || commit.outcome === "readback-mismatch";
-        if (!writeAttempted && monitorRawValueEquals(void 0, activeKey, activeRawBefore) && monitorRawValueEquals(void 0, backupKey, backupRawBefore)) {
+        if (!writeAttempted && monitorRawValueEquals(void 0, activeKey, activeCapture.value) && monitorRawValueEquals(void 0, backupKey, backupCapture.value)) {
           return { outcome: "reset-failed", reason: commit.outcome, rescan: false };
         }
-        return rollbackCurrentWorldAttackBaseline(world, activeRawBefore, backupRawBefore, commit.outcome);
+        return rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, commit.outcome);
       }
       function monitorEventPlayerId(event) {
         if (!event || typeof event !== "object") {

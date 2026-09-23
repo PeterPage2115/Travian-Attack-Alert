@@ -122,12 +122,14 @@ function createRuntimeBootShim() {
   const gm = new Map();
   const menu = new Map();
   const alerts = [];
+  const deletes = [];
   const hooks = { readiness: 0, extraction: 0, snapshots: [], leaseAcquired: [], standby: [] };
   const observers = [];
   const timers = [];
   const realClear = globalThis.clearTimeout;
   let capturing = false;
   let writeFault = null;
+  let readFault = null;
 
   class ShimMutationObserver {
     constructor(callback) { this.callback = callback; this.active = false; this.disconnected = false; observers.push(this); }
@@ -169,7 +171,17 @@ function createRuntimeBootShim() {
   define('localStorage', localStorage);
   define('sessionStorage', sessionStorage);
   define('MutationObserver', ShimMutationObserver);
-  define('GM_getValue', (key, fallback) => (gm.has(key) ? gm.get(key) : fallback));
+  define('GM_getValue', (key, fallback) => {
+    if (readFault && String(key).includes(readFault.keySubstring)) {
+      if (readFault.skip > 0) {
+        readFault.skip -= 1;
+      } else {
+        if (readFault.once) readFault = null;
+        throw new Error('injected GM read failure');
+      }
+    }
+    return gm.has(key) ? gm.get(key) : fallback;
+  });
   define('GM_setValue', (key, value) => {
     if (writeFault && String(key).includes(writeFault.keySubstring)) {
       const fault = writeFault;
@@ -180,7 +192,7 @@ function createRuntimeBootShim() {
     }
     gm.set(key, value);
   });
-  define('GM_deleteValue', (key) => { gm.delete(key); });
+  define('GM_deleteValue', (key) => { deletes.push(String(key)); gm.delete(key); });
   define('GM_registerMenuCommand', (name, callback) => { menu.set(String(name), callback); });
   define('alert', (message) => { alerts.push(String(message)); });
   define('setTimeout', (fn, delayMs, ...args) => {
@@ -199,6 +211,7 @@ function createRuntimeBootShim() {
     gm,
     menu,
     alerts,
+    deletes,
     hooks,
     observers,
     timers,
@@ -216,6 +229,11 @@ function createRuntimeBootShim() {
     failNextWrite(keySubstring, mode = 'throw') { writeFault = { keySubstring, mode, once: true }; },
     failEveryWrite(keySubstring, mode = 'throw') { writeFault = { keySubstring, mode, once: false }; },
     clearWriteFault() { writeFault = null; },
+    // Fail the next read of a matching key after `skip` successful reads, so a
+    // test can let the envelope load read pass and fail the reset's own
+    // pre-reset snapshot read.
+    failReadAfter(keySubstring, skip = 0) { readFault = { keySubstring, skip, once: true }; },
+    clearReadFault() { readFault = null; },
     restore() {
       for (const timer of timers) if (!timer.cleared) realClear(timer.handle);
       for (const [name, descriptor] of Object.entries(descriptors)) {
@@ -442,6 +460,93 @@ test('unverifiable rollback reports baseline-reset-indeterminate without success
     const alertMessage = env.alerts[env.alerts.length - 1];
     assert.match(alertMessage, /indeterminate|could not be verified/u);
     assert.match(alertMessage, /incident bundle|recovery/u);
+    assert.doesNotMatch(alertMessage, /fresh baseline/u, 'an indeterminate reset must not claim success');
+  } finally { env.restore(); }
+});
+
+test('pre-reset active read failure aborts before any reset write and does not rescan', () => {
+  const { env } = bootLeaderDocument({ table: [shimRow('101', 'Player 101')] });
+  try {
+    seedPreservedStores(env);
+    const stale = seedQueues(readEnvelope(env, HOST));
+    writeEnvelope(env, HOST, stale);
+    const activeBefore = activeRaw(env, ACTIVE_KEY);
+    const backupBefore = activeRaw(env, BACKUP_KEY);
+    const extractionBefore = env.hooks.extraction;
+
+    // The envelope load reads the active key once; the pre-reset snapshot read
+    // is the second read and fails. A one-shot reset write failure is armed on
+    // top: the defect needed BOTH to delete the unread active bytes.
+    env.failReadAfter(ACTIVE_KEY, 1);
+    env.failNextWrite(ACTIVE_KEY, 'throw');
+    invokeMenu(env, 'Clear attack memory');
+    env.clearWriteFault();
+    env.clearReadFault();
+
+    assert.equal(env.hooks.extraction, extractionBefore, 'an unread pre-reset snapshot must not start a fresh scan');
+    assert.equal(activeRaw(env, ACTIVE_KEY), activeBefore, 'the unread active bytes must never be deleted');
+    assert.equal(activeRaw(env, BACKUP_KEY), backupBefore, 'the backup bytes must be unchanged');
+    assert.deepEqual(env.deletes.filter((key) => key === ACTIVE_KEY || key === BACKUP_KEY), [], 'no envelope key may be deleted');
+    const alertMessage = env.alerts[env.alerts.length - 1];
+    assert.match(alertMessage, /indeterminate|could not be verified/u);
+    assert.match(alertMessage, /incident bundle|recovery/u);
+    assert.doesNotMatch(alertMessage, /fresh baseline/u, 'an aborted reset must not claim success');
+  } finally { env.restore(); }
+});
+
+test('pre-reset backup read failure aborts before any reset write', () => {
+  const { env } = bootLeaderDocument({ table: [shimRow('101', 'Player 101')] });
+  try {
+    seedPreservedStores(env);
+    const stale = seedQueues(readEnvelope(env, HOST));
+    writeEnvelope(env, HOST, stale);
+    const activeBefore = activeRaw(env, ACTIVE_KEY);
+    const backupBefore = activeRaw(env, BACKUP_KEY);
+    const extractionBefore = env.hooks.extraction;
+
+    env.failReadAfter(BACKUP_KEY, 1);
+    env.failNextWrite(ACTIVE_KEY, 'throw');
+    invokeMenu(env, 'Clear attack memory');
+    env.clearWriteFault();
+    env.clearReadFault();
+
+    assert.equal(env.hooks.extraction, extractionBefore, 'an unread pre-reset snapshot must not start a fresh scan');
+    assert.equal(activeRaw(env, ACTIVE_KEY), activeBefore, 'the active bytes must be unchanged');
+    assert.equal(activeRaw(env, BACKUP_KEY), backupBefore, 'the unread backup bytes must never be deleted');
+    assert.deepEqual(env.deletes.filter((key) => key === ACTIVE_KEY || key === BACKUP_KEY), [], 'no envelope key may be deleted');
+    const alertMessage = env.alerts[env.alerts.length - 1];
+    assert.match(alertMessage, /indeterminate|could not be verified/u);
+    assert.doesNotMatch(alertMessage, /fresh baseline/u, 'an aborted reset must not claim success');
+  } finally { env.restore(); }
+});
+
+test('unread pre-reset snapshot is reported indeterminate and never deleted when the reset write fails', () => {
+  const { env } = bootLeaderDocument({ table: [shimRow('101', 'Player 101')] });
+  try {
+    seedPreservedStores(env);
+    const stale = seedQueues(readEnvelope(env, HOST));
+    writeEnvelope(env, HOST, stale);
+    const activeBefore = activeRaw(env, ACTIVE_KEY);
+    const backupBefore = activeRaw(env, BACKUP_KEY);
+    const extractionBefore = env.hooks.extraction;
+
+    // Transient read failure plus a persistent reset write failure: before the
+    // fix the rollback deleted the unread active key and reported a verified
+    // rollback ("previous baseline was restored") over erased bytes.
+    env.failReadAfter(ACTIVE_KEY, 1);
+    env.failEveryWrite(ACTIVE_KEY, 'throw');
+    invokeMenu(env, 'Clear attack memory');
+    env.clearWriteFault();
+    env.clearReadFault();
+
+    assert.equal(env.hooks.extraction, extractionBefore, 'an indeterminate reset must not start a fresh scan');
+    assert.equal(activeRaw(env, ACTIVE_KEY), activeBefore, 'the unread active bytes survive an unverifiable reset');
+    assert.equal(activeRaw(env, BACKUP_KEY), backupBefore, 'the backup bytes must be unchanged');
+    assert.deepEqual(env.deletes, [], 'no key may be deleted while its pre-reset value was never read');
+    const alertMessage = env.alerts[env.alerts.length - 1];
+    assert.match(alertMessage, /indeterminate|could not be verified/u);
+    assert.match(alertMessage, /incident bundle|recovery/u);
+    assert.doesNotMatch(alertMessage, /previous baseline was restored/u, 'an unread snapshot cannot be reported as a verified rollback');
     assert.doesNotMatch(alertMessage, /fresh baseline/u, 'an indeterminate reset must not claim success');
   } finally { env.restore(); }
 });

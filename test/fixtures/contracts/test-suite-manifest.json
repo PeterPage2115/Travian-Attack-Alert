@@ -93,7 +93,7 @@
       "id": "suite:test/characterization/attack-memory-reset.test.cjs",
       "path": "test/characterization/attack-memory-reset.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 6,
+      "expectedExecutionCount": 9,
       "coverage": [
         "attack-memory-reset",
         "menu-command",
@@ -562,7 +562,7 @@
   ],
   "totals": {
     "suiteCount": 54,
-    "expectedExecutionCount": 1150,
+    "expectedExecutionCount": 1153,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -574,7 +574,7 @@
       },
       "source-artifact": {
         "suiteCount": 16,
-        "expectedExecutionCount": 437
+        "expectedExecutionCount": 440
       },
       "tool": {
         "suiteCount": 20,
