@@ -74,7 +74,15 @@ Anyone moving a private 6.2.1 profile (historical internal development) to publi
 
 ## Updates
 
-The script carries an `@updateURL` channel pointing at the protected-main raw dist file, so managers that honor it update automatically. A new version can also be applied by repeating the install-from-file steps from `README.md` with the new file and confirming the version shown by the manager. Never enable two senders at once during an update.
+The script carries an `@updateURL` channel pointing at the default release branch `release/public-1.0.0` (`main` does not exist on the remote), so managers that honor it update automatically from the corrected raw dist file:
+
+```text
+https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
+```
+
+A new version can also be applied by repeating the install-from-file steps from `README.md` with the new file and confirming the version shown by the manager. Never enable two senders at once during an update.
+
+Already-installed `1.0.0` copies that embedded the old broken URL cannot self-heal at the same version: a same-version install never triggers an update, and the stale embedded URL never resolves. Reinstall `1.0.0` from the corrected URL or file above (or re-run the install-from-file steps), keep all site data untouched, and confirm the version shown by the manager.
 
 If the new version misbehaves, roll back: disable the new script, re-import the prior `.user.js` file (or re-enable the kept old script entry), keep all site data untouched (do not clear storage: roster, mappings, baselines, and queue state live there), reload the canonical route, and verify the monitor resumes with its queue intact.
 
@@ -101,6 +109,7 @@ Export the incident bundle FIRST, before touching anything: Diagnostics tab (`ta
 
 Then match your state:
 
+- No script running at all: on Chrome 138 and newer, Tampermonkey 5.3+ needs the browser's `Allow User Scripts` toggle (or Developer Mode) enabled; this is Tampermonkey FAQ Q209. With that permission off, the browser runs no userscript at all: there is no panel, no Tampermonkey menu entry, no scan, and no alert, and the script cannot diagnose the condition because it never executes. Enable `Allow User Scripts` (or Developer Mode), reload the page, then reinstall the script.
 - Webhook missing: Overview Delivery says `webhook missing — configuration required; queue preserved`. Set the webhook through the Tampermonkey menu. The queue is preserved, nothing is lost.
 - Wrong page: the panel shows inert guidance instead of scan state. Open the exact query-free `/alliance/profile/members` route.
 - Login page: log in on the Travian site first. The monitor never scans a login page and never mutates state there.

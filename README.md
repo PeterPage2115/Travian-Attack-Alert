@@ -28,15 +28,21 @@ Build the installable file from source (`src/` is the editable authority — `di
 npm run build
 ```
 
-Then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window). Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version `1.0.0`. On Chrome 138 and newer, Tampermonkey additionally needs the browser's Allow User Scripts toggle (Tampermonkey FAQ Q209); without it, local script installation is blocked by the browser.
+Then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window). Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version `1.0.0`.
 
-Updates are delivered through the `@updateURL` channel pointing at the protected-main raw dist file:
+On Chrome 138 and newer, Tampermonkey 5.3+ additionally needs the browser's `Allow User Scripts` toggle (or Developer Mode) enabled; this is Tampermonkey FAQ Q209. With that permission off, the browser runs no userscript at all: there is no panel, no Tampermonkey menu entry, no scan, and no alert, and the script cannot diagnose or report the condition because it never executes. To recover, enable `Allow User Scripts` (or Developer Mode), reload the page, then reinstall the script.
+
+Updates are delivered through the `@updateURL` channel pointing at the default release branch `release/public-1.0.0` (`main` does not exist on the remote):
 
 ```text
-https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js
+https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
 ```
 
 The script therefore supports automatic updates from that URL; a new version can also be applied by repeating the install-from-file steps with the new file and confirming the version shown by the manager. Never enable two senders at once during an update.
+
+The remote branch is observed protected through the public GitHub API with four required checks, while `docs/release-state.json` still records the owner attestation as unrecorded (`ownerManual.branchProtection: false`), so `stable` stays `false`. The API observation and the owner attestation are separate facts.
+
+Already-installed `1.0.0` copies that embedded the old broken URL cannot self-heal at the same version: a same-version install never triggers an update, and the stale embedded URL never resolves. Reinstall `1.0.0` from the corrected URL or file above (or re-run the install-from-file steps), keep all site data untouched, and confirm the version shown by the manager.
 
 Anyone migrating from the internal 6.2.1 line (historical internal development) should read `docs/MIGRATION-6X.md`: export settings first, disable the old sender, keep site data, then install 1.0.0.
 
