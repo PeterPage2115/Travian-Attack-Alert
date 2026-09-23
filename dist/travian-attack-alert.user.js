@@ -5456,19 +5456,37 @@ var require_runtime = __commonJS({
       }
       function monitorPendingMapNeedsCleanup(map, world) {
         const entry = monitorLegacyWorldEntry(map, world);
+        if (Array.isArray(entry)) return entry.length > 0;
         if (!isPlainMonitorObject(entry)) return false;
         return monitorLegacyStoreRecords(entry).length > 0 || Array.isArray(entry.inFlight) && entry.inFlight.length > 0;
       }
       function monitorFailedMapNeedsCleanup(map, world) {
-        return monitorLegacyStoreRecords(monitorLegacyWorldEntry(map, world)).length > 0;
+        const entry = monitorLegacyWorldEntry(map, world);
+        if (Array.isArray(entry)) return entry.length > 0;
+        return monitorLegacyStoreRecords(entry).length > 0;
+      }
+      function monitorClearedLegacyWorldEntry(entry, cleared) {
+        return Array.isArray(entry) ? cleared : Object.assign({}, entry, cleared);
       }
       function monitorStagedLegacyCleanupV1(world, options = {}) {
         const hostname = normalizeHostname(world);
         const storage = options.storage;
         const legacy = options.legacy || {};
+        const fenceLost = () => typeof options.beforeCommit === "function" && options.beforeCommit() !== true;
         if (monitorPendingMapNeedsCleanup(legacy.pending, hostname)) {
+          if (fenceLost()) {
+            return {
+              outcome: "fenced-reject",
+              stage: "pending-cleanup",
+              reason: "fenced-reject",
+              blocked: true
+            };
+          }
           const nextPending = Object.assign({}, legacy.pending);
-          nextPending[hostname] = Object.assign({}, monitorLegacyWorldEntry(legacy.pending, hostname), { events: [], inFlight: [] });
+          nextPending[hostname] = monitorClearedLegacyWorldEntry(
+            monitorLegacyWorldEntry(legacy.pending, hostname),
+            { events: [], inFlight: [] }
+          );
           const pendingWrite = monitorWriteReadback(
             storage,
             PENDING_BATCH_STORAGE_KEY,
@@ -5484,8 +5502,19 @@ var require_runtime = __commonJS({
           }
         }
         if (monitorFailedMapNeedsCleanup(legacy.failed, hostname)) {
+          if (fenceLost()) {
+            return {
+              outcome: "fenced-reject",
+              stage: "failed-cleanup",
+              reason: "fenced-reject",
+              blocked: true
+            };
+          }
           const nextFailed = Object.assign({}, legacy.failed);
-          nextFailed[hostname] = Object.assign({}, monitorLegacyWorldEntry(legacy.failed, hostname), { events: [] });
+          nextFailed[hostname] = monitorClearedLegacyWorldEntry(
+            monitorLegacyWorldEntry(legacy.failed, hostname),
+            { events: [] }
+          );
           const failedWrite = monitorWriteReadback(
             storage,
             FAILED_BATCH_STORAGE_KEY,
@@ -5665,7 +5694,8 @@ var require_runtime = __commonJS({
         if (monitorLegacyWorldKeyed(legacy, hostname)) {
           const cleanup = monitorStagedLegacyCleanupV1(hostname, {
             storage: options.storage,
-            legacy
+            legacy,
+            beforeCommit: options.beforeCommit
           });
           if (cleanup.outcome !== "ok") {
             return Object.assign(result, cleanup);

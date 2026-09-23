@@ -779,13 +779,16 @@ function assertRepresentedExactlyOnce(envelope, ids, label) {
 }
 
 // Byte-presence of the world's legacy records across all three stores; a
-// removed world entry counts as drained too.
+// removed world entry counts as drained too. An array-form world entry carries
+// its records directly (no `events`/`inFlight` wrapper).
 function legacyStoredRecordCount(storage, worldKey) {
-    const pending = JSON.parse(storage.values.get(PENDING_KEY) || '{}')[worldKey] || {};
-    const failed = JSON.parse(storage.values.get(FAILED_KEY) || '{}')[worldKey] || {};
-    return (Array.isArray(pending.events) ? pending.events.length : 0)
-        + (Array.isArray(pending.inFlight) ? pending.inFlight.length : 0)
-        + (Array.isArray(failed.events) ? failed.events.length : 0);
+    const pending = JSON.parse(storage.values.get(PENDING_KEY) || '{}')[worldKey];
+    const failed = JSON.parse(storage.values.get(FAILED_KEY) || '{}')[worldKey];
+    const count = (entry) => Array.isArray(entry)
+        ? entry.length
+        : (Array.isArray(entry && entry.events) ? entry.events.length : 0)
+            + (Array.isArray(entry && entry.inFlight) ? entry.inFlight.length : 0);
+    return count(pending) + count(failed);
 }
 
 // Storage with deterministic failure injection on exact keys:
@@ -1151,4 +1154,326 @@ test('(k8) malformed legacy record fails the world preflight with zero writes', 
         '(k8): a malformed record must fail the whole-world preflight before any envelope/cleanup write, leaving all three stores byte-for-byte'
     );
     assert.equal(storage.log.sets.length, 0, '(k8): a malformed world preflight performs zero writes');
+});
+
+// ---------------------------------------------------------------------------
+// (k9/k10/k13) staged-cleanup lease fence. Reconciliation already receives the
+// live lease predicate (`beforeCommit`/`isCurrentLeaseOwner`) and fences the
+// envelope commit with it. The staged legacy cleanup must fence EACH of its two
+// writes the same way: ownership lost after the envelope commit (k9), after the
+// verified pending write (k10), or during a fresh migration (k13) must stop
+// with a fenced rejection, leave the not-yet-written store byte-identical, and
+// resume on the next ownership pass.
+// (k11/k12) array-form legacy world entries. monitorLegacyEvents migrates both
+// a direct array and an `{ events }` object, so the cleanup predicates and the
+// staged replacement must recognise and clear the array form with the same
+// verified readback and store order.
+// ---------------------------------------------------------------------------
+
+// controlledStorage plus a live-lease model: the fence reads `lease.owned`, and
+// writing `lease.loseOnSet` loses ownership exactly at that write. This
+// reproduces a lease loss between two staged writes without counting the
+// runtime's internal fence calls.
+function leaseFencedStorage() {
+    const storage = controlledStorage();
+    storage.lease = { owned: true, loseOnSet: null };
+    const baseSet = storage.set.bind(storage);
+    storage.set = (key, value) => {
+        const result = baseSet(key, value);
+        if (storage.lease.loseOnSet === key) storage.lease.owned = false;
+        return result;
+    };
+    return storage;
+}
+
+// `form` selects which store carries the direct array; the other store keeps
+// the object form and the unrelated world always keeps the object form, so
+// "unrelated worlds untouched" stays a byte proof.
+function seedArrayFormLegacy(storage, form) {
+    const pendingWorld = form === 'pending'
+        ? [persistedLegacyEvent(WORLD, '101', 1), persistedLegacyEvent(WORLD, '102', 2)]
+        : legacyPendingEntry(WORLD);
+    const failedWorld = form === 'failed'
+        ? [persistedLegacyEvent(WORLD, '105', 5), persistedLegacyEvent(WORLD, '106', 6)]
+        : runtime.enqueueFailedEvents(
+            {}, WORLD, [persistedLegacyEvent(WORLD, '105', 5), persistedLegacyEvent(WORLD, '106', 6)], T0 + 7, '404'
+        )[WORLD];
+    const pending = { [WORLD]: pendingWorld, [OTHER_WORLD]: legacyPendingEntry(OTHER_WORLD) };
+    const failed = {
+        [WORLD]: failedWorld,
+        [OTHER_WORLD]: runtime.enqueueFailedEvents(
+            {}, OTHER_WORLD, [persistedLegacyEvent(OTHER_WORLD, '205', 5)], T0 + 7, '404'
+        )[OTHER_WORLD],
+    };
+    storage.values.set(PENDING_KEY, JSON.stringify(pending));
+    storage.values.set(FAILED_KEY, JSON.stringify(failed));
+    return { pending, failed };
+}
+
+function assertNoAutoSend(envelope, ids, label) {
+    const activeIds = [...envelope.pending, ...envelope.inFlight].map((event) => String(event.eventId));
+    assert.deepEqual(
+        activeIds.filter((id) => ids.includes(id)), [],
+        `${label}: unmatched legacy records must never enter the active send queues (no auto-send)`
+    );
+    for (const id of ids) {
+        const entry = envelope.uncertain.find((event) => String(event.eventId) === id);
+        assert.ok(entry, `${label}: ${id} must be represented as an explicit uncertain-legacy-settlement entry`);
+        assert.ok(
+            String(entry.deliveryState) === 'uncertain-legacy-settlement' || String(entry.responseClass) === 'uncertain-legacy-settlement',
+            `${label}: ${id} must carry the explicit uncertain-legacy-settlement marker`
+        );
+    }
+}
+
+test('(k9) lease loss before the pending cleanup write: fenced reject, both legacy stores byte-identical, resume drains', () => {
+    const storage = leaseFencedStorage();
+    seedMigratedEnvelope(storage);
+    const fixtures = seedPersistedLegacy(storage);
+    const expectedIds = expectedLegacyIds(fixtures.pending, fixtures.failed);
+    const pendingBytesBefore = storage.values.get(PENDING_KEY);
+    const failedBytesBefore = storage.values.get(FAILED_KEY);
+    // Ownership is lost exactly when the envelope's active key commits: after
+    // the commit fences and before the first staged cleanup write.
+    storage.lease.loseOnSet = runtime.monitorActiveStorageKey(WORLD);
+
+    const outcome = reconcile(storage, { beforeCommit: () => storage.lease.owned });
+    assertOffline(outcome, '(k9)');
+    assert.equal(outcome.threw, false, `(k9): a lease loss must not throw (${outcome.error && outcome.error.message})`);
+    assert.notEqual(outcome.result.outcome, 'ok', '(k9): a lost lease must never report a successful reconciliation');
+    assert.ok(
+        outcomeText(outcome).includes('fenced-reject'),
+        `(k9): the cleanup must stop with a fenced rejection; got ${outcomeText(outcome)}`
+    );
+    assert.ok(
+        outcomeText(outcome).includes('pending-cleanup'),
+        `(k9): the exact stage must name pending-cleanup; got ${outcomeText(outcome)}`
+    );
+    assert.equal(storage.values.get(PENDING_KEY), pendingBytesBefore, '(k9): the unfenced pending write must not happen');
+    assert.equal(storage.values.get(FAILED_KEY), failedBytesBefore, '(k9): the later failed store must stay byte-identical');
+    assertRepresentedExactlyOnce(persistedEnvelope(storage), expectedIds, '(k9 envelope commit)');
+
+    storage.lease.owned = true;
+    const resumed = reconcile(storage);
+    assertOffline(resumed, '(k9-resume)');
+    assert.equal(resumed.result.outcome, 'reconciled', `(k9-resume): a live lease must finish the cleanup; got ${outcomeText(resumed)}`);
+    assertRepresentedExactlyOnce(persistedEnvelope(storage), expectedIds, '(k9-resume)');
+    assert.equal(
+        legacyStoredRecordCount(storage, WORLD), 0,
+        '(k9-resume): conservation failure - the resumed run must drain every legacy store'
+    );
+});
+
+test('(k10) lease loss before the failed cleanup write: verified pending write persists, failed byte-identical, resume drains', () => {
+    const storage = leaseFencedStorage();
+    seedMigratedEnvelope(storage);
+    const fixtures = seedPersistedLegacy(storage);
+    const expectedIds = expectedLegacyIds(fixtures.pending, fixtures.failed);
+    const failedBytesBefore = storage.values.get(FAILED_KEY);
+    // Ownership survives the commit and the pending write, then is lost before
+    // the failed cleanup write.
+    storage.lease.loseOnSet = PENDING_KEY;
+
+    const outcome = reconcile(storage, { beforeCommit: () => storage.lease.owned });
+    assertOffline(outcome, '(k10)');
+    assert.equal(outcome.threw, false, `(k10): a lease loss must not throw (${outcome.error && outcome.error.message})`);
+    assert.notEqual(outcome.result.outcome, 'ok', '(k10): a lost lease must never report a successful reconciliation');
+    assert.ok(
+        outcomeText(outcome).includes('fenced-reject'),
+        `(k10): the cleanup must stop with a fenced rejection; got ${outcomeText(outcome)}`
+    );
+    assert.ok(
+        outcomeText(outcome).includes('failed-cleanup'),
+        `(k10): the exact stage must name failed-cleanup; got ${outcomeText(outcome)}`
+    );
+    const pendingWorld = JSON.parse(storage.values.get(PENDING_KEY))[WORLD];
+    assert.equal(
+        (pendingWorld.events || []).length + (pendingWorld.inFlight || []).length, 0,
+        '(k10): the verified pending write must persist (an earlier verified write is never reconstructed)'
+    );
+    assert.equal(storage.values.get(FAILED_KEY), failedBytesBefore, '(k10): the failed store must stay byte-identical');
+    assertRepresentedExactlyOnce(persistedEnvelope(storage), expectedIds, '(k10 envelope commit)');
+
+    storage.lease.owned = true;
+    const resumed = reconcile(storage);
+    assertOffline(resumed, '(k10-resume)');
+    assert.equal(resumed.result.outcome, 'reconciled', `(k10-resume): a live lease must finish the cleanup; got ${outcomeText(resumed)}`);
+    assertRepresentedExactlyOnce(persistedEnvelope(storage), expectedIds, '(k10-resume)');
+    assert.equal(
+        legacyStoredRecordCount(storage, WORLD), 0,
+        '(k10-resume): conservation failure - the resumed run must finish the failed-store cleanup without losing records'
+    );
+});
+
+test('(k13) fresh migration: lease loss before the staged cleanup leaves both legacy stores byte-identical', () => {
+    const storage = leaseFencedStorage();
+    const fixtures = seedPersistedLegacy(storage);
+    const expectedIds = expectedLegacyIds(fixtures.pending, fixtures.failed);
+    const pendingBytesBefore = storage.values.get(PENDING_KEY);
+    const failedBytesBefore = storage.values.get(FAILED_KEY);
+    // No envelope yet: the migration commit writes the active key, which loses
+    // ownership before the cleanup that follows it.
+    storage.lease.loseOnSet = runtime.monitorActiveStorageKey(WORLD);
+
+    const outcome = reconcile(storage, { beforeCommit: () => storage.lease.owned });
+    assertOffline(outcome, '(k13)');
+    assert.equal(outcome.threw, false, `(k13): a lease loss must not throw (${outcome.error && outcome.error.message})`);
+    assert.ok(
+        outcomeText(outcome).includes('fenced-reject'),
+        `(k13): the fresh-migration cleanup must stop with a fenced rejection; got ${outcomeText(outcome)}`
+    );
+    assert.equal(storage.values.get(PENDING_KEY), pendingBytesBefore, '(k13): the unfenced pending write must not happen');
+    assert.equal(storage.values.get(FAILED_KEY), failedBytesBefore, '(k13): the unfenced failed write must not happen');
+    assertRepresentedExactlyOnce(persistedEnvelope(storage), expectedIds, '(k13 migration commit)');
+
+    storage.lease.owned = true;
+    const resumed = reconcile(storage);
+    assertOffline(resumed, '(k13-resume)');
+    assertRepresentedExactlyOnce(persistedEnvelope(storage), expectedIds, '(k13-resume)');
+    assert.equal(
+        legacyStoredRecordCount(storage, WORLD), 0,
+        '(k13-resume): conservation failure - the resumed run must drain every legacy store'
+    );
+});
+
+test('(k11) array-form pending world entry is drained to the canonical empty store', () => {
+    const storage = controlledStorage();
+    seedMigratedEnvelope(storage);
+    const fixtures = seedArrayFormLegacy(storage, 'pending');
+    const expectedIds = expectedLegacyIds(fixtures.pending, fixtures.failed);
+    assert.ok(Array.isArray(fixtures.pending[WORLD]), 'fixture: the pending world entry is a direct array');
+    assert.equal(expectedIds.length, 4, 'fixture: two array pending + two object failed records');
+    const otherPendingBefore = JSON.stringify(fixtures.pending[OTHER_WORLD]);
+    const otherFailedBefore = JSON.stringify(fixtures.failed[OTHER_WORLD]);
+
+    const outcome = reconcile(storage);
+    assertOffline(outcome, '(k11)');
+    assert.equal(outcome.threw, false, `(k11): a valid world must not throw (${outcome.error && outcome.error.message})`);
+    assert.equal(outcome.result.outcome, 'reconciled', `(k11): the array-form world must be reconciled; got ${outcomeText(outcome)}`);
+    const envelope = persistedEnvelope(storage);
+    assertRepresentedExactlyOnce(envelope, expectedIds, '(k11)');
+    assertNoAutoSend(envelope, expectedIds, '(k11)');
+    assert.deepEqual(
+        JSON.parse(storage.values.get(PENDING_KEY))[WORLD], { events: [], inFlight: [] },
+        '(k11): the array-form pending entry must be replaced by the canonical empty store'
+    );
+    assert.equal(
+        legacyStoredRecordCount(storage, WORLD), 0,
+        '(k11): conservation failure - the array-form pending records must be drained'
+    );
+    assert.equal(
+        JSON.stringify(JSON.parse(storage.values.get(PENDING_KEY))[OTHER_WORLD]), otherPendingBefore,
+        '(k11): unrelated pending world must stay byte-identical'
+    );
+    assert.equal(
+        JSON.stringify(JSON.parse(storage.values.get(FAILED_KEY))[OTHER_WORLD]), otherFailedBefore,
+        '(k11): unrelated failed world must stay byte-identical'
+    );
+    const bytesAfter = JSON.stringify(storageSnapshot(storage));
+    const steady = reconcile(storage);
+    assertOffline(steady, '(k11-steady)');
+    assert.equal(
+        JSON.stringify(storageSnapshot(storage)), bytesAfter,
+        '(k11-steady): the drained array-form world must be a byte-identical no-op'
+    );
+});
+
+test('(k11b) array-form pending cleanup keeps the verified readback: stale readback is indeterminate, no failed write', () => {
+    const storage = controlledStorage();
+    seedMigratedEnvelope(storage);
+    const fixtures = seedArrayFormLegacy(storage, 'pending');
+    const expectedIds = expectedLegacyIds(fixtures.pending, fixtures.failed);
+    storage.log.sets.length = 0;
+    const failedBytesBefore = storage.values.get(FAILED_KEY);
+    storage.rules.staleReadKeys.add(PENDING_KEY);
+
+    const indeterminate = reconcile(storage);
+    assertOffline(indeterminate, '(k11b)');
+    assert.ok(
+        outcomeText(indeterminate).includes('pending-cleanup-indeterminate'),
+        `(k11b): an array-form pending write without a verified readback must report pending-cleanup-indeterminate; got ${outcomeText(indeterminate)}`
+    );
+    assert.ok(!storage.log.sets.includes(FAILED_KEY), '(k11b): no failed-map write while the pending readback is unverified');
+    assert.equal(storage.values.get(FAILED_KEY), failedBytesBefore, '(k11b): the failed store must stay byte-identical');
+    assertRepresentedExactlyOnce(persistedEnvelope(storage), expectedIds, '(k11b envelope commit)');
+
+    storage.clearStaleReads();
+    const resumed = reconcile(storage);
+    assertOffline(resumed, '(k11b-resume)');
+    assert.equal(
+        legacyStoredRecordCount(storage, WORLD), 0,
+        '(k11b-resume): a fresh read must finish the array-form cleanup without losing records'
+    );
+});
+
+test('(k12) array-form failed world entry is drained to the canonical empty store', () => {
+    const storage = controlledStorage();
+    seedMigratedEnvelope(storage);
+    const fixtures = seedArrayFormLegacy(storage, 'failed');
+    const expectedIds = expectedLegacyIds(fixtures.pending, fixtures.failed);
+    assert.ok(Array.isArray(fixtures.failed[WORLD]), 'fixture: the failed world entry is a direct array');
+    assert.equal(expectedIds.length, 6, 'fixture: two pending + two inFlight + two array failed records');
+    const otherPendingBefore = JSON.stringify(fixtures.pending[OTHER_WORLD]);
+    const otherFailedBefore = JSON.stringify(fixtures.failed[OTHER_WORLD]);
+
+    const outcome = reconcile(storage);
+    assertOffline(outcome, '(k12)');
+    assert.equal(outcome.threw, false, `(k12): a valid world must not throw (${outcome.error && outcome.error.message})`);
+    assert.equal(outcome.result.outcome, 'reconciled', `(k12): the array-form world must be reconciled; got ${outcomeText(outcome)}`);
+    const envelope = persistedEnvelope(storage);
+    assertRepresentedExactlyOnce(envelope, expectedIds, '(k12)');
+    assertNoAutoSend(envelope, expectedIds, '(k12)');
+    assert.deepEqual(
+        JSON.parse(storage.values.get(FAILED_KEY))[WORLD], { events: [] },
+        '(k12): the array-form failed entry must be replaced by the canonical empty store'
+    );
+    assert.equal(
+        legacyStoredRecordCount(storage, WORLD), 0,
+        '(k12): conservation failure - the array-form failed records must be drained'
+    );
+    assert.equal(
+        JSON.stringify(JSON.parse(storage.values.get(PENDING_KEY))[OTHER_WORLD]), otherPendingBefore,
+        '(k12): unrelated pending world must stay byte-identical'
+    );
+    assert.equal(
+        JSON.stringify(JSON.parse(storage.values.get(FAILED_KEY))[OTHER_WORLD]), otherFailedBefore,
+        '(k12): unrelated failed world must stay byte-identical'
+    );
+    const bytesAfter = JSON.stringify(storageSnapshot(storage));
+    const steady = reconcile(storage);
+    assertOffline(steady, '(k12-steady)');
+    assert.equal(
+        JSON.stringify(storageSnapshot(storage)), bytesAfter,
+        '(k12-steady): the drained array-form world must be a byte-identical no-op'
+    );
+});
+
+test('(k12b) array-form failed cleanup keeps the verified readback: stale readback is indeterminate, staged order held', () => {
+    const storage = controlledStorage();
+    seedMigratedEnvelope(storage);
+    const fixtures = seedArrayFormLegacy(storage, 'failed');
+    const expectedIds = expectedLegacyIds(fixtures.pending, fixtures.failed);
+    storage.log.sets.length = 0;
+    storage.rules.staleReadKeys.add(FAILED_KEY);
+
+    const indeterminate = reconcile(storage);
+    assertOffline(indeterminate, '(k12b)');
+    assert.ok(
+        outcomeText(indeterminate).includes('failed-cleanup-indeterminate'),
+        `(k12b): an array-form failed write without a verified readback must report failed-cleanup-indeterminate; got ${outcomeText(indeterminate)}`
+    );
+    const pendingWorld = JSON.parse(storage.values.get(PENDING_KEY))[WORLD];
+    assert.equal(
+        (pendingWorld.events || []).length + (pendingWorld.inFlight || []).length, 0,
+        '(k12b): the earlier verified pending cleanup must persist'
+    );
+    assertRepresentedExactlyOnce(persistedEnvelope(storage), expectedIds, '(k12b envelope commit)');
+
+    storage.clearStaleReads();
+    const resumed = reconcile(storage);
+    assertOffline(resumed, '(k12b-resume)');
+    assert.equal(
+        legacyStoredRecordCount(storage, WORLD), 0,
+        '(k12b-resume): a fresh read must finish the array-form failed cleanup without losing records'
+    );
 });
