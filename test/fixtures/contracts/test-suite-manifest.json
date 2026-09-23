@@ -453,6 +453,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/release-workflow.test.cjs",
+      "path": "test/tools/release-workflow.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 21,
+      "coverage": [
+        "repository-tooling",
+        "release-workflow"
+      ]
+    },
+    {
       "id": "suite:test/tools/repository-essentials.test.cjs",
       "path": "test/tools/repository-essentials.test.cjs",
       "classification": "tool",
@@ -581,8 +591,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 56,
-    "expectedExecutionCount": 1192,
+    "suiteCount": 57,
+    "expectedExecutionCount": 1213,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -597,8 +607,8 @@
         "expectedExecutionCount": 440
       },
       "tool": {
-        "suiteCount": 22,
-        "expectedExecutionCount": 315
+        "suiteCount": 23,
+        "expectedExecutionCount": 336
       }
     }
   },
