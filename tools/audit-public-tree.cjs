@@ -51,6 +51,8 @@ const crypto = require('crypto');
 // Jawna allowlista publicznego repo — katalogi są kopiowane tylko z tych
 // przejrzanych ścieżek, nigdy przez rekurencyjne kopiowanie całego DEV.
 const ALLOWLIST = [
+  '.editorconfig',
+  '.gitattributes',
   '.github/',
   '.gitignore',
   '.node-version',

@@ -17,6 +17,8 @@ const CHUNK_BYTES = STREAM_CHUNK_BYTES || 64 * 1024;
 const OVERSIZE_BYTES = 8 * 1024 * 1024 + 4096;
 const MODES = ['tree', 'secrets'];
 const REVIEWED_FILES = [
+  '.editorconfig',
+  '.gitattributes',
   '.gitignore',
   '.node-version',
   'AGENTS.md',

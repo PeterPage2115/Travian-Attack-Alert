@@ -1,0 +1,12 @@
+# EditorConfig — https://editorconfig.org
+# Repository-wide text defaults: UTF-8, LF line endings, a final newline, and
+# two-space indentation. This file declares policy only; it never rewrites
+# existing files.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 2

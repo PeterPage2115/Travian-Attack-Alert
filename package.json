@@ -3,6 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "description": "Testy node:test dla Travian - Alliance Attacks to Discord (src/ + dist). Bez zewnętrznych zależności.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PeterPage2115/Travian-Attack-Alert.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PeterPage2115/Travian-Attack-Alert/issues"
+  },
+  "homepage": "https://github.com/PeterPage2115/Travian-Attack-Alert#readme",
   "scripts": {
     "test": "npm run test:characterization && npm run test:offline && npm run test:tools && npm run test:artifact",
     "test:characterization": "node tools/run-characterization.cjs",

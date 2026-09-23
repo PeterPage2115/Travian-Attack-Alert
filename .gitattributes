@@ -1,0 +1,22 @@
+# Normalize repository text to LF on every platform, in both directions
+# (checkout and commit). This file declares policy only: adding it never
+# rewrites existing working-tree files.
+* text=auto eol=lf
+
+# Known binary formats: never treat them as text, never diff or merge them.
+# OCR model / archive formats
+*.traineddata binary
+*.gz binary
+*.zip binary
+# Generated evidence images and fonts
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.pdf binary

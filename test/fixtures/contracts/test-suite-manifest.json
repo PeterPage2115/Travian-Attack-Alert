@@ -433,6 +433,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/repository-essentials.test.cjs",
+      "path": "test/tools/repository-essentials.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 15,
+      "coverage": [
+        "repository-tooling",
+        "repository-essentials"
+      ]
+    },
+    {
       "id": "suite:test/tools/run-e2e-contract.test.cjs",
       "path": "test/tools/run-e2e-contract.test.cjs",
       "classification": "tool",
@@ -531,8 +541,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 51,
-    "expectedExecutionCount": 1106,
+    "suiteCount": 52,
+    "expectedExecutionCount": 1121,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -547,8 +557,8 @@
         "expectedExecutionCount": 437
       },
       "tool": {
-        "suiteCount": 18,
-        "expectedExecutionCount": 229
+        "suiteCount": 19,
+        "expectedExecutionCount": 244
       }
     }
   },

@@ -1,0 +1,5 @@
+# Default review routing only. This file assigns an owner to every path; it
+# does NOT require an approving review. The repository deliberately does not
+# enable "Require review from Code Owners", so a solo-owner pull request stays
+# mergeable without a second approver.
+* @PeterPage2115
