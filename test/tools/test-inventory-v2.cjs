@@ -130,8 +130,31 @@ function compareDeclaredTotals(declared, recomputed) {
 // suite, a duplicate suite/path receipt, a stale HEAD/tree/worktree binding,
 // a command mismatch, a nonzero exit, or a receipt for an unowned path is a
 // hard failure. There is no "registration-only" pass.
+//
+// FINDING 6 (Qodo, High): each counter being a non-negative integer is not
+// enough. The TAP terminal outcomes must reconcile with the declared total
+// (`tests === passed + failed + cancelled + skipped + todo`) and with the
+// achieved non-skipped count (`achievedNonSkipped === passed + failed`).
+// Without those invariants a receipt can declare `counts.tests = 1` yet claim
+// enough `passed` to satisfy the manifest floor. Accounting is checked before
+// any manifest comparison and rejects with a typed, named reason.
 function hex(value, length) {
   return typeof value === 'string' && new RegExp(`^[0-9a-f]{${length}}$`, 'u').test(value);
+}
+
+function receiptAccountingProblems(receipt) {
+  const counts = receipt.counts;
+  const keys = ['tests', 'passed', 'failed', 'skipped', 'todo', 'cancelled'];
+  if (!counts || typeof counts !== 'object' || keys.some(key => !Number.isInteger(counts[key]) || counts[key] < 0)) return [];
+  const problems = [];
+  const outcomes = counts.passed + counts.failed + counts.cancelled + counts.skipped + counts.todo;
+  if (counts.tests !== outcomes) {
+    problems.push(`counts.tests ${counts.tests} != passed+failed+cancelled+skipped+todo ${outcomes}`);
+  }
+  if (receipt.achievedNonSkipped !== counts.passed + counts.failed) {
+    problems.push(`achievedNonSkipped ${receipt.achievedNonSkipped} != passed+failed ${counts.passed + counts.failed}`);
+  }
+  return problems;
 }
 
 function validateReceiptShape(receipt) {
@@ -210,6 +233,11 @@ function validateReceipts({ receiptDir, suites, binding }) {
     const shape = validateReceiptShape(receipt);
     if (shape.length > 0) {
       problems.push(`partial receipt ${name}: invalid ${shape.join(', ')}`);
+      continue;
+    }
+    const accounting = receiptAccountingProblems(receipt);
+    if (accounting.length > 0) {
+      problems.push(`inconsistent receipt ${name}: ${accounting.join('; ')}`);
       continue;
     }
     if (!expected.has(receipt.suitePath)) {
@@ -365,4 +393,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { discoverSuites: v1.discoverSuites, verifyInventory, validateReceipts };
+module.exports = { discoverSuites: v1.discoverSuites, receiptAccountingProblems, validateReceipts, verifyInventory };

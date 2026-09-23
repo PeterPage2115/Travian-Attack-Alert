@@ -506,7 +506,7 @@
       "id": "suite:test/tools/test-inventory-v2.test.cjs",
       "path": "test/tools/test-inventory-v2.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 30,
+      "expectedExecutionCount": 34,
       "coverage": [
         "repository-tooling",
         "test-inventory-v2"
@@ -562,7 +562,7 @@
   ],
   "totals": {
     "suiteCount": 54,
-    "expectedExecutionCount": 1153,
+    "expectedExecutionCount": 1157,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -578,7 +578,7 @@
       },
       "tool": {
         "suiteCount": 20,
-        "expectedExecutionCount": 276
+        "expectedExecutionCount": 280
       }
     }
   },

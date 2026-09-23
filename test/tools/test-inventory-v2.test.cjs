@@ -453,6 +453,79 @@ test('stale HEAD, tree, or worktree bindings fail', (t) => {
   assert.throws(verify({ worktreeDigest: '9'.repeat(64) }), /stale worktree binding/u);
 });
 
+// FINDING 8 (Qodo, High): the worktree binding used to hash only the
+// `git status --porcelain` text, so once a file was dirty, changing its bytes
+// (path/status text unchanged) left the binding identical and the verifier
+// accepted receipts produced before those bytes existed. The binding now hashes
+// the per-file bytes of every dirty/untracked path.
+function tempGitRepo(t) {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-dirty-binding-'));
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd: repo, encoding: 'utf8' });
+    assert.equal(result.status, 0, `git ${args.join(' ')} failed: ${result.stderr}`);
+    return result.stdout;
+  };
+  git('init', '-q');
+  git('config', 'user.email', 'fixture@example.invalid');
+  git('config', 'user.name', 'fixture');
+  git('config', 'core.autocrlf', 'false');
+  return { repo, git };
+}
+
+test('mutating the bytes of an already-dirty file invalidates its receipt binding', (t) => {
+  const { repo, git } = tempGitRepo(t);
+  const tracked = path.join(repo, 'tracked.txt');
+  fs.writeFileSync(tracked, 'committed bytes\n');
+  git('add', 'tracked.txt');
+  git('commit', '-qm', 'fixture');
+
+  // Dirty the file once: the porcelain path/status text is now fixed at `.M`.
+  fs.writeFileSync(tracked, 'dirty revision one\n');
+  const before = runner.currentBinding(repo);
+  // Change ONLY the bytes; path and status text stay byte-identical.
+  fs.writeFileSync(tracked, 'dirty revision two\n');
+  const after = runner.currentBinding(repo);
+  assert.equal(after.head, before.head);
+  assert.equal(after.tree, before.tree);
+  assert.notEqual(after.worktreeDigest, before.worktreeDigest);
+
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  writeReceipt(dir, receiptFor(CHARACTERIZATION, before));
+  // The receipt was produced before the second mutation: the verifier rejects it.
+  assert.throws(
+    () => v2.verifyInventory({ ...docs, receiptDir: dir, head: after.head, tree: after.tree, worktreeDigest: after.worktreeDigest }),
+    /stale worktree binding/u,
+  );
+  // Control: while the dirty bytes are unchanged, the same receipt verifies.
+  assert.equal(
+    v2.verifyInventory({ ...docs, receiptDir: dir, head: before.head, tree: before.tree, worktreeDigest: before.worktreeDigest }).verdict,
+    'PASS',
+  );
+});
+
+test('the worktree digest tracks untracked bytes and ignores ignored paths', (t) => {
+  const { repo, git } = tempGitRepo(t);
+  fs.writeFileSync(path.join(repo, '.gitignore'), 'ignored/\n');
+  fs.writeFileSync(path.join(repo, 'tracked.txt'), 'committed bytes\n');
+  git('add', '.gitignore', 'tracked.txt');
+  git('commit', '-qm', 'fixture');
+  const clean = runner.currentBinding(repo).worktreeDigest;
+
+  // Receipts live under ignored paths: writing one must not move the binding.
+  fs.mkdirSync(path.join(repo, 'ignored'));
+  fs.writeFileSync(path.join(repo, 'ignored', 'receipt.json'), 'ignored bytes one\n');
+  assert.equal(runner.currentBinding(repo).worktreeDigest, clean);
+
+  const untracked = path.join(repo, 'untracked.txt');
+  fs.writeFileSync(untracked, 'untracked bytes one\n');
+  const withUntracked = runner.currentBinding(repo).worktreeDigest;
+  assert.notEqual(withUntracked, clean);
+  fs.writeFileSync(untracked, 'untracked bytes two\n');
+  assert.notEqual(runner.currentBinding(repo).worktreeDigest, withUntracked);
+});
+
 test('a direct node --test or glob command is not the canonical receipt command', (t) => {
   const dir = tempReceiptDir(t);
   const docs = characterizationFixture();
@@ -494,6 +567,50 @@ test('a receipt that rewrites the manifest expectation or contradicts its counts
   const verify = receiptOverrides => () => v2.verifyInventory(withReceipt(CHARACTERIZATION, { dir, docs }, receiptOverrides));
   assert.throws(verify({ expectedExecutionCount: 1 }), /expectation mismatch/u);
   assert.throws(verify({ achievedNonSkipped: 99 }), /inconsistent receipt/u);
+});
+
+// FINDING 6 (Qodo, High): `validateReceiptShape` checked each TAP counter
+// independently and `compareReceipt` only compared `achievedNonSkipped` to
+// `passed + failed`, so a receipt declaring `counts.tests = 1` with 8 `passed`
+// satisfied the manifest floor as execution proof. The TAP terminal outcomes
+// must reconcile with the declared total before any manifest comparison.
+test('forged counters that do not reconcile with the declared total are rejected before manifest comparison', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const verify = receiptOverrides => () => v2.verifyInventory(withReceipt(CHARACTERIZATION, { dir, docs }, receiptOverrides));
+  // `passed` exceeds the declared total: the manifest floor (8) is met while
+  // counts.tests claims a single execution.
+  assert.throws(
+    verify({ counts: { tests: 1, passed: 8, failed: 0, skipped: 0, todo: 0, cancelled: 0 } }),
+    error => /inconsistent receipt/u.test(error.message) && /counts\.tests 1 != passed\+failed\+cancelled\+skipped\+todo 8/u.test(error.message),
+  );
+  // The declared total overstates the outcome sum: one execution is unaccounted for.
+  assert.throws(
+    verify({ counts: { tests: 9, passed: 8, failed: 0, skipped: 0, todo: 0, cancelled: 0 } }),
+    error => /inconsistent receipt/u.test(error.message) && /counts\.tests 9 != passed\+failed\+cancelled\+skipped\+todo 8/u.test(error.message),
+  );
+  // Cancelled/skipped outcomes count toward the declared total too.
+  assert.throws(
+    verify({ counts: { tests: 8, passed: 8, failed: 0, skipped: 1, todo: 0, cancelled: 0 } }),
+    error => /inconsistent receipt/u.test(error.message) && /counts\.tests 8 != passed\+failed\+cancelled\+skipped\+todo 9/u.test(error.message),
+  );
+});
+
+test('a receipt whose achievedNonSkipped disagrees with passed+failed is rejected with a typed reason', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const verify = receiptOverrides => () => v2.verifyInventory(withReceipt(CHARACTERIZATION, { dir, docs }, receiptOverrides));
+  assert.throws(
+    verify({ achievedNonSkipped: 7 }),
+    error => /inconsistent receipt/u.test(error.message) && /achievedNonSkipped 7 != passed\+failed 8/u.test(error.message),
+  );
+  // Control: reconciled skipped accounting still passes while enough
+  // non-skipped tests executed.
+  const withSkip = withReceipt(CHARACTERIZATION, { dir, docs }, {
+    counts: { tests: 9, passed: 8, failed: 0, skipped: 1, todo: 0, cancelled: 0 },
+    achievedNonSkipped: 8,
+  });
+  assert.equal(v2.verifyInventory(withSkip).verdict, 'PASS');
 });
 
 test('the CLI refuses to validate inventory without an explicit receipt directory', () => {

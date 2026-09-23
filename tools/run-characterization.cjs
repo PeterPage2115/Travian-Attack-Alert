@@ -14,8 +14,10 @@
  * Every receipt binds the achieved execution accounting to:
  *   - the exact suite path (and the manifest-declared expectation),
  *   - the exact repository HEAD and tree,
- *   - a digest of the porcelain worktree state (so dirty bytes cannot be
- *     swapped between execution and verification),
+ *   - a digest of the dirty worktree inventory: each non-ignored modified,
+ *     staged, or untracked path with its status AND the SHA-256 of its current
+ *     bytes (so dirty bytes cannot be swapped between execution and
+ *     verification without changing the binding),
  *   - the exact command string, exit status, and TAP-derived counts.
  *
  * `test/tools/test-inventory-v2.cjs --receipt-dir test-results/suite-receipts`
@@ -70,23 +72,103 @@ function isCharacterizationPath(suitePath) {
   return typeof suitePath === 'string' && suitePath.startsWith(CHARACTERIZATION_PREFIX);
 }
 
-function gitText(args) {
-  const result = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+function gitBytes(args, root = ROOT) {
+  const result = spawnSync('git', args, { cwd: root });
   if (result.error) fail(`git ${args.join(' ')} failed: ${result.error.message}`);
   if (result.status !== 0) fail(`git ${args.join(' ')} exited ${result.status}: ${String(result.stderr || '').trim()}`);
   return result.stdout;
 }
 
-// Exact execution binding: HEAD + tree + porcelain digest of the dirty set.
-// `--untracked-files=all` deliberately excludes ignored paths (test-results/),
-// so writing receipts does not invalidate the binding it just recorded.
-function currentBinding() {
-  const head = gitText(['rev-parse', 'HEAD']).trim();
-  const tree = gitText(['rev-parse', 'HEAD^{tree}']).trim();
-  const status = spawnSync('git', ['status', '--porcelain=v2', '-z', '--untracked-files=all'], { cwd: ROOT });
-  if (status.error) fail(`git status failed: ${status.error.message}`);
-  if (status.status !== 0) fail(`git status exited ${status.status}`);
-  return { head, tree, worktreeDigest: sha256Hex(status.stdout) };
+function gitText(args, root = ROOT) {
+  return gitBytes(args, root).toString('utf8');
+}
+
+// `git status --porcelain=v2 -z` record shapes (paths are NUL-terminated and
+// never quoted in -z mode):
+//   1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+//   2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>\0<origPath>
+//   u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+//   ? <path>
+function porcelainPath(record, fieldCount) {
+  let offset = 0;
+  for (let field = 0; field < fieldCount; field += 1) {
+    const space = record.indexOf(' ', offset);
+    if (space === -1) fail(`unexpected porcelain record: ${JSON.stringify(record)}`);
+    offset = space + 1;
+  }
+  return record.slice(offset);
+}
+
+function parsePorcelainV2(buffer) {
+  const records = buffer.toString('utf8').split('\0');
+  const entries = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (record === '') continue;
+    const kind = record[0];
+    if (kind === '1' || kind === '2' || kind === 'u') {
+      const xy = record.slice(2, 4);
+      const filePath = porcelainPath(record, kind === '1' ? 8 : kind === '2' ? 9 : 10);
+      if (kind === '2') {
+        const originalPath = records[index + 1];
+        index += 1;
+        entries.push({ status: `${xy} <- ${originalPath}`, path: filePath });
+      } else {
+        entries.push({ status: xy, path: filePath });
+      }
+    } else if (kind === '?') {
+      entries.push({ status: '??', path: record.slice(2) });
+    } else {
+      fail(`unexpected porcelain record type ${JSON.stringify(kind)}`);
+    }
+  }
+  return entries;
+}
+
+// Content digest of one dirty/untracked path. Missing (deleted) paths and
+// special entries get deterministic markers so the digest stays stable across
+// runs while still moving whenever the byte payload changes.
+function fileByteDigest(root, filePath) {
+  const absolute = path.join(root, filePath);
+  let stats;
+  try {
+    stats = fs.lstatSync(absolute);
+  } catch (error) {
+    return error && error.code === 'ENOENT' ? 'deleted' : `unreadable:${(error && error.code) || 'error'}`;
+  }
+  if (stats.isSymbolicLink()) {
+    try {
+      return `symlink:${sha256Hex(fs.readlinkSync(absolute))}`;
+    } catch (error) {
+      return `unreadable:${(error && error.code) || 'error'}`;
+    }
+  }
+  if (stats.isDirectory()) return 'directory';
+  try {
+    return sha256Hex(fs.readFileSync(absolute));
+  } catch (error) {
+    return `unreadable:${(error && error.code) || 'error'}`;
+  }
+}
+
+// Deterministic inventory digest of every tracked modified/staged and
+// untracked (non-ignored) path: status + path + SHA-256 of current bytes,
+// sorted by the serialized entry. `--untracked-files=all` deliberately
+// excludes ignored paths (test-results/), so writing receipts does not
+// invalidate the binding it just recorded; a clean tree digests to sha256('').
+function worktreeDigestFor(root = ROOT) {
+  const status = gitBytes(['status', '--porcelain=v2', '-z', '--untracked-files=all'], root);
+  const inventory = parsePorcelainV2(status)
+    .map(entry => `${entry.status}\u0000${entry.path}\u0000${fileByteDigest(root, entry.path)}`)
+    .sort();
+  return sha256Hex(inventory.join('\n'));
+}
+
+// Exact execution binding: HEAD + tree + content digest of the dirty set.
+function currentBinding(root = ROOT) {
+  const head = gitText(['rev-parse', 'HEAD'], root).trim();
+  const tree = gitText(['rev-parse', 'HEAD^{tree}'], root).trim();
+  return { head, tree, worktreeDigest: worktreeDigestFor(root) };
 }
 
 function readManifest(manifestPath) {
