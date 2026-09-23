@@ -531,6 +531,16 @@
         "repository-tooling",
         "verify-update-channel"
       ]
+    },
+    {
+      "id": "suite:test/tools/workflow-security.test.cjs",
+      "path": "test/tools/workflow-security.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 17,
+      "coverage": [
+        "repository-tooling",
+        "workflow-security"
+      ]
     }
   ],
   "relocations": [
@@ -541,8 +551,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 52,
-    "expectedExecutionCount": 1121,
+    "suiteCount": 53,
+    "expectedExecutionCount": 1138,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -557,8 +567,8 @@
         "expectedExecutionCount": 437
       },
       "tool": {
-        "suiteCount": 19,
-        "expectedExecutionCount": 244
+        "suiteCount": 20,
+        "expectedExecutionCount": 261
       }
     }
   },

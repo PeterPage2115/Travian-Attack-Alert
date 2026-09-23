@@ -134,6 +134,10 @@ function findStep(steps, id) {
   return step;
 }
 
+function isUploadArtifactStep(step) {
+  return typeof step.uses === 'string' && step.uses.startsWith('actions/upload-artifact@');
+}
+
 function argValue(run, flag) {
   const match = new RegExp(`${flag}\\s+(\\S+)`, 'u').exec(run);
   assert.ok(match, `run command must pass ${flag}`);
@@ -220,7 +224,7 @@ test('browser job rechecks the sealed archive digest immediately before upload',
   assert.equal(argValue(digest.run, '--archive'), argValue(seal.run, '--archive'), 'digest recheck must use the sealed archive');
   assert.equal(argValue(digest.run, '--manifest'), argValue(seal.run, '--manifest'), 'digest recheck must use the seal manifest');
 
-  const uploadIndex = steps.findIndex(step => step.uses === 'actions/upload-artifact@v4');
+  const uploadIndex = steps.findIndex(step => isUploadArtifactStep(step));
   assert.notEqual(uploadIndex, -1, 'browser job must upload an artifact');
   assert.equal(uploadIndex, steps.indexOf(digest) + 1, 'digest recheck must be the step immediately before upload');
 });
@@ -229,7 +233,7 @@ test('upload step consumes only the sealed ZIP and the separate scan report', ()
   const steps = browserSteps();
   const seal = findStep(steps, 'evidence-seal');
   const scan = findStep(steps, 'evidence-scan');
-  const upload = steps.find(step => step.uses === 'actions/upload-artifact@v4');
+  const upload = steps.find(step => isUploadArtifactStep(step));
   assert.ok(upload, 'browser job must upload an artifact');
 
   const archive = argValue(seal.run, '--archive');
@@ -246,7 +250,7 @@ test('upload step consumes only the sealed ZIP and the separate scan report', ()
 
 test('upload is ineligible unless seal, scan, and digest recheck all succeeded', () => {
   const steps = browserSteps();
-  const upload = steps.find(step => step.uses === 'actions/upload-artifact@v4');
+  const upload = steps.find(step => isUploadArtifactStep(step));
   assert.ok(upload, 'browser job must upload an artifact');
   assert.ok(upload.condition, 'upload step must be conditional');
   assert.match(upload.condition, /always\(\)/u, 'upload must still run when the browser tests failed');
