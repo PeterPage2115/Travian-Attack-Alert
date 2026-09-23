@@ -40,6 +40,13 @@ jobs:
       - name: Artifact gates
         run: npm run test:artifact
 
+      # Receipt-backed accounting: every manifest-owned characterization suite
+      # must execute and leave a HEAD-bound receipt before the inventory gate
+      # (npm run check) consumes test-results/suite-receipts. Registration in
+      # the manifest alone is not execution proof.
+      - name: Characterization receipts (blocking)
+        run: npm run test:characterization
+
       - name: Checks (versions, artifact, inventory)
         run: npm run check
 
@@ -100,6 +107,13 @@ jobs:
 
       - name: Artifact gates
         run: npm run test:artifact
+
+      # Receipt-backed accounting: every manifest-owned characterization suite
+      # must execute and leave a HEAD-bound receipt before the inventory gate
+      # (npm run check) consumes test-results/suite-receipts. Registration in
+      # the manifest alone is not execution proof.
+      - name: Characterization receipts (blocking)
+        run: npm run test:characterization
 
       - name: Checks (versions, artifact, inventory)
         run: npm run check

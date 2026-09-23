@@ -13,8 +13,8 @@
  *
  * Order:
  *   build -> versions -> syntax-dist -> artifact -> artifact-matrix ->
- *   syntax-runtime -> source-offline -> static-format -> tools-tests ->
- *   types -> quality -> browser-tests -> e2e
+ *   syntax-runtime -> source-offline -> characterization -> test-inventory ->
+ *   static-format -> tools-tests -> types -> quality -> browser-tests -> e2e
  *
  * Each gate is captured as { name, cmd, exitCode, verdict, reason } where
  * verdict is PASS | FAIL. The summary is written to
@@ -137,6 +137,9 @@ function main() {
   // Source gates: authority parses, offline suites, static format audit.
   gates.push(runGate('syntax-runtime', [process.execPath, '-e', "new Function(require('fs').readFileSync('src/runtime.js','utf8'))"], 'src runtime authority parses'));
   gates.push(runGate('source-offline', ['npm', 'run', 'test:offline'], 'offline + parity suites green'));
+  // Characterization receipts must exist before the inventory gate reads them.
+  gates.push(runGate('characterization', ['npm', 'run', 'test:characterization'], 'manifest-owned characterization suites produced HEAD-bound receipts'));
+  gates.push(runGate('test-inventory', [process.execPath, 'test/tools/test-inventory-v2.cjs', '--baseline', 'test/fixtures/contracts/test-suite-baseline.json', '--manifest', 'test/fixtures/contracts/test-suite-manifest.json', '--receipt-dir', 'test-results/suite-receipts'], 'manifest and receipt-backed accounting PASS'));
   gates.push(runGate('static-format', [process.execPath, 'test/fixtures/discord/static-format-audit.cjs', '--file', 'src/runtime.js', '--readme', 'README.md'], 'static format audit PASS'));
   // Tool gates: full tools matrix, types, quality.
   gates.push(runGate('tools-tests', [process.execPath, '--test', ...toolsTestFiles()], 'tools suites green'));

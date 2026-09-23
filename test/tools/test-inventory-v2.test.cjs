@@ -8,10 +8,17 @@
 // fails closed on any weakening relocation.
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 
 const v1 = require('./test-inventory.cjs');
 const v2 = require('./test-inventory-v2.cjs');
+const runner = require('../../tools/run-characterization.cjs');
+
+const ROOT = path.resolve(__dirname, '..', '..');
 
 const RUNTIME_PARITY = {
   id: 'suite:test/runtime-parity.test.cjs',
@@ -114,6 +121,7 @@ test('legitimate same-coverage path moves pass with declared totals', () => {
     suites: 2,
     expectedExecutions: 18,
     relocations: 1,
+    receiptBackedSuites: 0,
     totals: totalsFor(retainedMove.manifest.suites),
   });
 
@@ -260,4 +268,258 @@ test('v2 delegates discovery and hash validation to v1', () => {
   assert.equal(v2.verifyInventory({ ...docs, oracleSha256: 'oracle', verifierHashes: { audit: 'digest' } }).verdict, 'PASS');
   assert.throws(() => v2.verifyInventory({ ...docs, oracleSha256: 'changed' }), /oracle/u);
   assert.throws(() => v2.verifyInventory({ ...docs, verifierHashes: { audit: 'changed' } }), /verifier/u);
+});
+
+// --- Task 18: receipt-backed accounting -----------------------------------
+//
+// A manifest registration is not execution proof. v2 must consume the receipt
+// directory produced by tools/run-characterization.cjs and reject every way an
+// execution claim can be missing, forged, stale, partial, or skipped.
+
+const RECEIPT_HEAD = '1'.repeat(40);
+const RECEIPT_TREE = '2'.repeat(40);
+const RECEIPT_WORKTREE = '3'.repeat(64);
+const RECEIPT_TAP = '4'.repeat(64);
+
+const CHARACTERIZATION = {
+  id: 'suite:test/characterization/acquisition-extract.test.cjs',
+  path: 'test/characterization/acquisition-extract.test.cjs',
+  classification: 'source-artifact',
+  expectedExecutionCount: 8,
+  coverage: ['test-characterization-acquisition-extract'],
+};
+
+const CHARACTERIZATION_TWO = {
+  id: 'suite:test/characterization/transport-retry.test.cjs',
+  path: 'test/characterization/transport-retry.test.cjs',
+  classification: 'source-artifact',
+  expectedExecutionCount: 11,
+  coverage: ['test-characterization-transport-retry'],
+};
+
+function tempReceiptDir(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-task18-receipts-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
+
+function resetReceiptDir(dir) {
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function characterizationFixture(suites = [CHARACTERIZATION]) {
+  return fixture({ baselineSuites: [RUNTIME_PARITY], manifestSuites: [RUNTIME_PARITY, ...suites] });
+}
+
+function receiptOptions(dir) {
+  return { receiptDir: dir, head: RECEIPT_HEAD, tree: RECEIPT_TREE, worktreeDigest: RECEIPT_WORKTREE };
+}
+
+function receiptFor(suite, overrides = {}) {
+  const passed = suite.expectedExecutionCount;
+  const receipt = {
+    schemaVersion: 1,
+    suitePath: suite.path,
+    suiteId: suite.id,
+    classification: suite.classification,
+    expectedExecutionCount: suite.expectedExecutionCount,
+    head: RECEIPT_HEAD,
+    tree: RECEIPT_TREE,
+    worktreeDigest: RECEIPT_WORKTREE,
+    command: runner.commandFor(suite.path),
+    argv: runner.argvFor(suite.path),
+    nodeExecutable: process.execPath,
+    nodeVersion: process.version,
+    startedAt: '2026-09-23T00:00:00.000Z',
+    endedAt: '2026-09-23T00:00:01.000Z',
+    durationMs: 1000,
+    exitCode: 0,
+    signal: null,
+    timedOut: false,
+    error: null,
+    counts: { tests: passed, passed, failed: 0, skipped: 0, todo: 0, cancelled: 0 },
+    achievedNonSkipped: passed,
+    tapSha256: RECEIPT_TAP,
+    ok: true,
+  };
+  return { ...receipt, ...overrides };
+}
+
+function writeReceipt(dir, receipt, fileName = runner.receiptFileName(receipt.suitePath)) {
+  fs.writeFileSync(path.join(dir, fileName), `${JSON.stringify(receipt, null, 2)}\n`);
+}
+
+function withReceipt(suite, overrides, receiptOverrides = {}) {
+  const dir = overrides.dir;
+  resetReceiptDir(dir);
+  writeReceipt(dir, receiptFor(suite, receiptOverrides));
+  return { ...overrides.docs, ...receiptOptions(dir) };
+}
+
+test('RED: registration alone passes v1 but v2 requires a receipt per characterization suite', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  // The pre-Task-18 contract is green with zero execution proof...
+  assert.equal(v1.verifyInventory(docs).verdict, 'PASS');
+  // ...and v2 fails closed on the missing receipt.
+  assert.throws(
+    () => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }),
+    error => /test-inventory-v2/u.test(error.message) && /missing receipt: test\/characterization\/acquisition-extract\.test\.cjs/u.test(error.message),
+  );
+});
+
+test('receipt-backed accounting passes with one valid HEAD-bound receipt per characterization suite', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture([CHARACTERIZATION, CHARACTERIZATION_TWO]);
+  writeReceipt(dir, receiptFor(CHARACTERIZATION));
+  writeReceipt(dir, receiptFor(CHARACTERIZATION_TWO));
+  const result = v2.verifyInventory({ ...docs, ...receiptOptions(dir) });
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(result.receiptBackedSuites, 2);
+});
+
+test('a missing receipt for one of several characterization suites fails', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture([CHARACTERIZATION, CHARACTERIZATION_TWO]);
+  writeReceipt(dir, receiptFor(CHARACTERIZATION));
+  assert.throws(
+    () => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }),
+    /missing receipt: test\/characterization\/transport-retry\.test\.cjs/u,
+  );
+});
+
+test('an unreadable (corrupt JSON) receipt fails closed', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  fs.writeFileSync(path.join(dir, runner.receiptFileName(CHARACTERIZATION.path)), '{ truncated');
+  assert.throws(() => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }), /unreadable receipt/u);
+});
+
+test('a partially written receipt fails closed', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const partial = receiptFor(CHARACTERIZATION);
+  delete partial.counts;
+  delete partial.achievedNonSkipped;
+  writeReceipt(dir, partial);
+  assert.throws(
+    () => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }),
+    error => /partial receipt/u.test(error.message) && /counts/u.test(error.message) && /achievedNonSkipped/u.test(error.message),
+  );
+});
+
+test('an achieved count below the manifest expectation fails', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const lowered = receiptFor(CHARACTERIZATION, {
+    counts: { tests: 7, passed: 7, failed: 0, skipped: 0, todo: 0, cancelled: 0 },
+    achievedNonSkipped: 7,
+    ok: false,
+  });
+  writeReceipt(dir, lowered);
+  assert.throws(
+    () => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }),
+    /count below expectation for test\/characterization\/acquisition-extract\.test\.cjs: achieved 7 < declared 8/u,
+  );
+});
+
+test('a skipped-only receipt cannot contribute to PASS', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const skippedOnly = receiptFor(CHARACTERIZATION, {
+    counts: { tests: 8, passed: 0, failed: 0, skipped: 8, todo: 0, cancelled: 0 },
+    achievedNonSkipped: 0,
+    ok: false,
+  });
+  writeReceipt(dir, skippedOnly);
+  assert.throws(() => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }), /skipped-only suite/u);
+});
+
+test('duplicate receipts for the same suite path fail', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  writeReceipt(dir, receiptFor(CHARACTERIZATION));
+  writeReceipt(dir, receiptFor(CHARACTERIZATION), `${'0'.repeat(64)}.json`);
+  assert.throws(() => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }), /duplicate receipt for test\/characterization\/acquisition-extract\.test\.cjs/u);
+});
+
+test('stale HEAD, tree, or worktree bindings fail', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const verify = receiptOverrides => () => v2.verifyInventory(withReceipt(CHARACTERIZATION, { dir, docs }, receiptOverrides));
+  assert.throws(verify({ head: '9'.repeat(40) }), /stale head binding/u);
+  assert.throws(verify({ tree: '9'.repeat(40) }), /stale tree binding/u);
+  assert.throws(verify({ worktreeDigest: '9'.repeat(64) }), /stale worktree binding/u);
+});
+
+test('a direct node --test or glob command is not the canonical receipt command', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const verify = receiptOverrides => () => v2.verifyInventory(withReceipt(CHARACTERIZATION, { dir, docs }, receiptOverrides));
+  assert.throws(verify({ command: `node --test ${CHARACTERIZATION.path}` }), /command mismatch/u);
+  assert.throws(verify({ command: 'node --test test/characterization/*.test.cjs' }), /command mismatch/u);
+});
+
+test('nonzero exit, timeout, or a killed suite fails', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const verify = receiptOverrides => () => v2.verifyInventory(withReceipt(CHARACTERIZATION, { dir, docs }, receiptOverrides));
+  assert.throws(verify({ exitCode: 1, ok: false }), /nonzero exit/u);
+  assert.throws(verify({ exitCode: null, timedOut: true, signal: 'SIGKILL', ok: false }), /timed out suite/u);
+  assert.throws(verify({ exitCode: null, signal: 'SIGTERM', ok: false }), /killed suite/u);
+});
+
+test('a receipt for a path the manifest does not own fails', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const ghost = { ...CHARACTERIZATION, id: 'suite:test/characterization/ghost.test.cjs', path: 'test/characterization/ghost.test.cjs' };
+  writeReceipt(dir, receiptFor(ghost));
+  assert.throws(
+    () => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }),
+    error => /unowned path receipt/u.test(error.message) && /missing receipt: test\/characterization\/acquisition-extract/u.test(error.message),
+  );
+});
+
+test('a receipt filename that is not sha256(path) fails', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  writeReceipt(dir, receiptFor(CHARACTERIZATION), 'acquisition-extract.json');
+  assert.throws(() => v2.verifyInventory({ ...docs, ...receiptOptions(dir) }), /receipt path mismatch/u);
+});
+
+test('a receipt that rewrites the manifest expectation or contradicts its counts fails', (t) => {
+  const dir = tempReceiptDir(t);
+  const docs = characterizationFixture();
+  const verify = receiptOverrides => () => v2.verifyInventory(withReceipt(CHARACTERIZATION, { dir, docs }, receiptOverrides));
+  assert.throws(verify({ expectedExecutionCount: 1 }), /expectation mismatch/u);
+  assert.throws(verify({ achievedNonSkipped: 99 }), /inconsistent receipt/u);
+});
+
+test('the CLI refuses to validate inventory without an explicit receipt directory', () => {
+  const result = spawnSync(process.execPath, [
+    'test/tools/test-inventory-v2.cjs',
+    '--baseline', 'test/fixtures/contracts/test-suite-baseline.json',
+    '--manifest', 'test/fixtures/contracts/test-suite-manifest.json',
+  ], { cwd: ROOT, encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--receipt-dir is required/u);
+});
+
+test('the CLI fails closed on an empty or corrupt receipt directory', (t) => {
+  const dir = tempReceiptDir(t);
+  const args = [
+    'test/tools/test-inventory-v2.cjs',
+    '--baseline', 'test/fixtures/contracts/test-suite-baseline.json',
+    '--manifest', 'test/fixtures/contracts/test-suite-manifest.json',
+    '--receipt-dir', dir,
+  ];
+  const empty = spawnSync(process.execPath, args, { cwd: ROOT, encoding: 'utf8' });
+  assert.equal(empty.status, 1);
+  assert.match(empty.stderr, /missing receipt: test\/characterization\//u);
+
+  fs.writeFileSync(path.join(dir, `${'a'.repeat(64)}.json`), 'not json');
+  const corrupt = spawnSync(process.execPath, args, { cwd: ROOT, encoding: 'utf8' });
+  assert.equal(corrupt.status, 1);
+  assert.match(corrupt.stderr, /unreadable receipt/u);
 });

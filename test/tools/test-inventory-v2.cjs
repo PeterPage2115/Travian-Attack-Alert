@@ -14,15 +14,24 @@
 //   - expected execution count
 // and rejects missing, ambiguous, chained, or many-to-one relocation mappings.
 // Any declared manifest `totals`/`byClassification` must match recomputed values.
+//
+// Task 18 extension: the manifest declaring a characterization suite is NOT
+// execution proof. v2 consumes the receipt directory produced by
+// `tools/run-characterization.cjs` and fails closed unless every manifest-owned
+// `test/characterization/*.test.cjs` suite has exactly one HEAD/tree/worktree-
+// bound receipt proving a non-skipped run at or above the declared execution
+// floor with the exact canonical command and a zero exit status.
 
 const fs = require('node:fs');
 const path = require('node:path');
 
 const v1 = require('./test-inventory.cjs');
+const runner = require('../../tools/run-characterization.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_BASELINE = path.join(ROOT, 'test', 'fixtures', 'contracts', 'test-suite-baseline.json');
 const DEFAULT_MANIFEST = path.join(ROOT, 'test', 'fixtures', 'contracts', 'test-suite-manifest.json');
+const DEFAULT_RECEIPT_DIR = runner.DEFAULT_RECEIPT_DIR;
 
 function fail(message) {
   throw new Error(`test-inventory-v2: ${message}`);
@@ -115,6 +124,114 @@ function compareDeclaredTotals(declared, recomputed) {
   return problems;
 }
 
+// Receipt-backed accounting (Task 18). The receipt directory is the only
+// accepted execution proof: a missing suite, an unreadable or partially
+// written receipt, a count below the manifest expectation, a skipped-only
+// suite, a duplicate suite/path receipt, a stale HEAD/tree/worktree binding,
+// a command mismatch, a nonzero exit, or a receipt for an unowned path is a
+// hard failure. There is no "registration-only" pass.
+function hex(value, length) {
+  return typeof value === 'string' && new RegExp(`^[0-9a-f]{${length}}$`, 'u').test(value);
+}
+
+function validateReceiptShape(receipt) {
+  if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return ['receipt is not an object'];
+  const problems = [];
+  if (receipt.schemaVersion !== runner.RECEIPT_SCHEMA_VERSION) problems.push(`schemaVersion ${receipt.schemaVersion}`);
+  if (typeof receipt.suitePath !== 'string' || !receipt.suitePath) problems.push('suitePath');
+  if (typeof receipt.suiteId !== 'string' || !receipt.suiteId) problems.push('suiteId');
+  if (!Number.isInteger(receipt.expectedExecutionCount) || receipt.expectedExecutionCount < 1) problems.push('expectedExecutionCount');
+  if (!hex(receipt.head, 40)) problems.push('head');
+  if (!hex(receipt.tree, 40)) problems.push('tree');
+  if (!hex(receipt.worktreeDigest, 64)) problems.push('worktreeDigest');
+  if (typeof receipt.command !== 'string' || !receipt.command) problems.push('command');
+  if (!Array.isArray(receipt.argv) || receipt.argv.some(item => typeof item !== 'string')) problems.push('argv');
+  if (!Number.isInteger(receipt.exitCode) && receipt.exitCode !== null) problems.push('exitCode');
+  if (typeof receipt.timedOut !== 'boolean') problems.push('timedOut');
+  if (receipt.signal !== null && typeof receipt.signal !== 'string') problems.push('signal');
+  if (!receipt.counts || typeof receipt.counts !== 'object') problems.push('counts');
+  else {
+    for (const key of ['tests', 'passed', 'failed', 'skipped', 'todo', 'cancelled']) {
+      if (!Number.isInteger(receipt.counts[key]) || receipt.counts[key] < 0) problems.push(`counts.${key}`);
+    }
+  }
+  if (!Number.isInteger(receipt.achievedNonSkipped) || receipt.achievedNonSkipped < 0) problems.push('achievedNonSkipped');
+  if (typeof receipt.ok !== 'boolean') problems.push('ok');
+  if (!hex(receipt.tapSha256, 64)) problems.push('tapSha256');
+  return problems;
+}
+
+function compareReceipt(suite, receipt, name, binding) {
+  const problems = [];
+  if (receipt.suiteId !== suite.id) problems.push(`suite id mismatch for ${suite.path}: receipt ${receipt.suiteId}`);
+  if (receipt.expectedExecutionCount !== suite.expectedExecutionCount) {
+    problems.push(`expectation mismatch for ${suite.path}: receipt ${receipt.expectedExecutionCount} manifest ${suite.expectedExecutionCount}`);
+  }
+  if (receipt.command !== runner.commandFor(suite.path)) problems.push(`command mismatch for ${suite.path}: ${receipt.command}`);
+  if (receipt.head !== binding.head) problems.push(`stale head binding for ${suite.path}: receipt ${receipt.head} current ${binding.head}`);
+  if (receipt.tree !== binding.tree) problems.push(`stale tree binding for ${suite.path}: receipt ${receipt.tree} current ${binding.tree}`);
+  if (receipt.worktreeDigest !== binding.worktreeDigest) {
+    problems.push(`stale worktree binding for ${suite.path}: receipt ${receipt.worktreeDigest} current ${binding.worktreeDigest}`);
+  }
+  if (receipt.timedOut !== false) problems.push(`timed out suite: ${suite.path}`);
+  if (receipt.exitCode !== 0) problems.push(`nonzero exit for ${suite.path}: ${receipt.exitCode}`);
+  if (receipt.signal !== null) problems.push(`killed suite: ${suite.path} signal ${receipt.signal}`);
+  if (receipt.counts.failed !== 0) problems.push(`failed tests for ${suite.path}: ${receipt.counts.failed}`);
+  if (receipt.counts.passed === 0) problems.push(`skipped-only suite: ${suite.path} (passed 0, skipped ${receipt.counts.skipped})`);
+  if (receipt.achievedNonSkipped !== receipt.counts.passed + receipt.counts.failed) {
+    problems.push(`inconsistent receipt ${name}: achievedNonSkipped ${receipt.achievedNonSkipped} != passed+failed ${receipt.counts.passed + receipt.counts.failed}`);
+  }
+  if (receipt.achievedNonSkipped < suite.expectedExecutionCount) {
+    problems.push(`count below expectation for ${suite.path}: achieved ${receipt.achievedNonSkipped} < declared ${suite.expectedExecutionCount}`);
+  }
+  if (receipt.ok !== true) problems.push(`receipt not ok: ${name}`);
+  return problems;
+}
+
+function validateReceipts({ receiptDir, suites, binding }) {
+  const problems = [];
+  const expected = new Map(suites.map(suite => [suite.path, suite]));
+  const seen = new Map();
+  let files;
+  try {
+    files = fs.readdirSync(receiptDir).filter(name => name.endsWith('.json')).sort();
+  } catch (error) {
+    for (const suitePath of expected.keys()) problems.push(`missing receipt: ${suitePath} (receipt dir unreadable: ${error.message})`);
+    return problems;
+  }
+  for (const name of files) {
+    let receipt;
+    try {
+      receipt = JSON.parse(fs.readFileSync(path.join(receiptDir, name), 'utf8'));
+    } catch (error) {
+      problems.push(`unreadable receipt ${name}: ${error.message}`);
+      continue;
+    }
+    const shape = validateReceiptShape(receipt);
+    if (shape.length > 0) {
+      problems.push(`partial receipt ${name}: invalid ${shape.join(', ')}`);
+      continue;
+    }
+    if (!expected.has(receipt.suitePath)) {
+      problems.push(`unowned path receipt: ${name} claims ${receipt.suitePath}`);
+      continue;
+    }
+    if (name !== runner.receiptFileName(receipt.suitePath)) {
+      problems.push(`receipt path mismatch: ${name} does not match suite path ${receipt.suitePath}`);
+    }
+    if (seen.has(receipt.suitePath)) {
+      problems.push(`duplicate receipt for ${receipt.suitePath}: ${seen.get(receipt.suitePath)}, ${name}`);
+    } else {
+      seen.set(receipt.suitePath, name);
+    }
+    problems.push(...compareReceipt(expected.get(receipt.suitePath), receipt, name, binding));
+  }
+  for (const suitePath of expected.keys()) {
+    if (!seen.has(suitePath)) problems.push(`missing receipt: ${suitePath}`);
+  }
+  return problems;
+}
+
 function verifyInventory(options = {}) {
   const discovered = options.discovered === undefined ? v1.discoverSuites() : options.discovered;
   const basic = v1.verifyInventory({ ...options, discovered });
@@ -198,6 +315,15 @@ function verifyInventory(options = {}) {
     problems.push(...compareDeclaredTotals(manifest.totals, recomputedTotals));
   }
 
+  const characterization = manifest.suites.filter(suite => runner.isCharacterizationPath(suite.path));
+  if (characterization.length > 0) {
+    const receiptDir = options.receiptDir === undefined ? DEFAULT_RECEIPT_DIR : options.receiptDir;
+    const binding = options.head && options.tree && options.worktreeDigest
+      ? { head: options.head, tree: options.tree, worktreeDigest: options.worktreeDigest }
+      : runner.currentBinding();
+    problems.push(...validateReceipts({ receiptDir, suites: characterization, binding }));
+  }
+
   if (problems.length > 0) fail(problems.join('; '));
 
   return {
@@ -205,6 +331,7 @@ function verifyInventory(options = {}) {
     suites: basic.suites,
     expectedExecutions: basic.expectedExecutions,
     relocations: relocations.length,
+    receiptBackedSuites: characterization.length,
     totals: recomputedTotals,
   };
 }
@@ -223,11 +350,13 @@ if (require.main === module) {
   try {
     const args = parseArgs(process.argv.slice(2));
     for (const key of Object.keys(args)) {
-      if (key !== 'baseline' && key !== 'manifest') fail(`unsupported argument --${key}`);
+      if (key !== 'baseline' && key !== 'manifest' && key !== 'receipt-dir') fail(`unsupported argument --${key}`);
     }
+    if (!args['receipt-dir']) fail('--receipt-dir is required: inventory validation is receipt-backed');
     const result = verifyInventory({
       baseline: readJson(path.resolve(args.baseline || DEFAULT_BASELINE)),
       manifest: readJson(path.resolve(args.manifest || DEFAULT_MANIFEST)),
+      receiptDir: path.resolve(args['receipt-dir']),
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {
@@ -236,4 +365,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { discoverSuites: v1.discoverSuites, verifyInventory };
+module.exports = { discoverSuites: v1.discoverSuites, verifyInventory, validateReceipts };

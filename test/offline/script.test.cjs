@@ -62,7 +62,7 @@ test('Given the offline lane, When its declared files are inspected, Then none i
 
 test('Given npm test, When its command is inspected, Then it aggregates exactly the node:test lanes', () => {
     const scripts = require('../../package.json').scripts;
-    assert.equal(scripts.test, 'npm run test:offline && npm run test:tools && npm run test:artifact');
+    assert.equal(scripts.test, 'npm run test:characterization && npm run test:offline && npm run test:tools && npm run test:artifact');
 });
 
 test('Given the offline lane, When its command is inspected, Then browser suites are excluded', () => {
