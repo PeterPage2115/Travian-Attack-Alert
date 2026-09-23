@@ -27,9 +27,14 @@
 //      checks, update-channel HTTP/SHA, pilot evidence, the Task 23 seed and
 //      Task 31 update receipts, the owner-executed DEV-deletion record with its
 //      `devArchival` attestation, the release environment checklist, immutable
-//      releases, owner evidence shape, owner fields, assets/checksums, draft
-//      state and published/attestation verification. `--offline-fixture <path>`
-//      evaluates a committed bundle deterministically (no git, no network).
+//      releases, owner evidence bound to the canonical repository identity and
+//      the recorded release head, owner fields, assets/checksums, draft state
+//      and published/attestation verification. Owner evidence is accepted only
+//      when its repository, ref, tag and commit match the canonical identity;
+//      publication.tagAndRelease is accepted only as a structured record whose
+//      tag/version/releaseId match the identity and which carries verification
+//      evidence. `--offline-fixture <path>` evaluates a committed bundle
+//      deterministically (no git, no network).
 //
 // The seven assets (flat, basename-only):
 //   1. travian-attack-alert.user.js          generated userscript
@@ -128,6 +133,7 @@ const READINESS_BUNDLE_KEYS = [
   'published',
 ];
 const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
+const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 function isPopulated(value) {
   return value !== false && value !== null && value !== undefined && value !== '';
@@ -162,12 +168,33 @@ function validateReadinessBundle(bundle) {
 
 // Owner evidence is only accepted when it carries the four required binding
 // fields plus a read-only API response digest; no secret value is ever read.
-function ownerEvidenceComplete(ownerEvidence) {
+// Every binding field must match the canonical release identity and the
+// recorded release head, so evidence harvested from another repository or ref
+// can never satisfy readiness.
+function ownerEvidenceComplete(ownerEvidence, identity, repository) {
   return isTimestamp(ownerEvidence.timestamp)
     && isNonEmptyString(ownerEvidence.actor)
     && isNonEmptyString(ownerEvidence.repository)
-    && isNonEmptyString(ownerEvidence.ref)
+    && ownerEvidence.repository === identity.repository
+    && (ownerEvidence.ref === identity.tag || ownerEvidence.ref === `refs/tags/${identity.tag}`)
+    && ownerEvidence.tag === identity.tag
+    && isHex(ownerEvidence.commit, 40)
+    && ownerEvidence.commit === identity.commit
+    && ownerEvidence.commit === repository.headCommit
     && isHex(ownerEvidence.apiResponseDigest, 64);
+}
+
+// `publication.tagAndRelease` must be a structured record of the published
+// release, not a bare boolean or arbitrary string: every field is compared
+// against the evaluated identity before PUBLISHED_VERIFIED can be reported.
+function publicationTagAndReleaseValid(record, identity) {
+  return Boolean(record) && typeof record === 'object' && !Array.isArray(record)
+    && record.tag === identity.tag
+    && record.version === identity.version
+    && record.releaseId === identity.releaseId
+    && Number.isInteger(record.githubReleaseId) && record.githubReleaseId > 0
+    && isTimestamp(record.verifiedAt)
+    && isHex(record.evidenceDigest, 64);
 }
 
 function evaluateReadiness(bundle) {
@@ -203,8 +230,13 @@ function evaluateReadiness(bundle) {
     isNonEmptyString(identity.version) && SEMVER_RE.test(identity.version)
       && identity.releaseId === `taa-${identity.version}`
       && identity.tag === `v${identity.version}`
+      && isNonEmptyString(identity.repository) && REPOSITORY_RE.test(identity.repository)
+      && isNonEmptyString(repository.name) && REPOSITORY_RE.test(repository.name)
+      && identity.repository === repository.name
+      && isHex(identity.commit, 40)
+      && identity.commit === repository.headCommit
       && isHex(identity.artifactSha256, 64),
-    'identity must bind version, releaseId, tag and the userscript artifact digest');
+    'identity must bind version, releaseId, tag, the canonical repository, the release head commit and the userscript artifact digest');
 
   record('pre-tag', 'worktree', 'dirty-worktree',
     repository.worktreeClean === true,
@@ -285,8 +317,8 @@ function evaluateReadiness(bundle) {
     'immutable releases must be enabled with digest-bound evidence');
 
   record('pre-tag', 'owner-evidence', 'owner-evidence-incomplete',
-    ownerEvidenceComplete(bundle.ownerEvidence),
-    'every owner-only evidence item needs timestamp, actor, repository/ref and a read-only API response digest');
+    ownerEvidenceComplete(bundle.ownerEvidence, identity, repository),
+    'owner evidence must bind timestamp, actor, the canonical repository, the exact release tag ref/commit and a read-only API response digest');
 
   record('pre-tag', 'release-state', 'release-state-not-ready',
     releaseState.schemaVersion === 2
@@ -346,7 +378,11 @@ function evaluateReadiness(bundle) {
   record('published', 'published-digests', 'checksum-mismatch',
     published.assetDigestsMatch === true,
     'the published asset ids and digests must be unchanged');
-  const publicationRecorded = isPopulated(publication.tagAndRelease);
+  const publicationClaimed = isPopulated(publication.tagAndRelease);
+  record('published', 'publication-record',
+    publicationClaimed ? 'publication-record-mismatch' : 'publication-not-recorded',
+    publicationTagAndReleaseValid(publication.tagAndRelease, identity),
+    'publication.tagAndRelease must be a structured record binding the exact tag, version, releaseId, GitHub release id and verification evidence');
 
   const failing = (stage) => checks.filter((entry) => entry.stage === stage && !entry.ok).map((entry) => entry.code);
   const preTagFailures = failing('pre-tag');
@@ -365,7 +401,7 @@ function evaluateReadiness(bundle) {
     state = READINESS_STATES.BLOCKED;
     activeFailures = preTagFailures;
   } else if (!tagPresent) {
-    if (draft.exists === true || published.exists === true || publicationRecorded) {
+    if (draft.exists === true || published.exists === true || publicationClaimed) {
       return inconsistent('a tagless bundle must not claim a draft, published release or tagAndRelease record', 'inconsistent-readiness-state');
     }
     state = READINESS_STATES.READY_FOR_OWNER_TAG;
@@ -377,7 +413,7 @@ function evaluateReadiness(bundle) {
     state = READINESS_STATES.BLOCKED;
     activeFailures = draftFailures;
   } else if (published.exists !== true) {
-    if (publicationRecorded) {
+    if (publicationClaimed) {
       return inconsistent('a draft-only bundle must not claim publication.tagAndRelease', 'publication-claim-unverified');
     }
     state = READINESS_STATES.DRAFT_READY_FOR_APPROVAL;
@@ -385,9 +421,6 @@ function evaluateReadiness(bundle) {
   } else if (publishedFailures.length > 0) {
     state = READINESS_STATES.BLOCKED;
     activeFailures = publishedFailures;
-  } else if (!publicationRecorded) {
-    state = READINESS_STATES.BLOCKED;
-    activeFailures = ['publication-not-recorded'];
   } else {
     state = READINESS_STATES.PUBLISHED_VERIFIED;
     activeFailures = [];
@@ -441,6 +474,7 @@ function describeBlocker(code) {
     'mutable-release': 'immutable releases are not enabled/verified, so the release is mutable',
     'release-attestation-mismatch': 'the published release attestation does not verify',
     'publication-not-recorded': 'publication.tagAndRelease has not been recorded after verification',
+    'publication-record-mismatch': 'publication.tagAndRelease is not a structured, identity-bound verification record',
     'publication-claim-unverified': 'publication.tagAndRelease is claimed before the release was verified',
     'inconsistent-readiness-state': 'the bundle mixes prerequisites from incompatible readiness stages',
   };
@@ -757,6 +791,7 @@ module.exports = {
   evaluateReadiness,
   validateReadinessBundle,
   ownerEvidenceComplete,
+  publicationTagAndReleaseValid,
   READINESS_STATES,
   PRE_PUBLICATION_GATES,
   REQUIRED_CHECKS,

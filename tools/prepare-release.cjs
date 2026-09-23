@@ -22,7 +22,8 @@
 // tag-not-annotated, tag-version-mismatch, checkout-not-tagged-commit,
 // release-branch-missing, tag-off-release-branch, dirty-worktree,
 // build-mutated-checkout, build-failed, nondeterministic-output,
-// runtime-dependencies-present, sbom-runtime-dependency-misstatement.
+// runtime-dependencies-present, sbom-runtime-dependency-misstatement,
+// unsafe-output-path, unsafe-scratch-path.
 //
 // The SBOM is an SPDX-2.3 BUILD-dependency document. Its creation timestamp is
 // SOURCE_DATE_EPOCH (derived from the tagged commit's committer date, never
@@ -32,10 +33,13 @@
 // Exit codes: 0 PASS, 1 verification FAIL, 2 usage/read error.
 // Flags: --root <dir> --out <dir> --release-branch <name> --json
 // Env:   TAA_ROOT TAA_RELEASE_BRANCH SOURCE_DATE_EPOCH TAA_RELEASE_TEST_NONDETERMINISM
-// Dependencies: node:fs, node:path, node:crypto, node:child_process + the
-//               existing tools/build.cjs and tools/check-release-readiness.cjs.
+//        TAA_RELEASE_ALLOW_EXTERNAL_OUT (explicit approval for a disposable
+//        release directory outside the repository and the system temp dir)
+// Dependencies: node:fs, node:path, node:os, node:crypto, node:child_process +
+//               the existing tools/build.cjs and tools/check-release-readiness.cjs.
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -205,6 +209,9 @@ function digestEntry(dir, name) {
 
 // Assemble one complete release directory from the current build outputs.
 function assembleRelease({ root, out, packageJson, toolchain, version, releaseId, tag, source, nondeterministic }) {
+  if (path.resolve(out) === path.resolve(root)) {
+    throw new ReleaseError('unsafe-output-path', 'release assembly must never target the repository root');
+  }
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
 
@@ -262,10 +269,114 @@ function compareReleaseDirectories(a, b) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Destructive-path safety (PR #16 review).
+//
+// `assembleRelease` recursively removes its output directory before recreating
+// it, and the determinism pass removes a scratch sibling. Both targets are
+// therefore canonicalized and validated BEFORE any build or deletion:
+//   * the repository root and any ancestor of it are refused;
+//   * tracked files, and directories containing tracked files, are refused;
+//   * an in-repository `--out` must be the designated gitignored release
+//     directory (or a child of it); the scratch path must be its gitignored
+//     sibling, so the clean-worktree exclusion only ever covers disposable
+//     output;
+//   * an external target must live under the system temp directory or be
+//     explicitly approved with TAA_RELEASE_ALLOW_EXTERNAL_OUT=1;
+//   * an existing target may hold nothing but the seven release asset names.
+// ---------------------------------------------------------------------------
+
+function isWithin(parent, child) {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith(`..${path.sep}`) && rel !== '..' && !path.isAbsolute(rel));
+}
+
+function toPosix(rel) { return rel.split(path.sep).join('/'); }
+
+// Resolve symlinks in the existing prefix and re-append the missing suffix, so
+// a symlinked target cannot point validation at one directory and deletion at
+// another.
+function canonicalPath(target) {
+  const resolved = path.resolve(target);
+  let current = resolved;
+  const suffix = [];
+  for (;;) {
+    try {
+      const real = fs.realpathSync(current);
+      return suffix.length === 0 ? real : path.join(real, ...suffix.reverse());
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+      const parent = path.dirname(current);
+      if (parent === current) return resolved;
+      suffix.push(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+function trackedFiles(root) {
+  const result = git(root, ['ls-files', '-z']);
+  if (result.error) throw new ReleaseError('git-failed', `git ls-files failed: ${result.error.message}`);
+  if (result.status !== 0) throw new ReleaseError('not-a-git-checkout', `release preparation requires a git checkout (git ls-files: exit ${result.status})`);
+  return String(result.stdout || '').split('\0').filter(Boolean).map(toPosix);
+}
+
+function disposableEntriesProblem(target) {
+  let stats;
+  try {
+    stats = fs.lstatSync(target);
+  } catch {
+    return null; // A missing target holds nothing to lose.
+  }
+  if (stats.isSymbolicLink() || !stats.isDirectory()) return 'exists and is not a directory';
+  const unexpected = fs.readdirSync(target).filter((name) => !C.ALL_ASSETS.includes(name));
+  if (unexpected.length > 0) return `holds unrelated entries: ${unexpected.slice(0, 5).join(', ')}`;
+  return null;
+}
+
+function validateDestructiveTarget({
+  root,
+  target,
+  tracked,
+  label,
+  code,
+  subtree = false,
+  outDir = null,
+  externalAllowed = process.env.TAA_RELEASE_ALLOW_EXTERNAL_OUT === '1',
+}) {
+  if (target === root) throw new ReleaseError(code, `${label} must not be the repository root`);
+  if (isWithin(target, root)) throw new ReleaseError(code, `${label} must not contain the repository root`);
+  if (isWithin(root, target)) {
+    const rel = toPosix(path.relative(root, target));
+    const clash = tracked.find((file) => file === rel || file.startsWith(`${rel}/`) || rel.startsWith(`${file}/`));
+    if (clash) throw new ReleaseError(code, `${label} overlaps tracked path ${clash}`);
+    if (subtree && rel !== 'release' && !rel.startsWith('release/')) {
+      throw new ReleaseError(code, `${label} must be the release/ directory or a child of it`);
+    }
+    const ignored = git(root, ['check-ignore', '-q', '--', `${rel}/`]);
+    if (ignored.error) throw new ReleaseError('git-failed', `git check-ignore failed: ${ignored.error.message}`);
+    if (ignored.status !== 0) throw new ReleaseError(code, `${label} must be gitignored before it can be deleted as disposable`);
+  } else if (!externalAllowed && !isWithin(canonicalPath(os.tmpdir()), target)) {
+    throw new ReleaseError(code, `${label} is outside the repository and the system temp directory; set TAA_RELEASE_ALLOW_EXTERNAL_OUT=1 to approve a disposable external path`);
+  }
+  if (outDir !== null && path.dirname(target) !== path.dirname(outDir)) {
+    throw new ReleaseError(code, `${label} must be a sibling of the release output ${outDir}`);
+  }
+  const problem = disposableEntriesProblem(target);
+  if (problem) throw new ReleaseError(code, `${label} ${problem}`);
+}
+
 function prepareRelease(options) {
-  const root = path.resolve(options.root || ROOT);
-  const out = path.resolve(options.out || path.join(root, 'release'));
+  const root = canonicalPath(options.root || ROOT);
+  const out = canonicalPath(options.out || path.join(root, 'release'));
+  const scratch = canonicalPath(`${out}-determinism-${process.pid}`);
   const releaseBranch = options.releaseBranch || process.env.TAA_RELEASE_BRANCH || DEFAULT_RELEASE_BRANCH;
+
+  // Destructive-path safety first: refuse to erase tracked inputs or unrelated
+  // directories BEFORE reading, building, or deleting anything.
+  const tracked = trackedFiles(root);
+  validateDestructiveTarget({ root, target: out, tracked, label: `--out ${out}`, code: 'unsafe-output-path', subtree: true });
+  validateDestructiveTarget({ root, target: scratch, tracked, label: `determinism scratch ${scratch}`, code: 'unsafe-scratch-path', outDir: out });
 
   const packageJson = readJson(path.join(root, 'package.json'));
   const version = packageJson.version;
@@ -298,9 +409,11 @@ function prepareRelease(options) {
   if (!Number.isInteger(sourceDateEpoch) || sourceDateEpoch < 0) throw new ReleaseError('git-failed', `SOURCE_DATE_EPOCH is invalid: ${String(process.env.SOURCE_DATE_EPOCH)}`);
   const source = { commit: taggedCommit, tree, branch: releaseBranch, tagObject: tagObjectId, sourceDateEpoch };
 
-  // Clean checkout, then build. The build must not mutate tracked state.
-  const outRel = path.relative(root, out);
-  const ignoredPaths = outRel && !outRel.startsWith('..') && !path.isAbsolute(outRel) ? [outRel.split(path.sep).join('/')] : [];
+  // Clean checkout, then build. The build must not mutate tracked state. The
+  // exclusion below is safe because `out` was validated before this point: it
+  // is either the gitignored release/ directory (or a child) or an approved
+  // disposable external path.
+  const ignoredPaths = isWithin(root, out) ? [toPosix(path.relative(root, out))] : [];
   assertClean(root, ignoredPaths, 'dirty-worktree', 'release preparation requires a clean checkout');
   runBuild(root);
   assertClean(root, ignoredPaths, 'build-mutated-checkout', 'deterministic build mutated tracked state');
@@ -313,7 +426,6 @@ function prepareRelease(options) {
 
   // Pass 1: final output directory. Pass 2: determinism scratch (byte-identical).
   const manifest = assembleRelease({ root, out, packageJson, toolchain, version, releaseId, tag, source, nondeterministic: false });
-  const scratch = `${out}-determinism-${process.pid}`;
   try {
     runBuild(root);
     const nondeterministic = process.env.TAA_RELEASE_TEST_NONDETERMINISM === '1';
@@ -367,4 +479,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { prepareRelease, buildSbom, assembleRelease, parseArgs, validVersion, cleanWorktreeProblems };
+module.exports = { prepareRelease, buildSbom, assembleRelease, parseArgs, validVersion, cleanWorktreeProblems, validateDestructiveTarget, canonicalPath };

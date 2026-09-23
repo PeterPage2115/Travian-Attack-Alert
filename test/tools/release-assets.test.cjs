@@ -282,6 +282,92 @@ test('Given declared runtime dependencies, when prepared, then preparation is re
   assert.equal(failCode(prepare(repo, path.join(base, 'release'))), 'runtime-dependencies-present');
 });
 
+test('Given the repository root as --out, when prepared, then it is refused before anything is deleted', (t) => {
+  const { repo } = happyFixture(t);
+  const result = prepare(repo, repo);
+  assert.equal(failCode(result), 'unsafe-output-path');
+  for (const rel of ['package.json', 'README.md', 'src/runtime.js', 'dist', 'tools/prepare-release.cjs', '.git/HEAD']) {
+    assert.ok(fs.existsSync(path.join(repo, rel)), `${rel} must survive a refused --out`);
+  }
+  assert.ok(fs.readdirSync(path.join(repo, 'src')).length > 0, 'src must not be emptied by a refused --out');
+});
+
+test('Given tracked files or tracked directories as --out, when prepared, then each is refused and the content survives', (t) => {
+  const { repo } = happyFixture(t);
+  for (const rel of ['src', 'dist', 'package.json']) {
+    const result = prepare(repo, path.join(repo, rel));
+    assert.equal(failCode(result), 'unsafe-output-path', `--out ${rel} must be refused as unsafe`);
+    assert.ok(fs.existsSync(path.join(repo, rel)), `${rel} must survive a refused --out`);
+  }
+  assert.ok(fs.readdirSync(path.join(repo, 'src')).length > 0, 'src must still contain its tracked modules');
+});
+
+test('Given an existing external output directory with unrelated content, when prepared, then it is refused and nothing is deleted', (t) => {
+  const { base, repo } = happyFixture(t);
+  const external = fs.mkdtempSync(path.join(base, 'external-hold-'));
+  fs.writeFileSync(path.join(external, 'unrelated-notes.txt'), 'keep me\n');
+  const result = prepare(repo, external);
+  assert.equal(failCode(result), 'unsafe-output-path');
+  assert.equal(fs.readFileSync(path.join(external, 'unrelated-notes.txt'), 'utf8'), 'keep me\n');
+});
+
+test('Given an external output outside the system temp directory, when prepared, then it needs explicit disposable approval', (t) => {
+  const { base, repo } = happyFixture(t);
+  const fakeTmp = path.join(base, 'fake-tmp');
+  fs.mkdirSync(fakeTmp);
+  const external = path.join(base, 'outside', 'release');
+  const refused = prepare(repo, external, [], { TMPDIR: fakeTmp });
+  assert.equal(failCode(refused), 'unsafe-output-path');
+  assert.ok(!fs.existsSync(external), 'a refused external output must not be created');
+  const approved = prepare(repo, external, [], { TMPDIR: fakeTmp, TAA_RELEASE_ALLOW_EXTERNAL_OUT: '1' });
+  assert.equal(approved.status, 0, `approved external output failed: stdout=${approved.stdout} stderr=${approved.stderr}`);
+  assert.equal(JSON.parse(approved.stdout).assetCount, 7);
+  assert.deepEqual(listFiles(external), [...ALL_ASSETS].sort());
+});
+
+test('Given an existing disposable release directory with exactly the seven assets, when prepared again, then the re-run is allowed', (t) => {
+  const { base, repo } = happyFixture(t);
+  const out = path.join(base, 'release');
+  prepareOk(repo, out);
+  const rerun = prepareOk(repo, out);
+  assert.equal(rerun.assetCount, 7);
+  assert.deepEqual(listFiles(out), [...ALL_ASSETS].sort());
+});
+
+test('Given the destructive-target validator, when a scratch or output path is unsafe, then every class is refused with its typed code', (t) => {
+  const { validateDestructiveTarget } = require(PREPARE);
+  const { repo } = happyFixture(t);
+  const tracked = git(repo, ['ls-files']).split('\n');
+  const probe = (code, args) => assert.throws(
+    () => validateDestructiveTarget({ ...args, label: args.target, code }),
+    (error) => error.code === code,
+    `${args.target} must be refused with ${code}`,
+  );
+
+  probe('unsafe-output-path', { root: repo, target: repo, tracked, subtree: true });
+  probe('unsafe-output-path', { root: repo, target: path.join(repo, 'src'), tracked, subtree: true });
+  probe('unsafe-output-path', { root: repo, target: path.join(repo, 'dist'), tracked, subtree: true });
+  probe('unsafe-output-path', { root: repo, target: path.join(repo, 'release'), tracked: [...tracked, 'release/forced.txt'], subtree: true });
+  probe('unsafe-scratch-path', { root: repo, target: repo, tracked, subtree: false });
+  probe('unsafe-scratch-path', { root: repo, target: path.join(repo, 'dist-determinism-1'), tracked, subtree: false });
+
+  const polluted = path.join(repo, 'release-determinism-2');
+  fs.mkdirSync(polluted);
+  fs.writeFileSync(path.join(polluted, 'unrelated.txt'), 'x\n');
+  probe('unsafe-scratch-path', { root: repo, target: polluted, tracked, subtree: false });
+
+  const external = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-targets-'));
+  t.after(() => fs.rmSync(external, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(external, 'unrelated.txt'), 'x\n');
+  probe('unsafe-output-path', { root: repo, target: external, tracked, subtree: false });
+
+  const safeExternal = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-targets-ok-'));
+  t.after(() => fs.rmSync(safeExternal, { recursive: true, force: true }));
+  assert.doesNotThrow(() => validateDestructiveTarget({ root: repo, target: path.join(repo, 'release'), tracked, label: 'release', code: 'unsafe-output-path', subtree: true }));
+  assert.doesNotThrow(() => validateDestructiveTarget({ root: repo, target: path.join(repo, 'release-determinism-1'), tracked, label: 'scratch', code: 'unsafe-scratch-path', subtree: false }));
+  assert.doesNotThrow(() => validateDestructiveTarget({ root: repo, target: safeExternal, tracked, label: 'external', code: 'unsafe-output-path', subtree: false }));
+});
+
 test('Given no release directory, when checked, then release:check fails closed', () => {
   const missing = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-release-missing-'));
   try {

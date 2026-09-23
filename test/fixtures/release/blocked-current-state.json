@@ -6,9 +6,12 @@
     "version": "1.0.1",
     "releaseId": "taa-1.0.1",
     "tag": "v1.0.1",
+    "repository": "PeterPage2115/Travian-Attack-Alert",
+    "commit": "ae534e2897ceb984a2f36f2b2eb5ed5a04e537e1",
     "artifactSha256": "0c187870841a62d9b5d064fe242c00c648eaac6936cb6a830207239114045824"
   },
   "repository": {
+    "name": "PeterPage2115/Travian-Attack-Alert",
     "releaseBranch": "release/public-1.0.0",
     "headCommit": "ae534e2897ceb984a2f36f2b2eb5ed5a04e537e1",
     "headTree": "35b134aad1893dbcac0c7bbb530c75c88c9fe476",
@@ -90,6 +93,8 @@
     "actor": null,
     "repository": null,
     "ref": null,
+    "tag": null,
+    "commit": null,
     "apiResponseDigest": null
   },
   "releaseState": {

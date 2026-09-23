@@ -58,8 +58,16 @@ function happyBundle(overrides = {}) {
   const base = {
     schemaVersion: 1,
     generatedAt: TIMESTAMP,
-    identity: { version: '1.0.1', releaseId: 'taa-1.0.1', tag: 'v1.0.1', artifactSha256: ARTIFACT },
+    identity: {
+      version: '1.0.1',
+      releaseId: 'taa-1.0.1',
+      tag: 'v1.0.1',
+      repository: 'PeterPage2115/Travian-Attack-Alert',
+      commit: COMMIT,
+      artifactSha256: ARTIFACT,
+    },
     repository: {
+      name: 'PeterPage2115/Travian-Attack-Alert',
       releaseBranch: 'release/public-1.0.0',
       headCommit: COMMIT,
       headTree: TREE,
@@ -114,6 +122,8 @@ function happyBundle(overrides = {}) {
       actor: 'PeterPage2115',
       repository: 'PeterPage2115/Travian-Attack-Alert',
       ref: 'refs/tags/v1.0.1',
+      tag: 'v1.0.1',
+      commit: COMMIT,
       apiResponseDigest: hex('f'),
     },
     releaseState: {
@@ -158,10 +168,22 @@ function draftedBundle(overrides = {}) {
   }, overrides));
 }
 
+function publicationRecord(overrides = {}) {
+  return {
+    tag: 'v1.0.1',
+    version: '1.0.1',
+    releaseId: 'taa-1.0.1',
+    githubReleaseId: 234567890,
+    verifiedAt: TIMESTAMP,
+    evidenceDigest: hex('1'),
+    ...overrides,
+  };
+}
+
 function publishedBundle(overrides = {}) {
   return draftedBundle(deepMerge({
     published: { exists: true, isDraft: false, immutableVerified: true, releaseAttestationVerified: true, assetDigestsMatch: true },
-    releaseState: { publication: { tagAndRelease: 'v1.0.1 + GitHub Release' } },
+    releaseState: { publication: { tagAndRelease: publicationRecord() } },
   }, overrides));
 }
 
@@ -232,7 +254,7 @@ test('Given each pre-tag prerequisite removed one at a time, when evaluated, the
   const cases = [
     ['identity-mismatch', happyBundle({ identity: { releaseId: 'taa-1.0.0' } })],
     ['dirty-worktree', happyBundle({ repository: { worktreeClean: false } })],
-    ['release-branch-missing', happyBundle({ repository: { headCommit: null } })],
+    ['release-branch-missing', happyBundle({ repository: { releaseBranch: null } })],
     ['branch-protection-incomplete', happyBundle({ repository: { branchProtection: { requirePullRequest: false } } })],
     ['required-checks-not-green', happyBundle({ repository: { branchProtection: { checksGreen: false } } })],
     ['update-channel-unverified', happyBundle({ updateChannel: { sha256: hex('0') } })],
@@ -282,12 +304,47 @@ test('Given a draft with a missing asset or attestation, when evaluated, then th
   assertBlocked(draftedBundle({ draft: { isDraft: false } }), 'draft-missing', 'draft already published without approval');
 });
 
+test('Given owner evidence from an unrelated repository, ref, tag or commit, when evaluated, then it is rejected even though every field is shaped correctly', () => {
+  assertBlocked(happyBundle({ ownerEvidence: { repository: 'someone-else/other-project' } }), 'owner-evidence-incomplete', 'unrelated repository');
+  assertBlocked(happyBundle({ ownerEvidence: { ref: 'refs/heads/main' } }), 'owner-evidence-incomplete', 'unrelated ref');
+  assertBlocked(happyBundle({ ownerEvidence: { ref: 'refs/tags/v1.0.0' } }), 'owner-evidence-incomplete', 'tag ref from another release');
+  assertBlocked(happyBundle({ ownerEvidence: { tag: 'v1.0.0' } }), 'owner-evidence-incomplete', 'evidence tag from another release');
+  assertBlocked(happyBundle({ ownerEvidence: { commit: 'a'.repeat(40) } }), 'owner-evidence-incomplete', 'evidence commit from another revision');
+  assertBlocked(happyBundle({ ownerEvidence: { commit: null } }), 'owner-evidence-incomplete', 'missing evidence commit');
+  assertBlocked(happyBundle({ identity: { repository: 'someone-else/other-project' } }), 'identity-mismatch', 'unrelated identity repository');
+  assertBlocked(happyBundle({ identity: { commit: 'b'.repeat(40) } }), 'identity-mismatch', 'identity commit differs from the recorded release head');
+  // The canonical short tag ref is an accepted spelling of the same identity.
+  assert.equal(stateOf(happyBundle({ ownerEvidence: { ref: 'v1.0.1' } })), READINESS_STATES.READY_FOR_OWNER_TAG);
+});
+
 test('Given a mutable or unverified published release, when evaluated, then it never reports PUBLISHED_VERIFIED', () => {
   assertBlocked(publishedBundle({ published: { immutableVerified: false } }), 'mutable-release', 'mutable release');
   assertBlocked(publishedBundle({ published: { releaseAttestationVerified: false } }), 'release-attestation-mismatch', 'release attestation mismatch');
   assertBlocked(publishedBundle({ published: { assetDigestsMatch: false } }), 'checksum-mismatch', 'asset digest changed after publish');
   assertBlocked(publishedBundle({ published: { isDraft: true } }), 'published-missing', 'still a draft');
   assertBlocked(publishedBundle({ releaseState: { publication: { tagAndRelease: false } } }), 'publication-not-recorded', 'publication not recorded');
+});
+
+test('Given publication.tagAndRelease as a boolean or an unstructured string, when evaluated, then PUBLISHED_VERIFIED is refused', () => {
+  assertBlocked(publishedBundle({ releaseState: { publication: { tagAndRelease: true } } }), 'publication-record-mismatch', 'boolean publication record');
+  assertBlocked(publishedBundle({ releaseState: { publication: { tagAndRelease: 'v1.0.1 + GitHub Release' } } }), 'publication-record-mismatch', 'unstructured string publication record');
+  assertBlocked(publishedBundle({ releaseState: { publication: { tagAndRelease: [] } } }), 'publication-record-mismatch', 'array publication record');
+  assertBlocked(publishedBundle({ releaseState: { publication: { tagAndRelease: '' } } }), 'publication-not-recorded', 'empty publication record');
+});
+
+test('Given a structured publication record that disagrees with the release identity, when evaluated, then PUBLISHED_VERIFIED is refused', () => {
+  const cases = [
+    ['wrong tag', publicationRecord({ tag: 'v1.0.0' })],
+    ['wrong version', publicationRecord({ version: '1.0.0' })],
+    ['wrong release id', publicationRecord({ releaseId: 'taa-1.0.0' })],
+    ['missing GitHub release id', publicationRecord({ githubReleaseId: null })],
+    ['boolean GitHub release id', publicationRecord({ githubReleaseId: true })],
+    ['missing verification timestamp', publicationRecord({ verifiedAt: null })],
+    ['missing verification evidence', publicationRecord({ evidenceDigest: null })],
+  ];
+  for (const [label, record] of cases) {
+    assertBlocked(publishedBundle({ releaseState: { publication: { tagAndRelease: record } } }), 'publication-record-mismatch', label);
+  }
 });
 
 test('Given bundles that mix incompatible readiness stages, when evaluated, then they are rejected as inconsistent', () => {
