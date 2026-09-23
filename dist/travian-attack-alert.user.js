@@ -6973,7 +6973,7 @@ ${entry.line}`;
         );
         return assertCompactDiscordPayloadLimits(payloads);
       }
-      function sendDiscordBatch(attacks, onComplete) {
+      function sendDiscordBatch(attacks, onComplete, resume) {
         if (!isCurrentLeaseOwner()) {
           if (typeof onComplete === "function") {
             onComplete({
@@ -6991,56 +6991,63 @@ ${entry.line}`;
         }
         {
           const worldHostname = normalizeHostname(location.hostname);
-          const currentSettings = requireValidatedDiscordSettings(
-            loadSettings(worldHostname)
-          );
-          const discordConfig = loadDiscordConfig();
-          const roleId = discordConfig.roleId || null;
-          const leaveRoleId = discordConfig.leaveRoleId || null;
-          const mappings = loadMappings();
-          const worldMappings = mappings[worldHostname] || {};
-          const userIds = [];
-          const seenUserIds = /* @__PURE__ */ new Set();
-          for (const attack of attacks) {
-            if (attack.eventType === "join") {
-              continue;
-            }
-            const rawPlayerId = attack.playerId !== void 0 ? attack.playerId : extractPlayerId(attack.url);
-            const playerId = rawPlayerId === null || rawPlayerId === void 0 ? null : String(rawPlayerId);
-            if (!playerId) {
-              continue;
-            }
-            const recipients = Array.isArray(worldMappings[playerId]) ? worldMappings[playerId] : [];
-            for (const id of recipients) {
-              const key = validateDiscordUserId(id);
-              if (key !== null && !seenUserIds.has(key)) {
-                seenUserIds.add(key);
-                userIds.push(key);
+          const dispatchedAtMs = Date.now();
+          const resumeState = resume && Array.isArray(resume.payloads) && resume.payloads.length > 0 ? resume : null;
+          let payloads;
+          let payloadIndex = 0;
+          if (resumeState) {
+            payloads = resumeState.payloads;
+            payloadIndex = Number.isInteger(resumeState.firstUnacknowledged) && resumeState.firstUnacknowledged >= 0 && resumeState.firstUnacknowledged < payloads.length ? resumeState.firstUnacknowledged : 0;
+          } else {
+            const currentSettings = requireValidatedDiscordSettings(
+              loadSettings(worldHostname)
+            );
+            const discordConfig = loadDiscordConfig();
+            const roleId = discordConfig.roleId || null;
+            const leaveRoleId = discordConfig.leaveRoleId || null;
+            const mappings = loadMappings();
+            const worldMappings = mappings[worldHostname] || {};
+            const userIds = [];
+            const seenUserIds = /* @__PURE__ */ new Set();
+            for (const attack of attacks) {
+              if (attack.eventType === "join") {
+                continue;
+              }
+              const rawPlayerId = attack.playerId !== void 0 ? attack.playerId : extractPlayerId(attack.url);
+              const playerId = rawPlayerId === null || rawPlayerId === void 0 ? null : String(rawPlayerId);
+              if (!playerId) {
+                continue;
+              }
+              const recipients = Array.isArray(worldMappings[playerId]) ? worldMappings[playerId] : [];
+              for (const id of recipients) {
+                const key = validateDiscordUserId(id);
+                if (key !== null && !seenUserIds.has(key)) {
+                  seenUserIds.add(key);
+                  userIds.push(key);
+                }
               }
             }
+            const observedCandidateAtMs = attacks.reduce((earliest, attack) => {
+              const value = Number(attack.observedAtMs);
+              return Number.isFinite(value) ? Math.min(earliest, value) : earliest;
+            }, Infinity);
+            const observedAtMs = Number.isFinite(observedCandidateAtMs) ? observedCandidateAtMs : void 0;
+            payloads = buildDiscordPayloads(attacks, {
+              allianceUrl: location.href,
+              context: {
+                origin: location.origin,
+                fallbackHref: location.href
+              },
+              worldHostname,
+              observedAtMs,
+              dispatchedAtMs,
+              roleId,
+              leaveRoleId,
+              userIds,
+              settings: currentSettings
+            });
           }
-          const observedCandidateAtMs = attacks.reduce((earliest, attack) => {
-            const value = Number(attack.observedAtMs);
-            return Number.isFinite(value) ? Math.min(earliest, value) : earliest;
-          }, Infinity);
-          const observedAtMs = Number.isFinite(observedCandidateAtMs) ? observedCandidateAtMs : void 0;
-          const dispatchedAtMs = Date.now();
-          const payloads = buildDiscordPayloads(attacks, {
-            allianceUrl: location.href,
-            context: {
-              origin: location.origin,
-              fallbackHref: location.href
-            },
-            worldHostname,
-            observedAtMs,
-            dispatchedAtMs,
-            roleId,
-            leaveRoleId,
-            userIds,
-            settings: currentSettings
-          });
-          let payloadIndex = 0;
-          const finish = (outcome) => {
+          const finish = (outcome, resumeInfo) => {
             if (outcome && Number.isFinite(outcome.requestMs)) {
               mergeRuntimeDiagnostics(worldHostname, {
                 dispatchedAtMs,
@@ -7051,8 +7058,9 @@ ${entry.line}`;
                 }
               });
             }
+            const settledOutcome = resumeInfo ? Object.assign({}, outcome, { resume: resumeInfo }) : outcome;
             if (typeof onComplete === "function") {
-              onComplete(outcome);
+              onComplete(settledOutcome);
               return;
             }
             if (outcome.errorClass === "configuration") {
@@ -7082,8 +7090,9 @@ ${entry.line}`;
             if (payloadIndex >= payloads.length) {
               return;
             }
-            const payload = payloads[payloadIndex];
-            payloadIndex += 1;
+            const index = payloadIndex;
+            const payload = payloads[index];
+            payloadIndex = index + 1;
             if (!isCurrentLeaseOwner()) {
               finish({
                 status: null,
@@ -7091,13 +7100,13 @@ ${entry.line}`;
                 errorClass: "leader-lost",
                 error: null,
                 retryAfterMs: null
-              });
+              }, { payloads, firstUnacknowledged: index });
               return;
             }
             postPayload(payload, (outcome) => {
               const acknowledged = outcome.delivery && outcome.delivery.kind === "acknowledged";
               if (!acknowledged) {
-                finish(outcome);
+                finish(outcome, { payloads, firstUnacknowledged: index });
                 return;
               }
               if (payloadIndex < payloads.length) {
@@ -8086,7 +8095,7 @@ ${entry.line}`;
           }
         );
       }
-      function deliverChunkWithRetry(hostname, chunk, queueKind = "legacy") {
+      function deliverChunkWithRetry(hostname, chunk, queueKind = "legacy", resume = null) {
         const events = Array.isArray(chunk.events) ? chunk.events : [];
         const attempt = typeof chunk.attemptCount === "number" ? chunk.attemptCount : 0;
         function settle(outcome) {
@@ -8167,6 +8176,7 @@ ${entry.line}`;
               outcome.retryAfterMs,
               RETRY_DELAY_MS[attempt] || 1e3
             );
+            const nextResume = outcome && outcome.resume && Array.isArray(outcome.resume.payloads) ? outcome.resume : null;
             if (queueKind === "monitor") {
               const persisted = settleMonitorTransport(hostname, events, outcome, delivery);
               if (persisted.outcome !== "ok") {
@@ -8195,7 +8205,7 @@ ${entry.line}`;
                   attemptCount: nextAttempt
                 })),
                 attemptCount: nextAttempt
-              }, queueKind);
+              }, queueKind, nextResume);
             }, delay);
             return;
           }
@@ -8205,7 +8215,7 @@ ${entry.line}`;
           if (queueKind === "monitor") {
             const persisted = settleMonitorTransport(hostname, events, outcome, delivery);
             activeInFlightHosts.delete(hostname);
-            if (persisted.outcome === "ok") {
+            if (persisted.outcome === "ok" && !retryable) {
               deliverNextMonitorInFlightChunk(hostname);
             }
             return;
@@ -8257,7 +8267,7 @@ ${entry.line}`;
               return;
             }
           }
-          sendDiscordBatch(events, settle);
+          sendDiscordBatch(events, settle, resume);
         } catch (error) {
           settle({
             status: null,

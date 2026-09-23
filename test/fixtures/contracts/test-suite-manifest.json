@@ -181,11 +181,12 @@
       "id": "suite:test/characterization/transport-retry.test.cjs",
       "path": "test/characterization/transport-retry.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 11,
+      "expectedExecutionCount": 15,
       "coverage": [
         "transport-contract",
         "retry-classification",
-        "bounded-delivery"
+        "bounded-delivery",
+        "multi-payload-retry-resume"
       ]
     },
     {
@@ -521,7 +522,7 @@
   ],
   "totals": {
     "suiteCount": 50,
-    "expectedExecutionCount": 1069,
+    "expectedExecutionCount": 1073,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -533,7 +534,7 @@
       },
       "source-artifact": {
         "suiteCount": 16,
-        "expectedExecutionCount": 433
+        "expectedExecutionCount": 437
       },
       "tool": {
         "suiteCount": 17,
