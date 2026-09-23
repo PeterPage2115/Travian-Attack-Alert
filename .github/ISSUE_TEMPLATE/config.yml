@@ -1,0 +1,15 @@
+# Issue chooser policy (Task 27).
+#
+# Blank issues stay ENABLED deliberately: a report that fits neither template
+# (for example an environment where the script never executes, or a request to
+# enable private vulnerability reporting) still needs a home. Security reports
+# must NOT use a public issue — use the private security link below or
+# SECURITY.md. Never post secrets or player data in any public issue.
+blank_issues_enabled: true
+contact_links:
+  - name: Security report (private)
+    url: https://github.com/PeterPage2115/Travian-Attack-Alert/security/advisories/new
+    about: Report a vulnerability privately through GitHub Private Vulnerability Reporting / Security Advisories. Never post secrets or player data in a public issue.
+  - name: Support and questions
+    url: https://github.com/PeterPage2115/Travian-Attack-Alert/issues/new?labels=question
+    about: Installation, permission, or update-channel questions. Include the script version and synthetic or redacted data only.

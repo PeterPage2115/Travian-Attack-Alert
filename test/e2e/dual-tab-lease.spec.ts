@@ -68,7 +68,7 @@ const EVIDENCE_PATH = path.join('test-results', 'release-1.0.0', 'e2e-evidence-d
 // profile WILL double-send; the local lock cannot prevent it."
 const OPERATOR_RULE = 'one active monitoring installation per alliance/world; a second computer or browser profile WILL double-send; the local lock cannot prevent it.';
 
-type PrepConfig = { rename101?: boolean; attackIcon101?: boolean; rename102?: boolean; raidIcon102?: boolean };
+type PrepConfig = { rename101?: boolean; attackIcon101?: boolean; rename102?: boolean; raidIcon102?: boolean; hideTable?: boolean };
 type SnapshotEvent = { kind: string; status?: string; reason?: string };
 type LeaseRecord = { ownerId?: string; token?: string; generation?: number; term?: number; expiresAtMs?: number } | null;
 type Envelope = {
@@ -119,7 +119,7 @@ async function installPrepHook(page: Page): Promise<void> {
         const raw = localStorage.getItem('__taa_dual_prep');
         if (!raw) return;
         localStorage.removeItem('__taa_dual_prep');
-        const cfg = JSON.parse(raw) as { rename101?: boolean; attackIcon101?: boolean; rename102?: boolean; raidIcon102?: boolean };
+        const cfg = JSON.parse(raw) as { rename101?: boolean; attackIcon101?: boolean; rename102?: boolean; raidIcon102?: boolean; hideTable?: boolean };
         const rename = (from: string, to: string, name: string) => {
           const link = document.querySelector(`a[href="${from}"]`);
           if (link) { link.setAttribute('href', to); link.textContent = name; }
@@ -137,6 +137,15 @@ async function installPrepHook(page: Page): Promise<void> {
         };
         if (cfg.attackIcon101) addIcon('/profile/101', '1 attack');
         if (cfg.raidIcon102) addIcon('/profile/102', '1 raid');
+        // Pre-scan lease-loss scenario: keep the member table OUT of the DOM
+        // for the whole boot readiness window, stashed for a later reveal.
+        if (cfg.hideTable) {
+          const table = document.querySelector('table.allianceMembers');
+          if (table) {
+            (window as unknown as { __taaHiddenTable?: Element }).__taaHiddenTable = table;
+            table.remove();
+          }
+        }
       } catch { /* test scaffolding only; never masks product behavior */ }
     });
   });
@@ -144,6 +153,27 @@ async function installPrepHook(page: Page): Promise<void> {
 
 async function stagePrep(page: Page, cfg: PrepConfig): Promise<void> {
   await page.evaluate((config: PrepConfig) => localStorage.setItem('__taa_dual_prep', JSON.stringify(config)), cfg);
+}
+
+async function revealTable(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const table = (window as unknown as { __taaHiddenTable?: Element }).__taaHiddenTable;
+    if (table && !table.isConnected) document.body.appendChild(table);
+  });
+}
+
+async function diagnosticsText(page: Page): Promise<string> {
+  return await page.evaluate(() => localStorage.getItem('travianAllianceDiagnostics_v2') ?? '');
+}
+
+async function eventKinds(page: Page, kind: string, status?: string): Promise<SnapshotEvent[]> {
+  const events = await snapshotEvents(page);
+  return events.filter((event) => event.kind === kind && (status === undefined || event.status === status));
+}
+
+async function reacquiredWithNewToken(page: Page, previousToken: string | undefined): Promise<boolean> {
+  const record = await leaseRecord(page);
+  return Boolean(record && record.token && record.token !== previousToken);
 }
 
 // First boot of a page under REAL locks. The bare goto establishes the origin
@@ -594,4 +624,11 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       await second.context.close();
     }
   });
+
+  // Task 20's same-document lease reacquisition tests moved, unweakened, to
+  // dual-tab-lease-reacquisition.spec.ts: they wait on the real ~30 s renewal
+  // cadence, and running them on all six projects pushed THIS file over the
+  // runner's hard 480 s per-spec ceiling. They are now project-filtered to
+  // chromium-1280 (see playwright.qa.config.ts), while T1-T4 here keep running
+  // on every project.
 });

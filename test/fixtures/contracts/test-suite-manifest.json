@@ -15,7 +15,7 @@
       "id": "suite:test/artifact/delivery-matrix.test.cjs",
       "path": "test/artifact/delivery-matrix.test.cjs",
       "classification": "dist-artifact",
-      "expectedExecutionCount": 16,
+      "expectedExecutionCount": 31,
       "coverage": [
         "dist-runtime",
         "delivery-matrix"
@@ -25,7 +25,7 @@
       "id": "suite:test/artifact/detector-matrix.test.cjs",
       "path": "test/artifact/detector-matrix.test.cjs",
       "classification": "dist-artifact",
-      "expectedExecutionCount": 17,
+      "expectedExecutionCount": 20,
       "coverage": [
         "dist-runtime",
         "detector-matrix"
@@ -90,6 +90,17 @@
       ]
     },
     {
+      "id": "suite:test/characterization/attack-memory-reset.test.cjs",
+      "path": "test/characterization/attack-memory-reset.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 9,
+      "coverage": [
+        "attack-memory-reset",
+        "menu-command",
+        "envelope-writer"
+      ]
+    },
+    {
       "id": "suite:test/characterization/diagnostics-redaction.test.cjs",
       "path": "test/characterization/diagnostics-redaction.test.cjs",
       "classification": "source-artifact",
@@ -120,7 +131,7 @@
       "id": "suite:test/characterization/lease-fence-matrix.test.cjs",
       "path": "test/characterization/lease-fence-matrix.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 17,
+      "expectedExecutionCount": 21,
       "coverage": [
         "lease-contract",
         "lease-fencing",
@@ -170,18 +181,19 @@
       "id": "suite:test/characterization/transport-retry.test.cjs",
       "path": "test/characterization/transport-retry.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 11,
+      "expectedExecutionCount": 15,
       "coverage": [
         "transport-contract",
         "retry-classification",
-        "bounded-delivery"
+        "bounded-delivery",
+        "multi-payload-retry-resume"
       ]
     },
     {
       "id": "suite:test/e2e/attack-panel.spec.ts",
       "path": "test/e2e/attack-panel.spec.ts",
       "classification": "browser",
-      "expectedExecutionCount": 96,
+      "expectedExecutionCount": 114,
       "coverage": [
         "browser-runtime",
         "attack-panel"
@@ -215,6 +227,16 @@
       "coverage": [
         "browser-runtime",
         "discord-manual-fetch-timing"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/dual-tab-lease-reacquisition.spec.ts",
+      "path": "test/e2e/dual-tab-lease-reacquisition.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 2,
+      "coverage": [
+        "browser-runtime",
+        "dual-tab-lease"
       ]
     },
     {
@@ -332,7 +354,7 @@
       "id": "suite:test/tools/backup-rollback.test.cjs",
       "path": "test/tools/backup-rollback.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 53,
+      "expectedExecutionCount": 63,
       "coverage": [
         "repository-tooling",
         "backup-rollback"
@@ -348,6 +370,16 @@
         "build-determinism",
         "generated-output-ownership",
         "read-only-checks"
+      ]
+    },
+    {
+      "id": "suite:test/tools/ci-evidence-contract.test.cjs",
+      "path": "test/tools/ci-evidence-contract.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 7,
+      "coverage": [
+        "repository-tooling",
+        "ci-evidence-contract"
       ]
     },
     {
@@ -384,7 +416,7 @@
       "id": "suite:test/tools/public-boundary.test.cjs",
       "path": "test/tools/public-boundary.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 12,
+      "expectedExecutionCount": 33,
       "coverage": [
         "repository-tooling",
         "public-boundary"
@@ -404,10 +436,30 @@
       "id": "suite:test/tools/release-state.test.cjs",
       "path": "test/tools/release-state.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 4,
+      "expectedExecutionCount": 8,
       "coverage": [
         "repository-tooling",
         "release-state"
+      ]
+    },
+    {
+      "id": "suite:test/tools/repository-essentials.test.cjs",
+      "path": "test/tools/repository-essentials.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 18,
+      "coverage": [
+        "repository-tooling",
+        "repository-essentials"
+      ]
+    },
+    {
+      "id": "suite:test/tools/run-e2e-contract.test.cjs",
+      "path": "test/tools/run-e2e-contract.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 16,
+      "coverage": [
+        "repository-tooling",
+        "run-e2e-contract"
       ]
     },
     {
@@ -418,6 +470,16 @@
       "coverage": [
         "repository-tooling",
         "runtime-contract-audit"
+      ]
+    },
+    {
+      "id": "suite:test/tools/seal-evidence.test.cjs",
+      "path": "test/tools/seal-evidence.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 16,
+      "coverage": [
+        "repository-tooling",
+        "seal-evidence"
       ]
     },
     {
@@ -441,6 +503,16 @@
       ]
     },
     {
+      "id": "suite:test/tools/test-inventory-v2.test.cjs",
+      "path": "test/tools/test-inventory-v2.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 34,
+      "coverage": [
+        "repository-tooling",
+        "test-inventory-v2"
+      ]
+    },
+    {
       "id": "suite:test/tools/test-inventory.test.cjs",
       "path": "test/tools/test-inventory.test.cjs",
       "classification": "tool",
@@ -454,10 +526,30 @@
       "id": "suite:test/tools/userscript-build-contract.test.cjs",
       "path": "test/tools/userscript-build-contract.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 7,
+      "expectedExecutionCount": 8,
       "coverage": [
         "repository-tooling",
         "userscript-build-contract"
+      ]
+    },
+    {
+      "id": "suite:test/tools/verify-update-channel.test.cjs",
+      "path": "test/tools/verify-update-channel.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 14,
+      "coverage": [
+        "repository-tooling",
+        "verify-update-channel"
+      ]
+    },
+    {
+      "id": "suite:test/tools/workflow-security.test.cjs",
+      "path": "test/tools/workflow-security.test.cjs",
+      "classification": "tool",
+      "expectedExecutionCount": 17,
+      "coverage": [
+        "repository-tooling",
+        "workflow-security"
       ]
     }
   ],
@@ -469,24 +561,24 @@
     }
   ],
   "totals": {
-    "suiteCount": 45,
-    "expectedExecutionCount": 949,
+    "suiteCount": 54,
+    "expectedExecutionCount": 1162,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
-        "expectedExecutionCount": 58
+        "expectedExecutionCount": 76
       },
       "browser": {
-        "suiteCount": 12,
-        "expectedExecutionCount": 341
+        "suiteCount": 13,
+        "expectedExecutionCount": 361
       },
       "source-artifact": {
-        "suiteCount": 15,
-        "expectedExecutionCount": 423
+        "suiteCount": 16,
+        "expectedExecutionCount": 440
       },
       "tool": {
-        "suiteCount": 13,
-        "expectedExecutionCount": 127
+        "suiteCount": 20,
+        "expectedExecutionCount": 285
       }
     }
   },

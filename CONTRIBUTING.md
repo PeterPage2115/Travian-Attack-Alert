@@ -54,7 +54,7 @@ node -e "new Function(require('fs').readFileSync('dist/travian-attack-alert.user
 
 - **Bug reports:** use `.github/ISSUE_TEMPLATE/bug_report.yml`. Include script version + release ID, browser/manager versions, numbered reproduction steps on fixture or redacted data, expected vs actual behavior, and the redacted incident bundle (`Diagnostics` tab → `Export incident bundle`, max 512 KiB). Never paste secrets.
 - **Feature requests:** use `.github/ISSUE_TEMPLATE/feature_request.yml`. Describe the problem, the proposed behavior, panel-vs-menu placement, and acceptable alternatives.
-- **Security:** follow `SECURITY.md` — open a GitHub issue with synthetic/redacted data only, never real secrets.
+- **Security:** follow `SECURITY.md` — report privately through GitHub Private Vulnerability Reporting / Security Advisories. Never open a public issue for a vulnerability and never paste secrets or player data.
 
 ## Support
 

@@ -317,6 +317,8 @@ const RELEASE_ID = "taa-1.0.0";
   let activeLeaseOwnerId = null;
   let lifecycleEpoch = 0;
   let scanAttemptedForDocument = false;
+  let lastScanTerminalForDocument = null;
+  let authoritativeScanForDocument = false;
   let readinessObserver = null;
   let readinessTimerId = null;
   let scanDeadlineTimerId = null;
@@ -780,6 +782,7 @@ const RELEASE_ID = "taa-1.0.0";
           if (resumeSameDocument) {
             startLeaseRenewal(worldHostname, ownerId);
             flushPendingBatch();
+            resumePreScanLeaseTerminalForDocument();
             if (!scanAttemptedForDocument) {
               installReadinessObserver();
             }
@@ -4622,6 +4625,98 @@ const RELEASE_ID = "taa-1.0.0";
       quarantineKeys
     };
   }
+  function monitorRawValueEquals(storage, key, expected) {
+    const read = monitorReadRaw(storage, key);
+    return read.ok && read.value === expected;
+  }
+  // A captured pre-reset read keeps its success flag next to its value: a read
+  // that failed must never be treated as a key that was proven absent, because
+  // only a proven-absent key may be deleted on restore.
+  function restoreMonitorRawVerified(storage, key, capture) {
+    if (!capture.ok) return false;
+    return capture.value === void 0
+      ? monitorRestoreRaw(storage, key, void 0)
+      : monitorWriteReadback(storage, key, capture.value).ok;
+  }
+  // Bounded rollback for a reset whose write returned but could not be verified:
+  // re-write the exact pre-reset bytes through the same verified write path the
+  // envelope writer uses, then re-read both keys. The source backup selector is
+  // never consulted here — it is a filesystem snapshot, not a browser-storage
+  // rollback mechanism. A capture that was never read reports the existing
+  // indeterminate outcome instead of deleting bytes of unknown content.
+  function rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, reason) {
+    if (!activeCapture.ok || !backupCapture.ok) return { outcome: "baseline-reset-indeterminate", reason, rescan: false };
+    const activeKey = monitorActiveStorageKey(world);
+    const backupKey = monitorBackupStorageKey(world);
+    const activeRestored = restoreMonitorRawVerified(void 0, activeKey, activeCapture);
+    const backupRestored = restoreMonitorRawVerified(void 0, backupKey, backupCapture);
+    const verified = activeRestored && backupRestored
+      && monitorRawValueEquals(void 0, activeKey, activeCapture.value)
+      && monitorRawValueEquals(void 0, backupKey, backupCapture.value);
+    return verified
+      ? { outcome: "reset-rolled-back", reason, rescan: false }
+      : { outcome: "baseline-reset-indeterminate", reason, rescan: false };
+  }
+  // Clear only the normalized current world's attack baseline and its baseline
+  // metadata through the existing envelope writer. Delivery accounting, other
+  // worlds, configuration, secrets, lease, history, roster, and diagnostics are
+  // never touched. rescan:true only when the reset write is verified; a
+  // pre-write failure leaves the original bytes unchanged; a write whose
+  // readback cannot be verified either completes a verified rollback or reports
+  // baseline-reset-indeterminate.
+  function resetCurrentWorldAttackBaseline() {
+    if (!isCurrentLeaseOwner()) {
+      return { outcome: "reset-fenced", reason: "lease-lost", rescan: false };
+    }
+    const world = normalizeHostname(location.hostname);
+    const loaded = loadMonitorEnvelopeV1(world);
+    if (!loaded.envelope) {
+      if (loaded.blocked) {
+        return { outcome: "baseline-reset-indeterminate", reason: loaded.outcome || "monitor-blocked", rescan: false };
+      }
+      return { outcome: "no-envelope", rescan: true };
+    }
+    const original = loaded.envelope;
+    const activeKey = monitorActiveStorageKey(world);
+    const backupKey = monitorBackupStorageKey(world);
+    const activeCapture = monitorReadRaw(void 0, activeKey);
+    const backupCapture = monitorReadRaw(void 0, backupKey);
+    // Both pre-reset snapshots are required for a bounded rollback. If either
+    // cannot be read, abort before any write: the reset must never write over
+    // (or later delete) bytes whose pre-reset content was not captured.
+    if (!activeCapture.ok || !backupCapture.ok) return { outcome: "baseline-reset-indeterminate", reason: "pre-reset-read-failed", rescan: false };
+    const resetEnvelope = createMonitorEnvelopeV1(world, Object.assign({}, original, {
+      generation: original.generation + 1,
+      baselineByPlayerId: {},
+      metrics: Object.assign({}, original.metrics, {
+        lastAuthoritativeScanAtMs: null,
+        observedAtMs: null
+      })
+    }));
+    const commit = commitMonitorEnvelopeV1({
+      world,
+      currentEnvelope: original,
+      candidateEnvelope: resetEnvelope,
+      expectedGeneration: original.generation
+    });
+    if (commit.outcome === "ok") {
+      const readback = loadMonitorEnvelopeV1(world);
+      const verified = Boolean(readback.envelope)
+        && readback.envelope.generation === original.generation + 1
+        && Object.keys(readback.envelope.baselineByPlayerId).length === 0;
+      if (verified) {
+        return { outcome: "ok", rescan: true, generation: readback.envelope.generation, previous: original };
+      }
+      return rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, "readback-unverified");
+    }
+    const writeAttempted = commit.outcome === "wrote-failed" || commit.outcome === "readback-mismatch";
+    if (!writeAttempted
+      && monitorRawValueEquals(void 0, activeKey, activeCapture.value)
+      && monitorRawValueEquals(void 0, backupKey, backupCapture.value)) {
+      return { outcome: "reset-failed", reason: commit.outcome, rescan: false };
+    }
+    return rollbackCurrentWorldAttackBaseline(world, activeCapture, backupCapture, commit.outcome);
+  }
   function monitorEventPlayerId(event) {
     if (!event || typeof event !== "object") {
       return null;
@@ -5256,27 +5351,268 @@ const RELEASE_ID = "taa-1.0.0";
       alerts: []
     };
   }
+  function monitorLegacyWorldEntry(map, world) {
+    if (!isPlainMonitorObject(map)) return void 0;
+    const key = normalizeHostname(world);
+    return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : void 0;
+  }
+  function monitorLegacyStoreRecords(store) {
+    return isPlainMonitorObject(store) && Array.isArray(store.events) ? store.events : [];
+  }
+  function monitorLegacyWorldKeyed(legacy, world) {
+    return monitorLegacyWorldEntry(legacy && legacy.pending, world) !== void 0
+      || monitorLegacyWorldEntry(legacy && legacy.inFlight, world) !== void 0
+      || monitorLegacyWorldEntry(legacy && legacy.failed, world) !== void 0;
+  }
+  function monitorEnvelopeQueueIdentitySet(envelope) {
+    const ids = /* @__PURE__ */ new Set();
+    for (const queue of [envelope.pending, envelope.inFlight, envelope.failed, envelope.uncertain]) {
+      if (!Array.isArray(queue)) continue;
+      for (const event of queue) {
+        if (event && typeof event.eventId === "string") ids.add(event.eventId);
+      }
+    }
+    return ids;
+  }
+  function monitorUncertainLegacySettlement(event) {
+    return Object.assign({}, event, {
+      deliveryState: "uncertain-legacy-settlement",
+      responseClass: "uncertain-legacy-settlement"
+    });
+  }
+  function monitorReconciliationCapacityOk(envelope, nextUncertain) {
+    return [envelope.pending, envelope.inFlight, envelope.failed, nextUncertain].every(
+      (queue) => !Array.isArray(queue) || queue.length <= MONITOR_MAX_PENDING_RECORDS
+    );
+  }
+  function monitorPendingMapNeedsCleanup(map, world) {
+    const entry = monitorLegacyWorldEntry(map, world);
+    if (Array.isArray(entry)) return entry.length > 0;
+    if (!isPlainMonitorObject(entry)) return false;
+    return monitorLegacyStoreRecords(entry).length > 0
+      || (Array.isArray(entry.inFlight) && entry.inFlight.length > 0);
+  }
+  function monitorFailedMapNeedsCleanup(map, world) {
+    const entry = monitorLegacyWorldEntry(map, world);
+    if (Array.isArray(entry)) return entry.length > 0;
+    return monitorLegacyStoreRecords(entry).length > 0;
+  }
+  // An array-form world entry carries the records directly, so it is replaced
+  // by the canonical empty store instead of being merged as an object.
+  function monitorClearedLegacyWorldEntry(entry, cleared) {
+    return Array.isArray(entry) ? cleared : Object.assign({}, entry, cleared);
+  }
+  // Idempotent staged cleanup: pending.events + pending.inFlight first, then the
+  // separate failed map, each with a verified readback. Physical atomicity
+  // across the two legacy keys is unavailable, so a write without a verified
+  // readback stops in an explicit indeterminate stage and never guesses values.
+  // The supplied lease fence runs immediately before EACH write: ownership lost
+  // between two stages stops with a fenced rejection, leaving the not-yet-written
+  // store untouched and never continuing to a later stage.
+  function monitorStagedLegacyCleanupV1(world, options = {}) {
+    const hostname = normalizeHostname(world);
+    const storage = options.storage;
+    const legacy = options.legacy || {};
+    const fenceLost = () => typeof options.beforeCommit === "function" && options.beforeCommit() !== true;
+    if (monitorPendingMapNeedsCleanup(legacy.pending, hostname)) {
+      if (fenceLost()) {
+        return {
+          outcome: "fenced-reject",
+          stage: "pending-cleanup",
+          reason: "fenced-reject",
+          blocked: true
+        };
+      }
+      const nextPending = Object.assign({}, legacy.pending);
+      nextPending[hostname] = monitorClearedLegacyWorldEntry(
+        monitorLegacyWorldEntry(legacy.pending, hostname),
+        { events: [], inFlight: [] }
+      );
+      const pendingWrite = monitorWriteReadback(
+        storage,
+        PENDING_BATCH_STORAGE_KEY,
+        JSON.stringify(nextPending)
+      );
+      if (!pendingWrite.ok) {
+        return {
+          outcome: "pending-cleanup-indeterminate",
+          stage: "pending-cleanup-indeterminate",
+          reason: pendingWrite.outcome,
+          blocked: true
+        };
+      }
+    }
+    if (monitorFailedMapNeedsCleanup(legacy.failed, hostname)) {
+      if (fenceLost()) {
+        return {
+          outcome: "fenced-reject",
+          stage: "failed-cleanup",
+          reason: "fenced-reject",
+          blocked: true
+        };
+      }
+      const nextFailed = Object.assign({}, legacy.failed);
+      nextFailed[hostname] = monitorClearedLegacyWorldEntry(
+        monitorLegacyWorldEntry(legacy.failed, hostname),
+        { events: [] }
+      );
+      const failedWrite = monitorWriteReadback(
+        storage,
+        FAILED_BATCH_STORAGE_KEY,
+        JSON.stringify(nextFailed)
+      );
+      if (!failedWrite.ok) {
+        return {
+          outcome: "failed-cleanup-indeterminate",
+          stage: "failed-cleanup-indeterminate",
+          reason: failedWrite.outcome,
+          blocked: true
+        };
+      }
+    }
+    return { outcome: "ok", stage: "cleanup-complete", blocked: false };
+  }
+  // Reconciles the world-keyed legacy queues against an existing envelope.
+  // Per-store snapshots keep each store's own index space; every unmatched
+  // valid record becomes an explicit uncertain-legacy-settlement (never sent),
+  // malformed records fail preflight for the whole world with zero writes, and
+  // only records whose exact ls1: identity is retained stay in active queues.
+  function reconcileMonitorLegacyQueuesV1(world, loadedEnvelope, options = {}) {
+    const hostname = normalizeHostname(world);
+    const legacy = options.legacy || {};
+    let plan;
+    try {
+      plan = planMonitorLegacyMigration(legacy, options.snapshot, hostname);
+    } catch (error) {
+      return {
+        outcome: "malformed-legacy-record",
+        stage: "preflight",
+        blocked: true,
+        envelope: loadedEnvelope,
+        reason: "malformed-legacy-record",
+        error: String(error && error.message || error)
+      };
+    }
+    const represented = monitorEnvelopeQueueIdentitySet(loadedEnvelope);
+    const additions = [];
+    for (const event of [].concat(
+      plan.pending || [],
+      plan.inFlight || [],
+      plan.failed || [],
+      plan.uncertain || []
+    )) {
+      if (!event || typeof event.eventId !== "string" || represented.has(event.eventId)) continue;
+      represented.add(event.eventId);
+      additions.push(monitorUncertainLegacySettlement(event));
+    }
+    const nextUncertain = (Array.isArray(loadedEnvelope.uncertain) ? loadedEnvelope.uncertain : []).concat(additions);
+    if (!monitorReconciliationCapacityOk(loadedEnvelope, nextUncertain)) {
+      return {
+        outcome: "capacity-reject",
+        stage: "preflight",
+        blocked: true,
+        envelope: loadedEnvelope,
+        reason: "capacity-reject"
+      };
+    }
+    const needsCleanup = monitorPendingMapNeedsCleanup(legacy.pending, hostname)
+      || monitorFailedMapNeedsCleanup(legacy.failed, hostname);
+    if (additions.length === 0 && !needsCleanup) {
+      return { outcome: "ok", stage: "steady", blocked: false, envelope: loadedEnvelope };
+    }
+    if (typeof options.beforeCommit === "function" && options.beforeCommit() !== true) {
+      return { outcome: "fenced-reject", stage: "preflight", blocked: true, envelope: loadedEnvelope };
+    }
+    let committedEnvelope = loadedEnvelope;
+    let commitResult = null;
+    if (additions.length > 0) {
+      const reconciliationEnvelope = createMonitorEnvelopeV1(
+        hostname,
+        Object.assign({}, loadedEnvelope, {
+          generation: loadedEnvelope.generation + 1,
+          uncertain: nextUncertain
+        })
+      );
+      syncDeliveryAccounting(reconciliationEnvelope);
+      reconciliationEnvelope.integrity = checksumMonitorCanonicalValue(
+        monitorEnvelopeWithoutIntegrity(reconciliationEnvelope)
+      );
+      commitResult = commitMonitorEnvelopeV1({
+        world: hostname,
+        currentEnvelope: loadedEnvelope,
+        candidateEnvelope: reconciliationEnvelope,
+        expectedGeneration: loadedEnvelope.generation,
+        storage: options.storage,
+        nowMs: options.nowMs,
+        beforeCommit: options.beforeCommit
+      });
+      if (commitResult.outcome !== "ok") {
+        return {
+          outcome: "envelope-commit-failed",
+          stage: "envelope-commit",
+          blocked: true,
+          envelope: loadedEnvelope,
+          commit: commitResult,
+          reason: commitResult.outcome
+        };
+      }
+      committedEnvelope = commitResult.envelope;
+    }
+    const cleanup = monitorStagedLegacyCleanupV1(hostname, options);
+    if (cleanup.outcome !== "ok") {
+      return Object.assign({
+        outcome: cleanup.outcome,
+        envelope: committedEnvelope,
+        commit: commitResult
+      }, cleanup);
+    }
+    return {
+      outcome: "reconciled",
+      stage: "released",
+      blocked: false,
+      envelope: committedEnvelope,
+      cleanup
+    };
+  }
   function loadOrMigrateMonitorEnvelopeV1(world, snapshot, options = {}) {
     const loaded = loadMonitorEnvelopeV1(world, options);
     if (loaded.envelope) {
-      return loaded;
+      const hostname2 = normalizeHostname(world);
+      const legacy2 = options.legacy || defaultMonitorLegacyView();
+      if (!monitorLegacyWorldKeyed(legacy2, hostname2)) {
+        return loaded;
+      }
+      return reconcileMonitorLegacyQueuesV1(hostname2, loaded.envelope, {
+        storage: options.storage,
+        legacy: legacy2,
+        snapshot,
+        nowMs: options.nowMs,
+        beforeCommit: options.beforeCommit
+      });
     }
     if (loaded.blocked) {
       return loaded;
     }
     const hostname = normalizeHostname(world);
-    const legacy = options.legacy || {
-      attackState: typeof localStorage === "undefined" ? {} : loadState(),
-      pending: typeof localStorage === "undefined" ? {} : loadPendingBatch(),
-      inFlight: typeof localStorage === "undefined" ? {} : loadInFlightBatch(),
-      failed: typeof localStorage === "undefined" ? {} : loadFailedBatch()
-    };
-    const migration = migrateLegacyMonitorStateV1({
-      world: hostname,
-      snapshot,
-      legacy,
-      nowMs: options.nowMs
-    });
+    const legacy = options.legacy || defaultMonitorLegacyView();
+    let migration;
+    try {
+      migration = migrateLegacyMonitorStateV1({
+        world: hostname,
+        snapshot,
+        legacy,
+        nowMs: options.nowMs
+      });
+    } catch (error) {
+      return {
+        outcome: "malformed-legacy-record",
+        stage: "preflight",
+        blocked: true,
+        envelope: void 0,
+        reason: "malformed-legacy-record",
+        error: String(error && error.message || error)
+      };
+    }
     if (typeof options.beforeCommit === "function" && options.beforeCommit() !== true) {
       return {
         outcome: "fenced-reject",
@@ -5291,14 +5627,37 @@ const RELEASE_ID = "taa-1.0.0";
       storage: options.storage,
       nowMs: options.nowMs
     });
-    return committed.outcome === "ok" ? Object.assign({}, migration, {
+    if (committed.outcome !== "ok") {
+      return Object.assign({}, migration, {
+        outcome: "failed-migration",
+        commit: committed,
+        blocked: true
+      });
+    }
+    const result = Object.assign({}, migration, {
       outcome: "migrated",
       commit: committed
-    }) : Object.assign({}, migration, {
-      outcome: "failed-migration",
-      commit: committed,
-      blocked: true
     });
+    if (monitorLegacyWorldKeyed(legacy, hostname)) {
+      const cleanup = monitorStagedLegacyCleanupV1(hostname, {
+        storage: options.storage,
+        legacy,
+        beforeCommit: options.beforeCommit
+      });
+      if (cleanup.outcome !== "ok") {
+        return Object.assign(result, cleanup);
+      }
+      result.cleanup = cleanup;
+    }
+    return result;
+  }
+  function defaultMonitorLegacyView() {
+    return {
+      attackState: typeof localStorage === "undefined" ? {} : loadState(),
+      pending: typeof localStorage === "undefined" ? {} : loadPendingBatch(),
+      inFlight: typeof localStorage === "undefined" ? {} : loadInFlightBatch(),
+      failed: typeof localStorage === "undefined" ? {} : loadFailedBatch()
+    };
   }
   function planAcceptedScanTransition(snapshot, previousBaseline, muteSet, threshold, generation, fence, queue = {}) {
     if (!snapshot || snapshot.status !== "authoritative" || !isPlainMonitorObject(snapshot.membersById)) {
@@ -6591,7 +6950,7 @@ ${entry.line}`;
     );
     return assertCompactDiscordPayloadLimits(payloads);
   }
-  function sendDiscordBatch(attacks, onComplete) {
+  function sendDiscordBatch(attacks, onComplete, resume) {
     if (!isCurrentLeaseOwner()) {
       if (typeof onComplete === "function") {
         onComplete({
@@ -6609,56 +6968,63 @@ ${entry.line}`;
     }
     {
       const worldHostname = normalizeHostname(location.hostname);
-      const currentSettings = requireValidatedDiscordSettings(
-        loadSettings(worldHostname)
-      );
-      const discordConfig = loadDiscordConfig();
-      const roleId = discordConfig.roleId || null;
-      const leaveRoleId = discordConfig.leaveRoleId || null;
-      const mappings = loadMappings();
-      const worldMappings = mappings[worldHostname] || {};
-      const userIds = [];
-      const seenUserIds = /* @__PURE__ */ new Set();
-      for (const attack of attacks) {
-        if (attack.eventType === "join") {
-          continue;
-        }
-        const rawPlayerId = attack.playerId !== void 0 ? attack.playerId : extractPlayerId(attack.url);
-        const playerId = rawPlayerId === null || rawPlayerId === void 0 ? null : String(rawPlayerId);
-        if (!playerId) {
-          continue;
-        }
-        const recipients = Array.isArray(worldMappings[playerId]) ? worldMappings[playerId] : [];
-        for (const id of recipients) {
-          const key = validateDiscordUserId(id);
-          if (key !== null && !seenUserIds.has(key)) {
-            seenUserIds.add(key);
-            userIds.push(key);
+      const dispatchedAtMs = Date.now();
+      const resumeState = resume && Array.isArray(resume.payloads) && resume.payloads.length > 0 ? resume : null;
+      let payloads;
+      let payloadIndex = 0;
+      if (resumeState) {
+        payloads = resumeState.payloads;
+        payloadIndex = Number.isInteger(resumeState.firstUnacknowledged) && resumeState.firstUnacknowledged >= 0 && resumeState.firstUnacknowledged < payloads.length ? resumeState.firstUnacknowledged : 0;
+      } else {
+        const currentSettings = requireValidatedDiscordSettings(
+          loadSettings(worldHostname)
+        );
+        const discordConfig = loadDiscordConfig();
+        const roleId = discordConfig.roleId || null;
+        const leaveRoleId = discordConfig.leaveRoleId || null;
+        const mappings = loadMappings();
+        const worldMappings = mappings[worldHostname] || {};
+        const userIds = [];
+        const seenUserIds = /* @__PURE__ */ new Set();
+        for (const attack of attacks) {
+          if (attack.eventType === "join") {
+            continue;
+          }
+          const rawPlayerId = attack.playerId !== void 0 ? attack.playerId : extractPlayerId(attack.url);
+          const playerId = rawPlayerId === null || rawPlayerId === void 0 ? null : String(rawPlayerId);
+          if (!playerId) {
+            continue;
+          }
+          const recipients = Array.isArray(worldMappings[playerId]) ? worldMappings[playerId] : [];
+          for (const id of recipients) {
+            const key = validateDiscordUserId(id);
+            if (key !== null && !seenUserIds.has(key)) {
+              seenUserIds.add(key);
+              userIds.push(key);
+            }
           }
         }
+        const observedCandidateAtMs = attacks.reduce((earliest, attack) => {
+          const value = Number(attack.observedAtMs);
+          return Number.isFinite(value) ? Math.min(earliest, value) : earliest;
+        }, Infinity);
+        const observedAtMs = Number.isFinite(observedCandidateAtMs) ? observedCandidateAtMs : void 0;
+        payloads = buildDiscordPayloads(attacks, {
+          allianceUrl: location.href,
+          context: {
+            origin: location.origin,
+            fallbackHref: location.href
+          },
+          worldHostname,
+          observedAtMs,
+          dispatchedAtMs,
+          roleId,
+          leaveRoleId,
+          userIds,
+          settings: currentSettings
+        });
       }
-      const observedCandidateAtMs = attacks.reduce((earliest, attack) => {
-        const value = Number(attack.observedAtMs);
-        return Number.isFinite(value) ? Math.min(earliest, value) : earliest;
-      }, Infinity);
-      const observedAtMs = Number.isFinite(observedCandidateAtMs) ? observedCandidateAtMs : void 0;
-      const dispatchedAtMs = Date.now();
-      const payloads = buildDiscordPayloads(attacks, {
-        allianceUrl: location.href,
-        context: {
-          origin: location.origin,
-          fallbackHref: location.href
-        },
-        worldHostname,
-        observedAtMs,
-        dispatchedAtMs,
-        roleId,
-        leaveRoleId,
-        userIds,
-        settings: currentSettings
-      });
-      let payloadIndex = 0;
-      const finish = (outcome) => {
+      const finish = (outcome, resumeInfo) => {
         if (outcome && Number.isFinite(outcome.requestMs)) {
           mergeRuntimeDiagnostics(worldHostname, {
             dispatchedAtMs,
@@ -6669,8 +7035,9 @@ ${entry.line}`;
             }
           });
         }
+        const settledOutcome = resumeInfo ? Object.assign({}, outcome, { resume: resumeInfo }) : outcome;
         if (typeof onComplete === "function") {
-          onComplete(outcome);
+          onComplete(settledOutcome);
           return;
         }
         if (outcome.errorClass === "configuration") {
@@ -6700,8 +7067,9 @@ ${entry.line}`;
         if (payloadIndex >= payloads.length) {
           return;
         }
-        const payload = payloads[payloadIndex];
-        payloadIndex += 1;
+        const index = payloadIndex;
+        const payload = payloads[index];
+        payloadIndex = index + 1;
         if (!isCurrentLeaseOwner()) {
           finish({
             status: null,
@@ -6709,13 +7077,13 @@ ${entry.line}`;
             errorClass: "leader-lost",
             error: null,
             retryAfterMs: null
-          });
+          }, { payloads, firstUnacknowledged: index });
           return;
         }
         postPayload(payload, (outcome) => {
           const acknowledged = outcome.delivery && outcome.delivery.kind === "acknowledged";
           if (!acknowledged) {
-            finish(outcome);
+            finish(outcome, { payloads, firstUnacknowledged: index });
             return;
           }
           if (payloadIndex < payloads.length) {
@@ -6944,6 +7312,10 @@ ${entry.line}`;
   function emitScanCycleTerminal(outcome) {
     if (!isScanTerminalRecord(outcome) || scanAttemptedForDocument) return false;
     scanAttemptedForDocument = true;
+    lastScanTerminalForDocument = outcome;
+    if (outcome.stage === "snapshot" && outcome.status === "ok" && outcome.reason === "authoritative") {
+      authoritativeScanForDocument = true;
+    }
     clearScanDeadlineTimer();
     if (readinessTimerId !== null) {
       clearTimeout(readinessTimerId);
@@ -6963,6 +7335,15 @@ ${entry.line}`;
   }
   function finishScanCycle(outcome) {
     return emitScanCycleTerminal(Object.assign({}, outcome, { scanId: scanCycleId }));
+  }
+  function resumePreScanLeaseTerminalForDocument() {
+    const terminal = lastScanTerminalForDocument;
+    if (authoritativeScanForDocument || !terminal) return false;
+    if (terminal.stage !== "lease" || terminal.status !== "rejected" || terminal.reason !== "lease-lost-before-scan") return false;
+    scanAttemptedForDocument = false;
+    lastScanTerminalForDocument = null;
+    scanCycleId = null;
+    return true;
   }
   function pageLooksLoaded() {
     const selection = selectMemberTable(document);
@@ -7451,23 +7832,8 @@ ${entry.line}`;
           saveRoster(nextRoster);
         }
         saveHistory(history, currentHostname);
-        if (monitorPendingEvents.length > 0) {
-          const queued = savePendingBatch(
-            enqueueEvents(
-              loadPendingBatch(),
-              currentHostname,
-              monitorPendingEvents,
-              { enforceQueueContract: true }
-            ),
-            currentHostname
-          );
-          if (!queued) {
-            reportLifecycleHook("onHealth", {
-              kind: "legacy-queue-bridge-failed",
-              observedAtMs
-            });
-          }
-        }
+        // Newly committed monitor events live only in the durable envelope; the
+        // legacy pending-batch key is never dual-written (Task 15 reconciliation).
         previousState = Object.assign({}, currentState, {
           filterVersion: 4
         });
@@ -7708,7 +8074,7 @@ ${entry.line}`;
       }
     );
   }
-  function deliverChunkWithRetry(hostname, chunk, queueKind = "legacy") {
+  function deliverChunkWithRetry(hostname, chunk, queueKind = "legacy", resume = null) {
     const events = Array.isArray(chunk.events) ? chunk.events : [];
     const attempt = typeof chunk.attemptCount === "number" ? chunk.attemptCount : 0;
     function settle(outcome) {
@@ -7789,6 +8155,7 @@ ${entry.line}`;
           outcome.retryAfterMs,
           RETRY_DELAY_MS[attempt] || 1e3
         );
+        const nextResume = outcome && outcome.resume && Array.isArray(outcome.resume.payloads) ? outcome.resume : null;
         if (queueKind === "monitor") {
           const persisted = settleMonitorTransport(hostname, events, outcome, delivery);
           if (persisted.outcome !== "ok") {
@@ -7817,7 +8184,7 @@ ${entry.line}`;
               attemptCount: nextAttempt
             })),
             attemptCount: nextAttempt
-          }, queueKind);
+          }, queueKind, nextResume);
         }, delay);
         return;
       }
@@ -7827,7 +8194,7 @@ ${entry.line}`;
       if (queueKind === "monitor") {
         const persisted = settleMonitorTransport(hostname, events, outcome, delivery);
         activeInFlightHosts.delete(hostname);
-        if (persisted.outcome === "ok") {
+        if (persisted.outcome === "ok" && !retryable) {
           deliverNextMonitorInFlightChunk(hostname);
         }
         return;
@@ -7879,7 +8246,7 @@ ${entry.line}`;
           return;
         }
       }
-      sendDiscordBatch(events, settle);
+      sendDiscordBatch(events, settle, resume);
     } catch (error) {
       settle({
         status: null,
@@ -8480,7 +8847,7 @@ ${entry.line}`;
                     #taa-panel-overlay * { box-sizing: border-box; min-inline-size: 0; }
                     #taa-panel { inline-size: min(var(--ta-panel-max), 100%); margin: 0 auto; padding: clamp(var(--ta-space-4), 3vw, var(--ta-space-6)); border: var(--ta-border-width) solid var(--ta-border); border-radius: var(--ta-radius-dialog); background: var(--ta-surface); color: var(--ta-text); box-shadow: var(--ta-shadow-dialog); min-block-size: 0; }
                      #taa-open-panel, #taa-panel-overlay .taa-button { border: var(--ta-border-width) solid var(--ta-accent); border-radius: var(--ta-radius-control); padding: var(--ta-space-2) var(--ta-space-3); background: var(--ta-surface-control); color: var(--ta-accent-hover); font: inherit; font-weight: 700; line-height: var(--ta-leading-tight); cursor: pointer; transition: background-color var(--ta-duration-micro) ease-out, color var(--ta-duration-micro) ease-out, transform var(--ta-duration-micro) ease-out; }
-                     #taa-open-panel { position: fixed; inset: auto 16px 16px auto; z-index: 2147483000; display: inline-flex; visibility: visible; opacity: 1; appearance: none; min-width: 96px; min-height: 36px; border: 1px solid #d7a23a; border-radius: 6px; padding: 8px 12px; background: #26384a; color: #ffe8a6; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.2; outline: 2px solid #ffe8a6; }
+                     #taa-open-panel:not([hidden]) { position: fixed; inset: auto 16px 16px auto; z-index: 2147483000; display: inline-flex; visibility: visible; opacity: 1; appearance: none; min-width: 96px; min-height: 36px; border: 1px solid #d7a23a; border-radius: 6px; padding: 8px 12px; background: #26384a; color: #ffe8a6; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.2; outline: 2px solid #ffe8a6; }
                      #taa-open-panel:focus-visible { outline: 2px solid #ffe8a6; outline-offset: 2px; }
                     #taa-panel-overlay .taa-button:hover, #taa-panel-overlay .taa-button:focus-visible, #taa-open-panel:hover { background: var(--ta-border); border-color: var(--ta-accent-hover); color: var(--ta-accent-hover); }
                     #taa-panel-overlay .taa-button:active, #taa-open-panel:active { transform: translateY(var(--ta-press-y)); }
@@ -8516,7 +8883,7 @@ ${entry.line}`;
                     #taa-panel-overlay .taa-actions { display: flex; flex-wrap: wrap; gap: var(--ta-space-2); }
                     #taa-panel-overlay .taa-metric, #taa-panel-overlay .taa-field-group { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--ta-space-2); }
                     #taa-panel-overlay .taa-metric .taa-label-text::after { content: ':'; }
-                    #taa-panel-overlay .taa-row-actions { display: inline-flex; flex-wrap: nowrap; align-items: center; margin-inline-start: auto; }
+                    #taa-panel-overlay .taa-row-actions { display: inline-flex; flex-wrap: wrap; align-items: center; margin-inline-start: auto; }
                     #taa-panel-overlay .taa-panel-header, #taa-panel-overlay .taa-panel-content { min-inline-size: 0; }
                      @media (min-width: 768px) { #taa-panel-overlay .taa-overview-metrics { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); } }
                     @media (prefers-reduced-motion: reduce) { #taa-panel-overlay *, #taa-panel-overlay *::before, #taa-panel-overlay *::after { scroll-behavior: auto !important; transition-duration: 0ms !important; animation-duration: 0ms !important; animation-iteration-count: 1 !important; } #taa-panel-overlay .taa-button:active, #taa-open-panel:active { transform: none; } }
@@ -9698,12 +10065,29 @@ ${entry.line}`;
           GM_registerMenuCommand(
             "Clear attack memory",
             () => {
-              localStorage.removeItem(STORAGE_KEY);
-              previousState = {};
+              const reset = resetCurrentWorldAttackBaseline();
+              if (reset.outcome === "ok" || reset.outcome === "no-envelope") {
+                localStorage.removeItem(STORAGE_KEY);
+                previousState = {};
+                scanAttemptedForDocument = false;
+                lastScanTerminalForDocument = null;
+                authoritativeScanForDocument = false;
+                scanCycleId = null;
+                alert(
+                  "Attack memory cleared for this world. The next accepted scan establishes a fresh baseline and does not clear site data."
+                );
+                scanAttacks(true);
+                return;
+              }
+              if (reset.outcome === "baseline-reset-indeterminate") {
+                alert(
+                  "Attack memory reset could not be verified — no fresh scan was started. Export the incident bundle and use the Tampermonkey recovery actions after a fresh storage read."
+                );
+                return;
+              }
               alert(
-                "Attack memory has been cleared."
+                "Attack memory reset failed; the previous baseline was restored and no fresh scan was started."
               );
-              scanAttacks(true);
             }
           );
           GM_registerMenuCommand(

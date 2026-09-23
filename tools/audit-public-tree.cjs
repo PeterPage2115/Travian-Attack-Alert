@@ -29,6 +29,18 @@
  *   OCR errors, unsupported image/archive types, symlinks, OCR model-hash
  *   drift, dev-dependency pin drift.
  *
+ * Tree/secrets fail-closed triggers (each yields verdict FAIL, never bytes):
+ *   open/read/decode/truncation errors, every non-regular entry (symlinks,
+ *   FIFOs, sockets, devices), secret matches. Oversized text is streamed
+ *   through one stateful matcher; binary files are classified explicitly and
+ *   reported as auditable binary skips (never a silent size skip). Directory
+ *   traversal never trusts a readdir Dirent: each directory is lstat-verified
+ *   before and after reading (identity change included) and each child is
+ *   re-lstat-verified immediately before descent, so a directory swapped for
+ *   a symlink can neither be followed outside the root nor hide its subtree
+ *   behind a clean verdict; an unverifiable directory aborts the walk with a
+ *   non-zero exit.
+ *
  * Redaction: every report and every stdout line carries rule/path/offset
  * digests only — matched bytes (tokens, URLs, payloads, snowflakes) are
  * NEVER printed, not even partially.
@@ -45,6 +57,8 @@ const crypto = require('crypto');
 // Jawna allowlista publicznego repo — katalogi są kopiowane tylko z tych
 // przejrzanych ścieżek, nigdy przez rekurencyjne kopiowanie całego DEV.
 const ALLOWLIST = [
+  '.editorconfig',
+  '.gitattributes',
   '.github/',
   '.gitignore',
   '.node-version',
@@ -101,6 +115,34 @@ const GENERATED = new Set([
 // allowlisty, wyłącznie w test/). Próg 32 znaki daje szeroki margines:
 // krótszy token nie może być żywym sekretem.
 const MIN_REAL_TOKEN_LEN = 32;
+
+// Streaming scan chunk size for oversized text. Exported so boundary tests can
+// split a signature exactly across a chunk boundary.
+const STREAM_CHUNK_BYTES = 64 * 1024;
+
+// Bounded pending policy. A newline-free run longer than this keeps only the
+// LAST STREAM_PENDING_LIMIT characters as matcher state, so a pathological
+// single-line file (gigabytes without '\n') can neither OOM nor stall.
+//
+// Safety margin: the longest supported complete match is a Discord webhook URL
+// (`discord.com/api/webhooks/` 24 + snowflake 19 + '/' + real token ~70) at
+// roughly 115 characters; snowflakes are <= 21, the fixed legacy identity/host
+// names are shorter, and real private paths stay under a few hundred. 64 KiB
+// is therefore > 500x the longest real token, so a token split at ANY chunk
+// boundary is still seen whole by the retained suffix plus the match overlap
+// below.
+const STREAM_PENDING_LIMIT = 64 * 1024;
+
+// Extra characters scanned past the retained suffix. Without this, a match
+// whose start is already committed (all but the last STREAM_PENDING_LIMIT
+// characters) but whose end reaches into the retained suffix would be
+// separated from its pattern start and missed. Must be >= the longest
+// supported match (~115 chars); 4 KiB is a > 30x margin.
+const STREAM_MATCH_OVERLAP = 4 * 1024;
+
+// Test-only fault injection seam (see testReadFault). Never set in production;
+// any configured fault can only ADD a failure, never skip or weaken a scan.
+const TEST_READ_FAULT_ENV = 'TAA_AUDIT_TEST_READ_FAULT';
 
 // Pinned dev-only evidence decoders (package.json devDependencies must carry
 // these exact versions; evidence mode verifies the installed copies).
@@ -200,6 +242,136 @@ function buildSecretMatchers() {
 const IDENTITY_EXEMPT_RE = /^(?:test\/|docs\/release-history\/)/;
 
 /**
+ * Stateful streaming matcher contract (the ONLY secret matcher implementation).
+ *
+ * A matcher is fed decoded text chunks in order (`push`) and finalized exactly
+ * once (`end`). Complete lines are scanned as soon as their newline arrives;
+ * the trailing partial line stays as state until more text (or `end`) arrives,
+ * so a token split across two chunks is never missed by a chunk-local regex.
+ *
+ * Pending state is bounded by STREAM_PENDING_LIMIT: when a newline-free run
+ * exceeds the limit, the safe prefix is scanned immediately and only the last
+ * STREAM_PENDING_LIMIT characters are retained as cross-chunk state (plus a
+ * STREAM_MATCH_OVERLAP scan window so a match starting just before the flush
+ * boundary is still completed). Every real token kind is far shorter than the
+ * retained suffix, so normal files and cross-chunk tokens are unaffected;
+ * hits are de-duplicated by kind+offset because the overlap window may scan
+ * the same committed characters twice.
+ *
+ * @param {string} rel posix relative path (used only for exemption routing)
+ * @param {{snowflakeExempt?:boolean, identityExempt?:boolean}} opts exemption flags
+ * @returns {{push: (chunk: string) => void, end: () => Array<{kind:string, offset:number, line:number, tokenLen:number}>, hits: Array<{kind:string, offset:number, line:number, tokenLen:number}>}}
+ */
+function createSecretStreamMatcher(rel, opts = {}) {
+  const matchers = buildSecretMatchers();
+  const hits = [];
+  const seenHitKeys = new Set();
+  const snowflakeExempt = opts.snowflakeExempt === true;
+  const identityExempt = opts.identityExempt === true;
+  let pending = '';
+  let pendingStart = 0;
+  let lineNumber = 1;
+
+  // Same shape as the historical direct push; the key guard only suppresses
+  // re-reports of a committed offset rescanned through the overlap window.
+  const addHit = (kind, offset, tokenLen) => {
+    const key = `${kind}:${offset}`;
+    if (seenHitKeys.has(key)) return;
+    seenHitKeys.add(key);
+    hits.push({ kind, offset, line: lineNumber, tokenLen });
+  };
+
+  const record = (line, lineStart, regex, kind) => {
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(line)) !== null) {
+      // Guard against zero-length match loops (legacy-host pattern can
+      // match short fragments; none are zero-length today, but stay safe).
+      if (match[0].length === 0) {
+        regex.lastIndex += 1;
+        continue;
+      }
+      addHit(kind, lineStart + match.index, match[0].length);
+    }
+  };
+
+  const scanLine = (line, lineStart) => {
+    record(line, lineStart, matchers.privatePathRe, 'private-path');
+    // README i test/ zawierają jawnie syntetyczne identyfikatory kontraktowe.
+    // Pozostałe przejrzane ścieżki nie mogą zawierać Discord snowflakes.
+    if (!snowflakeExempt) {
+      record(line, lineStart, matchers.snowflakeRe, 'discord-snowflake');
+    }
+    matchers.webhookRe.lastIndex = 0;
+    let m;
+    while ((m = matchers.webhookRe.exec(line)) !== null) {
+      const token = m[2];
+      if (!matchers.placeholderRe.test(token) && token.length >= MIN_REAL_TOKEN_LEN) {
+        // Celowo BEZ wartości tokena: tylko lokalizacja i długość.
+        addHit('discord-webhook', lineStart + m.index, m[0].length);
+      }
+      if (m[0].length === 0) {
+        matchers.webhookRe.lastIndex += 1;
+      }
+    }
+    // Tożsamości legacy poza zwolnionymi obszarami (fixtury, archiwa).
+    if (!identityExempt) {
+      record(line, lineStart, matchers.legacyIdentityRe, 'legacy-identity');
+      record(line, lineStart, matchers.legacyHostRe, 'legacy-host');
+    }
+  };
+
+  // Bound newline-free state: scan everything except the last
+  // STREAM_PENDING_LIMIT characters (plus the STREAM_MATCH_OVERLAP window that
+  // lets a match starting just before the cut finish), then retain only that
+  // suffix. Offsets stay exact because `pendingStart` advances by the dropped
+  // length and the logical line (and lineNumber) is unchanged.
+  const flushBoundedPending = () => {
+    if (pending.length <= STREAM_PENDING_LIMIT) return;
+    const scanLength = pending.length - STREAM_PENDING_LIMIT + STREAM_MATCH_OVERLAP;
+    scanLine(pending.slice(0, scanLength), pendingStart);
+    const dropLength = pending.length - STREAM_PENDING_LIMIT;
+    pendingStart += dropLength;
+    pending = pending.slice(dropLength);
+  };
+
+  return {
+    push(chunk) {
+      if (typeof chunk !== 'string' || chunk.length === 0) return;
+      // Invariant: `pending` never contains '\n', so only the new chunk needs
+      // a newline search; `pending` is joined only when a line completes.
+      let rest = chunk;
+      let newline = rest.indexOf('\n');
+      if (newline === -1) {
+        pending += rest;
+        flushBoundedPending();
+        return;
+      }
+      while (newline !== -1) {
+        const tail = rest.slice(0, newline);
+        const line = pending.length > 0 ? pending + tail : tail;
+        scanLine(line, pendingStart);
+        pendingStart += line.length + 1;
+        lineNumber += 1;
+        pending = '';
+        rest = rest.slice(newline + 1);
+        newline = rest.indexOf('\n');
+      }
+      pending = rest;
+      flushBoundedPending();
+    },
+    end() {
+      if (pending.length > 0) {
+        scanLine(pending, pendingStart);
+        pending = '';
+      }
+      return hits;
+    },
+    hits,
+  };
+}
+
+/**
  * Scan text with the single-source secret policy.
  *
  * @param {string} rel posix relative path (used only for exemption routing)
@@ -210,62 +382,173 @@ const IDENTITY_EXEMPT_RE = /^(?:test\/|docs\/release-history\/)/;
  *   never included.
  */
 function scanTextForSecrets(rel, text, opts = {}) {
-  const matchers = buildSecretMatchers();
-  const hits = [];
-  const snowflakeExempt = opts.snowflakeExempt === true;
-  const identityExempt = opts.identityExempt === true;
-  const lines = text.split('\n');
-  let base = 0;
-  lines.forEach((line, idx) => {
-    const record = (regex, kind) => {
-      regex.lastIndex = 0;
-      let match;
-      while ((match = regex.exec(line)) !== null) {
-        // Guard against zero-length match loops (legacy-host pattern can
-        // match short fragments; none are zero-length today, but stay safe).
-        if (match[0].length === 0) {
-          regex.lastIndex += 1;
-          continue;
-        }
-        hits.push({
-          kind,
-          offset: base + match.index,
-          line: idx + 1,
-          tokenLen: match[0].length,
-        });
-      }
-    };
-    record(matchers.privatePathRe, 'private-path');
-    // README i test/ zawierają jawnie syntetyczne identyfikatory kontraktowe.
-    // Pozostałe przejrzane ścieżki nie mogą zawierać Discord snowflakes.
-    if (!snowflakeExempt) {
-      record(matchers.snowflakeRe, 'discord-snowflake');
+  const matcher = createSecretStreamMatcher(rel, opts);
+  matcher.push(text);
+  return matcher.end();
+}
+
+/**
+ * Test-only fault injection seam. Format: `<throw|truncate>[:<rel-substring>]`.
+ * Production never sets the environment variable; a configured fault can only
+ * add a read/truncation failure to the report.
+ *
+ * @param {string} rel posix relative path being scanned
+ * @returns {'throw'|'truncate'|null}
+ */
+function testReadFault(rel) {
+  const raw = process.env[TEST_READ_FAULT_ENV];
+  if (!raw) return null;
+  const separator = raw.indexOf(':');
+  const kind = separator === -1 ? raw : raw.slice(0, separator);
+  const target = separator === -1 ? '' : raw.slice(separator + 1);
+  if (kind !== 'throw' && kind !== 'truncate') return null;
+  if (target !== '' && !rel.includes(target)) return null;
+  return kind;
+}
+
+/**
+ * Stream one regular file through the stateful matcher. Fail closed: every
+ * open/read/decode/truncation error is returned as an error reason and binary
+ * files are classified explicitly (never skipped silently by size).
+ *
+ * @param {string} abs absolute path
+ * @param {string} rel posix relative path
+ * @param {{snowflakeExempt?:boolean, identityExempt?:boolean}} opts exemption flags
+ * @returns {{hits: Array<{kind:string, offset:number, line:number, tokenLen:number}>, binary: boolean, scanned: boolean, error: string|null, bytes: number}}
+ */
+function streamScanFile(abs, rel, opts = {}) {
+  const fault = testReadFault(rel);
+  let fd = null;
+  try {
+    // O_NOFOLLOW: an entry swapped for a symlink after traversal fails open.
+    // O_NONBLOCK: a pathname swapped for a FIFO/device after traversal cannot
+    // block the open forever. The descriptor is validated with fstat below,
+    // never with a prior pathname stat, so the open->check window cannot race.
+    const flags = fs.constants.O_RDONLY
+      | (fs.constants.O_NOFOLLOW || 0)
+      | (fs.constants.O_NONBLOCK || 0);
+    fd = fs.openSync(abs, flags);
+  } catch {
+    return { hits: [], binary: false, scanned: false, error: 'open-failure', bytes: 0 };
+  }
+  try {
+    let size = 0;
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) return { hits: [], binary: false, scanned: false, error: 'non-regular', bytes: 0 };
+      size = st.size; // descriptor size — the file that was actually opened
+    } catch {
+      return { hits: [], binary: false, scanned: false, error: 'stat-failure', bytes: 0 };
     }
-    matchers.webhookRe.lastIndex = 0;
-    let m;
-    while ((m = matchers.webhookRe.exec(line)) !== null) {
-      const token = m[2];
-      if (!matchers.placeholderRe.test(token) && token.length >= MIN_REAL_TOKEN_LEN) {
-        // Celowo BEZ wartości tokena: tylko lokalizacja i długość.
-        hits.push({
-          kind: 'discord-webhook',
-          offset: base + m.index,
-          line: idx + 1,
-          tokenLen: m[0].length,
-        });
+    const matcher = createSecretStreamMatcher(rel, opts);
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const buffer = Buffer.allocUnsafe(Math.min(STREAM_CHUNK_BYTES, Math.max(1, size)));
+    let bytes = 0;
+    let chunks = 0;
+    let binary = false;
+    let truncated = false;
+    let error = null;
+    for (;;) {
+      let read = 0;
+      try {
+        read = fs.readSync(fd, buffer, 0, buffer.length, null);
+      } catch {
+        error = 'read-failure';
+        break;
       }
-      if (m[0].length === 0) {
-        matchers.webhookRe.lastIndex += 1;
+      if (read === 0) break;
+      bytes += read;
+      chunks += 1;
+      const chunk = buffer.subarray(0, read);
+      if (chunk.includes(0)) {
+        binary = true;
+        break;
+      }
+      let text = '';
+      try {
+        text = decoder.decode(chunk, { stream: true });
+      } catch {
+        error = 'decode-failure';
+        break;
+      }
+      matcher.push(text);
+      if (fault === 'throw' && chunks === 1) {
+        error = 'read-failure';
+        break;
+      }
+      if (fault === 'truncate' && chunks === 1) {
+        truncated = true;
+        break;
       }
     }
-    // Tożsamości legacy poza zwolnionymi obszarami (fixtury, archiwa).
-    if (!identityExempt) {
-      record(matchers.legacyIdentityRe, 'legacy-identity');
-      record(matchers.legacyHostRe, 'legacy-host');
+    if (error === null && !binary && !truncated) {
+      try {
+        const tail = decoder.decode();
+        if (tail.length > 0) matcher.push(tail);
+      } catch {
+        error = 'decode-failure';
+      }
     }
-    base += line.length + 1;
-  });
-  return hits;
+    if (binary) return { hits: [], binary: true, scanned: false, error: null, bytes };
+    if (error !== null) return { hits: [], binary: false, scanned: false, error, bytes };
+    if (truncated || bytes !== size) {
+      return { hits: [], binary: false, scanned: false, error: 'truncated-read', bytes };
+    }
+    return { hits: matcher.end(), binary: false, scanned: true, error: null, bytes };
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // fd already closed
+    }
+  }
+}
+
+/**
+ * @param {Array<{file:string, reason:string}>} nonRegularEntries
+ * @returns {{scanned:number, binarySkippedFiles:Array<{file:string, reason:string}>, nonRegularEntries:Array<{file:string, reason:string}>, errorEntries:Array<{file:string, reason:string}>}}
+ */
+function createScanStats(nonRegularEntries = []) {
+  return {
+    scanned: 0,
+    binarySkippedFiles: [],
+    nonRegularEntries,
+    errorEntries: [],
+  };
+}
+
+/** @param {ReturnType<typeof createScanStats>} stats */
+function scanStatsReport(stats) {
+  return {
+    scanned: stats.scanned,
+    binarySkipped: stats.binarySkippedFiles.length,
+    binarySkippedFiles: stats.binarySkippedFiles,
+    nonRegular: stats.nonRegularEntries.length,
+    nonRegularEntries: stats.nonRegularEntries,
+    errors: stats.errorEntries.length,
+    errorEntries: stats.errorEntries,
+  };
+}
+
+/**
+ * @param {ReturnType<typeof createScanStats>} stats
+ * @param {string} rel
+ * @param {ReturnType<typeof streamScanFile>} result
+ * @param {Array<{file:string, line:number, kind:string, tokenLen?:number}>} secretHits
+ */
+function recordScanResult(stats, rel, result, secretHits) {
+  if (result.error !== null) {
+    stats.errorEntries.push({ file: rel, reason: result.error });
+    return;
+  }
+  if (result.binary) {
+    stats.binarySkippedFiles.push({ file: rel, reason: 'binary-nul' });
+    return;
+  }
+  stats.scanned += 1;
+  for (const hit of result.hits) {
+    secretHits.push({ file: rel, line: hit.line, kind: hit.kind, tokenLen: hit.tokenLen });
+  }
 }
 
 /** Tree-mode exemption routing (preserved Todo 2 contract). */
@@ -333,6 +616,132 @@ function listFilesRecursive(absDir, relBase) {
     }
   }
   return out;
+}
+
+/**
+ * lstat without following the final path component. Never throws.
+ *
+ * @param {string} abs
+ * @returns {{st: fs.Stats|null, error: string|null}}
+ */
+function lstatSafe(abs) {
+  try {
+    return { st: fs.lstatSync(abs), error: null };
+  } catch {
+    return { st: null, error: 'stat-failure' };
+  }
+}
+
+/**
+ * Read a directory only after verifying by lstat (never stat) that the path
+ * itself is a real directory — both BEFORE and AFTER the read. A directory
+ * swapped for a symlink (or any non-directory) during traversal is therefore
+ * never followed, and a dev/ino identity change between the two checks is
+ * reported instead of trusted.
+ *
+ * @param {string} absDir
+ * @returns {{entries: fs.Dirent[]|null, error: string|null}}
+ */
+function readDirectoryVerified(absDir) {
+  const before = lstatSafe(absDir);
+  if (before.error !== null) return { entries: null, error: before.error };
+  if (before.st.isSymbolicLink() || !before.st.isDirectory()) {
+    return { entries: null, error: 'non-directory' };
+  }
+  let entries;
+  try {
+    entries = fs.readdirSync(absDir, { withFileTypes: true });
+  } catch {
+    return { entries: null, error: 'read-failure' };
+  }
+  const after = lstatSafe(absDir);
+  if (after.error !== null) return { entries: null, error: after.error };
+  if (after.st.isSymbolicLink() || !after.st.isDirectory()) {
+    return { entries: null, error: 'non-directory' };
+  }
+  if (before.st.dev !== after.st.dev || before.st.ino !== after.st.ino) {
+    return { entries: null, error: 'identity-change' };
+  }
+  return { entries, error: null };
+}
+
+/**
+ * Walk a tree using verified reads only. A readdir Dirent is treated as a
+ * hint, never as proof: each child classified as a directory is re-lstat'ed
+ * immediately before descent, and a symlink or non-directory is reported as a
+ * non-regular finding instead of being followed. Directories that cannot be
+ * verified (stat-failure / read-failure / non-directory / identity-change)
+ * throw so the caller fails closed — non-zero exit, never a clean PASS and
+ * never a silent skip.
+ *
+ * @param {string} absDir
+ * @param {string} relBase posix relative prefix, '' or ending with '/'
+ * @param {{skipDirNames: Set<string>, onFile: (rel: string, abs: string) => void, onNonRegular: (rel: string, reason: string) => void}} options
+ */
+function walkVerifiedDirectories(absDir, relBase, options) {
+  const result = readDirectoryVerified(absDir);
+  if (result.error !== null) {
+    const display = relBase === '' ? '.' : relBase.replace(/\/$/, '');
+    throw new Error(`directory-verification-failed: ${display} (${result.error})`);
+  }
+  for (const ent of result.entries) {
+    const rel = relBase + ent.name;
+    const abs = path.join(absDir, ent.name);
+    if (ent.isDirectory()) {
+      if (options.skipDirNames.has(ent.name)) continue;
+      // Re-lstat the child immediately before descent: the Dirent may predate
+      // a directory -> symlink swap, and following it would escape the root.
+      const child = lstatSafe(abs);
+      if (child.error !== null) {
+        options.onNonRegular(rel, 'non-regular');
+        continue;
+      }
+      if (child.st.isSymbolicLink()) {
+        options.onNonRegular(rel, 'symlink');
+        continue;
+      }
+      if (!child.st.isDirectory()) {
+        options.onNonRegular(rel, 'non-regular');
+        continue;
+      }
+      walkVerifiedDirectories(abs, `${rel}/`, options);
+    } else if (ent.isFile()) {
+      options.onFile(rel, abs);
+    } else {
+      // Symlink / FIFO / socket / device: reported, never followed or opened.
+      options.onNonRegular(rel, ent.isSymbolicLink() ? 'symlink' : 'non-regular');
+    }
+  }
+}
+
+// `.git` is VCS metadata outside the public surface (tree mode); secrets mode
+// additionally skips node_modules (installed dependencies, excluded by CI).
+const TREE_WALK_SKIP_DIR_NAMES = new Set(['.git']);
+const SECRETS_WALK_SKIP_DIR_NAMES = new Set(['.git', 'node_modules']);
+
+/**
+ * Walk a tree collecting regular files while reporting every non-regular
+ * entry (symlink / FIFO / socket / device) instead of silently omitting it.
+ * `.git` is excluded exactly like the existing extra-file and scan skips;
+ * everything else is traversed so the denylist still sees nested occurrences
+ * by name. Directory reads and descents go through walkVerifiedDirectories,
+ * so a directory swapped for a symlink is reported and never followed.
+ *
+ * @param {string} absDir
+ * @param {string} relBase
+ * @param {string[]} files
+ * @param {Array<{file:string, reason:string}>} nonRegular
+ */
+function walkRootEntries(absDir, relBase, files, nonRegular) {
+  walkVerifiedDirectories(absDir, relBase, {
+    skipDirNames: TREE_WALK_SKIP_DIR_NAMES,
+    onFile: (rel) => {
+      files.push(rel);
+    },
+    onNonRegular: (rel, reason) => {
+      nonRegular.push({ file: rel, reason });
+    },
+  });
 }
 
 function toPosix(p) {
@@ -427,8 +836,9 @@ function mainTree(root, baseline, outAbs, outRel) {
   // --- (a-bis) brak obcych plików poza allowlistą i generowanymi ---
   const expectedSet = new Set(expectedFiles);
   const actualTop = [];
+  const nonRegularEntries = [];
   try {
-    actualTop.push(...listFilesRecursive(root, '').map(toPosix));
+    walkRootEntries(root, '', actualTop, nonRegularEntries);
   } catch (e) {
     console.error(`audit-public-tree: cannot list --root: ${e.message}`);
     process.exit(2);
@@ -461,29 +871,17 @@ function mainTree(root, baseline, outAbs, outRel) {
   // --- (c) skan prywatnych wzorców (bez znalezionych bajtów w raporcie) ---
   // Single-source: kształty sekretów pochodzą wyłącznie ze wspólnego
   // scanTextForSecrets; tryb tree dokłada jedynie routing zwolnień Todo 2.
+  // Oversized text is streamed (never skipped by size), binary files are
+  // classified explicitly, and every read/decode/truncation error fails closed.
+  const scanStats = createScanStats(nonRegularEntries);
   for (const rel of actualTop) {
     if (rel.startsWith('node_modules/') || rel.startsWith('.git/')) continue;
+    if (rel === outRel) continue; // własny plik wynikowy
     const abs = path.join(root, rel);
-    let text = null;
-    try {
-      const st = fs.statSync(abs);
-      if (!st.isFile() || st.size > 8 * 1024 * 1024) continue;
-      text = fs.readFileSync(abs, 'utf8');
-    } catch {
-      continue; // binarny / nieczytelny — pomijamy
-    }
-    if (text.includes('\u0000')) continue; // binarny
-    for (const hit of scanTextForSecrets(rel, text, treeScanExemptions(rel))) {
-      secretHits.push({
-        file: rel,
-        line: hit.line,
-        kind: hit.kind,
-        tokenLen: hit.tokenLen,
-      });
-    }
+    recordScanResult(scanStats, rel, streamScanFile(abs, rel, treeScanExemptions(rel)), secretHits);
   }
 
-  return { excludedFound, hashMismatches, secretHits };
+  return { excludedFound, hashMismatches, secretHits, scanStats: scanStatsReport(scanStats) };
 }
 
 function writeReport(outAbs, report) {
@@ -497,44 +895,32 @@ function writeReport(outAbs, report) {
 // ---------------------------------------------------------------------------
 
 function collectSecretScanFiles(root) {
-  const out = [];
-  const visit = (absDir) => {
-    for (const ent of fs.readdirSync(absDir, { withFileTypes: true })) {
-      const abs = path.join(absDir, ent.name);
-      if (ent.isSymbolicLink()) continue;
-      if (ent.isDirectory()) {
-        if (ent.name === '.git' || ent.name === 'node_modules') continue;
-        visit(abs);
-      } else if (ent.isFile()) {
-        out.push(abs);
-      }
-    }
-  };
-  visit(root);
-  return out;
+  const files = [];
+  const nonRegular = [];
+  walkVerifiedDirectories(root, '', {
+    skipDirNames: SECRETS_WALK_SKIP_DIR_NAMES,
+    onFile: (rel, abs) => {
+      files.push(abs);
+    },
+    onNonRegular: (rel, reason) => {
+      nonRegular.push({ file: rel, reason });
+    },
+  });
+  return { files, nonRegular };
 }
 
 function mainSecrets(root, outAbs, outRel) {
   const secretHits = [];
-  for (const abs of collectSecretScanFiles(root)) {
+  const { files, nonRegular } = collectSecretScanFiles(root);
+  const scanStats = createScanStats(nonRegular);
+  for (const abs of files) {
     const rel = toPosix(path.relative(root, abs));
     if (rel === outRel) continue; // własny plik wynikowy
-    let text = null;
-    try {
-      const st = fs.statSync(abs);
-      if (!st.isFile() || st.size > 8 * 1024 * 1024) continue;
-      text = fs.readFileSync(abs, 'utf8');
-    } catch {
-      continue;
-    }
-    if (text.includes('\u0000')) continue;
     // Ten sam routing zwolnień co tryb tree (fixtury testowe + README niosą
     // jawnie syntetyczne identyfikatory kontraktowe).
-    for (const hit of scanTextForSecrets(rel, text, treeScanExemptions(rel))) {
-      secretHits.push({ file: rel, line: hit.line, kind: hit.kind });
-    }
+    recordScanResult(scanStats, rel, streamScanFile(abs, rel, treeScanExemptions(rel)), secretHits);
   }
-  return secretHits;
+  return { secretHits, scanStats: scanStatsReport(scanStats) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1176,40 +1562,52 @@ async function main() {
   }
 
   if (args.mode === 'secrets') {
-    let secretHits = [];
+    let outcome = null;
     try {
-      secretHits = mainSecrets(root, outAbs, outRel);
+      outcome = mainSecrets(root, outAbs, outRel);
     } catch (e) {
       console.error(`audit-public-tree: ${e.message}`);
       process.exit(2);
     }
-    const verdict = secretHits.length === 0 ? 'PASS' : 'FAIL';
-    writeReport(outAbs, { verdict, secretHits });
-    console.log(`audit-public-tree secrets verdict:${verdict} secrets:${secretHits.length}`);
+    const { secretHits, scanStats } = outcome;
+    const verdict =
+      secretHits.length === 0 && scanStats.errors === 0 && scanStats.nonRegular === 0 ? 'PASS' : 'FAIL';
+    writeReport(outAbs, { verdict, secretHits, scanStats });
+    console.log(
+      `audit-public-tree secrets verdict:${verdict} secrets:${secretHits.length} scanned:${scanStats.scanned} binarySkipped:${scanStats.binarySkipped} nonRegular:${scanStats.nonRegular} errors:${scanStats.errors}`,
+    );
     for (const s of secretHits.slice(0, 50)) {
       console.log(`  secret-hit: ${s.file}:${s.line} (${s.kind})`);
     }
+    for (const entry of scanStats.nonRegularEntries) console.log(`  non-regular: ${entry.file} (${entry.reason})`);
+    for (const entry of scanStats.errorEntries) console.log(`  scan-error: ${entry.file} (${entry.reason})`);
     process.exit(verdict === 'PASS' ? 0 : 1);
   }
 
   const baseline = path.resolve(args.baseline);
-  const { excludedFound, hashMismatches, secretHits } = mainTree(root, baseline, outAbs, outRel);
+  const { excludedFound, hashMismatches, secretHits, scanStats } = mainTree(root, baseline, outAbs, outRel);
   const verdict =
-    excludedFound.length === 0 && hashMismatches.length === 0 && secretHits.length === 0
+    excludedFound.length === 0 &&
+    hashMismatches.length === 0 &&
+    secretHits.length === 0 &&
+    scanStats.errors === 0 &&
+    scanStats.nonRegular === 0
       ? 'PASS'
       : 'FAIL';
-  const report = { verdict, excludedFound, hashMismatches, secretHits };
+  const report = { verdict, excludedFound, hashMismatches, secretHits, scanStats };
 
   writeReport(outAbs, report);
 
   console.log(
-    `audit-public-tree verdict:${verdict} excluded:${excludedFound.length} mismatches:${hashMismatches.length} secrets:${secretHits.length}`,
+    `audit-public-tree verdict:${verdict} excluded:${excludedFound.length} mismatches:${hashMismatches.length} secrets:${secretHits.length} scanned:${scanStats.scanned} binarySkipped:${scanStats.binarySkipped} nonRegular:${scanStats.nonRegular} errors:${scanStats.errors}`,
   );
   for (const e of excludedFound) console.log(`  excluded-present: ${e}`);
   for (const m of hashMismatches) console.log(`  mismatch: ${m.file} (${m.reason})`);
   for (const s of secretHits) {
     console.log(`  secret-hit: ${s.file}:${s.line} (${s.kind}, tokenLen=${s.tokenLen})`);
   }
+  for (const entry of scanStats.nonRegularEntries) console.log(`  non-regular: ${entry.file} (${entry.reason})`);
+  for (const entry of scanStats.errorEntries) console.log(`  scan-error: ${entry.file} (${entry.reason})`);
 
   process.exit(verdict === 'PASS' ? 0 : 1);
 }
@@ -1227,9 +1625,18 @@ module.exports = {
   DENYLIST,
   GENERATED,
   SETTINGS_BACKUP_RE,
+  STREAM_CHUNK_BYTES,
+  STREAM_PENDING_LIMIT,
   scanTextForSecrets,
+  createSecretStreamMatcher,
+  streamScanFile,
   treeScanExemptions,
   verifyOcrModel,
   verifyEvidenceDeps,
   ocrModelPaths,
+  lstatSafe,
+  readDirectoryVerified,
+  walkVerifiedDirectories,
+  walkRootEntries,
+  collectSecretScanFiles,
 };

@@ -15,6 +15,12 @@ try { RELEASE_VERSION = require(path.join(ROOT, 'package.json')).version || FALL
 const SOURCE_CONFIG_ROOTS = ['src/', 'config/'];
 const SOURCE_CONFIG_SCHEMA_VERSION = 2;
 
+// Shared regular-file contract (Task 7) imported lazily from backup.cjs so
+// backup and rollback can never drift; lstat-based and fail-closed.
+function lstatRegularFile(target, rel, kind) {
+    return require('./backup.cjs').lstatRegularFile(target, rel, kind);
+}
+
 function digest(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
 function fsync(file) { const fd = fs.openSync(file, 'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
 function syncDir() { const fd = fs.openSync(BACKUPS, 'r'); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
@@ -96,9 +102,10 @@ function rollback(input) {
 function rollbackLegacy(target, selector, dir) {
     const names = { runtime: `runtime-${selector}.js`, config: `config-${selector}.json`, metadata: `metadata-${selector}.json`, moduleManifest: `module-manifest-${selector}.json` };
     const manifestFile = path.join(dir, `backup-${selector}.manifest.json`); if (!fs.existsSync(manifestFile)) throw new Error(`backup manifest not found: ${manifestFile}`);
+    if (lstatRegularFile(manifestFile, `backup-${selector}.manifest.json`, 'backup manifest') === null) throw new Error(`backup manifest not found: ${manifestFile}`);
     const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')); if (manifest.schemaVersion !== 1 || manifest.selector !== selector || manifest.version !== target.version || manifest.releaseId !== `taa-${target.version}`) throw new Error('backup manifest release mismatch');
     const files = {};
-    for (const kind of Object.keys(names)) { const descriptor = manifest.files?.[kind]; if (!descriptor || descriptor.path !== names[kind] || path.basename(descriptor.path) !== descriptor.path || descriptor.path.includes('..')) throw new Error(`invalid manifest path: ${kind}`); const payload = path.join(dir, descriptor.path); const sidecar = `${payload}.sha256`; if (!fs.existsSync(payload) || !fs.existsSync(sidecar)) throw new Error(`backup payload missing: ${kind}`); const sideHash = readSidecar(sidecar, payload); if (sideHash !== descriptor.sha256) throw new Error(`manifest digest mismatch: ${kind}`); files[kind] = payload; }
+    for (const kind of Object.keys(names)) { const descriptor = manifest.files?.[kind]; if (!descriptor || descriptor.path !== names[kind] || path.basename(descriptor.path) !== descriptor.path || descriptor.path.includes('..')) throw new Error(`invalid manifest path: ${kind}`); const payload = path.join(dir, descriptor.path); const sidecar = `${payload}.sha256`; if (!fs.existsSync(payload) || !fs.existsSync(sidecar)) throw new Error(`backup payload missing: ${kind}`); if (lstatRegularFile(payload, descriptor.path) === null) throw new Error(`backup payload missing: ${kind}`); if (lstatRegularFile(sidecar, `${descriptor.path}.sha256`, 'backup sidecar') === null) throw new Error(`backup sidecar missing: ${kind}`); const sideHash = readSidecar(sidecar, payload); if (sideHash !== descriptor.sha256) throw new Error(`manifest digest mismatch: ${kind}`); files[kind] = payload; }
     if (manifest.runtimeSha256 !== digest(files.runtime)) throw new Error('manifest runtime digest mismatch');
     const metadata = JSON.parse(fs.readFileSync(files.metadata, 'utf8')); const moduleManifest = JSON.parse(fs.readFileSync(files.moduleManifest, 'utf8')); const config = JSON.parse(fs.readFileSync(files.config, 'utf8'));
     if (metadata.release?.version !== target.version || metadata.release.releaseId !== `taa-${target.version}` || metadata.artifact?.path !== 'dist/travian-attack-alert.user.js' || metadata.artifact?.source?.path !== 'src/userscript-entry.js') throw new Error('metadata release or artifact mismatch');
@@ -172,9 +179,7 @@ function walkLiveSourceConfig() {
 function rollbackSourceConfig(target, selector) {
     const dir = BACKUPS;
     const manifestFile = path.join(dir, `backup-${selector}.source-config.manifest.json`);
-    let manifestStat = null;
-    try { manifestStat = fs.lstatSync(manifestFile); } catch { throw new Error(`backup manifest not found: ${manifestFile}`); }
-    if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) throw new Error('backup manifest is not a regular file');
+    if (lstatRegularFile(manifestFile, path.basename(manifestFile), 'backup manifest') === null) throw new Error(`backup manifest not found: ${manifestFile}`);
     const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
     if (manifest.schemaVersion !== SOURCE_CONFIG_SCHEMA_VERSION
         || manifest.selector !== selector
@@ -206,10 +211,9 @@ function rollbackSourceConfig(target, selector) {
     // Verify every payload (content + sidecar) before touching live files.
     const payloads = manifest.files.map((entry) => {
         const payload = resolveInside(payloadRoot, entry.path);
-        let st = null;
-        try { st = fs.lstatSync(payload); } catch { throw new Error(`backup payload missing: ${entry.path}`); }
-        if (!st.isFile() || st.isSymbolicLink()) throw new Error(`backup payload is not a regular file: ${entry.path}`);
+        if (lstatRegularFile(payload, entry.path) === null) throw new Error(`backup payload missing: ${entry.path}`);
         const sidecar = `${payload}.sha256`;
+        if (lstatRegularFile(sidecar, `${entry.path}.sha256`, 'backup sidecar') === null) throw new Error(`backup sidecar missing: ${entry.path}`);
         let line = null;
         try { line = fs.readFileSync(sidecar, 'utf8'); } catch { throw new Error(`backup sidecar missing: ${entry.path}`); }
         const match = /^([0-9a-f]{64})  ([^\n]+)\n$/.exec(line);

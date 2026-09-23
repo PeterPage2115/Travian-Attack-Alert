@@ -328,4 +328,105 @@ test.describe('attack panel — 6.0.0 attack-only', () => {
       expect(axeResults.violations, JSON.stringify(axeResults.violations)).toEqual([]);
     });
   });
+
+  // task-32 observed-defect assertions (delimited): both tests are RED on the
+  // pre-fix panel and GREEN after the minimal token-backed CSS fixes.
+  test.describe('task-32 launcher occlusion and 375px reflow', () => {
+    test('open panel hides the launcher so it cannot occlude or block content', async ({ page }) => {
+      await page.goto('/alliance?panelState=overview&memberTable=canonical', { waitUntil: 'domcontentloaded' });
+      const openButton = page.getByRole('button', { name: /Alert monitor|Open monitor/i });
+      await expect(openButton).toBeVisible({ timeout: 8000 });
+      await openButton.click({ force: true });
+      const overlay = page.locator('#taa-panel-overlay');
+      await expect(overlay).toBeVisible({ timeout: 5000 });
+      const launcher = page.locator('#taa-open-panel');
+      // The launcher must not stay painted above the open dialog: `hidden`
+      // has to win over the injected `display` (the pre-fix rule kept it
+      // displayed, so it floated over the panel and swallowed pointer input).
+      await expect(launcher).toBeHidden();
+      const occlusion = await page.evaluate(() => {
+        const el = document.getElementById('taa-open-panel');
+        if (!el) return { sampled: 0, blocked: 0 };
+        const rect = el.getBoundingClientRect();
+        let blocked = 0;
+        let sampled = 0;
+        const inset = 4;
+        for (let i = 0; i <= 4; i += 1) {
+          for (let j = 0; j <= 4; j += 1) {
+            const x = Math.round(rect.left + inset + ((rect.width - 2 * inset) * i) / 4);
+            const y = Math.round(rect.top + inset + ((rect.height - 2 * inset) * j) / 4);
+            const top = document.elementFromPoint(x, y);
+            sampled += 1;
+            if (top === el) blocked += 1;
+          }
+        }
+        return { sampled, blocked };
+      });
+      expect(occlusion.blocked, JSON.stringify(occlusion)).toBe(0);
+      await page.locator('#taa-panel-close').click({ force: true });
+      await expect(launcher).toBeVisible();
+      await expect(openButton).toBeFocused();
+      const axeResults = await new AxeBuilder({ page }).include('#taa-panel-overlay').analyze();
+      expect(axeResults.violations, JSON.stringify(axeResults.violations)).toEqual([]);
+    });
+
+    test('player row actions reflow inside the panel at 375px and 200% zoom', async ({ page }) => {
+      await page.goto('/alliance?panelState=failed&memberTable=canonical', { waitUntil: 'domcontentloaded' });
+      await page.getByRole('button', { name: /Alert monitor|Open monitor/i }).click({ force: true });
+      await page.getByRole('tab', { name: 'Players' }).click({ force: true });
+      await expect(page.locator('#taa-player-mute-900001')).toBeVisible();
+      const measure = () => page.evaluate(() => {
+        const zoom = Number(document.documentElement.style.zoom) || 1;
+        const viewport = document.documentElement.clientWidth * zoom;
+        const offenders = Array.from(document.querySelectorAll('#taa-panel-overlay *'))
+          .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+          .filter((item) => item.rect.width > 0 && (item.rect.right > viewport + 1 || item.rect.left < -1))
+          .map((item) => ({ id: item.el.id || item.el.tagName.toLowerCase(), left: Math.round(item.rect.left), right: Math.round(item.rect.right) }));
+        return { viewport: Math.round(viewport), offenders, docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+      });
+      const atDefault = await measure();
+      expect(atDefault.offenders, JSON.stringify(atDefault)).toEqual([]);
+      expect(atDefault.docOverflow).toBeLessThanOrEqual(2);
+      await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
+      await page.waitForTimeout(200);
+      const atZoom = await measure();
+      expect(atZoom.offenders, JSON.stringify(atZoom)).toEqual([]);
+      expect(atZoom.docOverflow).toBeLessThanOrEqual(2);
+      await page.evaluate(() => { document.documentElement.style.zoom = ''; });
+      const axeResults = await new AxeBuilder({ page }).include('#taa-panel-overlay').analyze();
+      expect(axeResults.violations, JSON.stringify(axeResults.violations)).toEqual([]);
+    });
+
+    test('keyboard focus keeps a visible ring on every reachable control', async ({ page }) => {
+      await page.goto('/alliance?panelState=overview', { waitUntil: 'domcontentloaded' });
+      await page.getByRole('button', { name: /Alert monitor|Open monitor/i }).click({ force: true });
+      await page.getByRole('tab', { name: 'Players' }).click({ force: true });
+      await expect(page.locator('#taa-player-search')).toBeVisible();
+      const stops: Array<{ id: string; outlineStyle: string; outlineWidth: number; boxShadow: string; inOverlay: boolean }> = [];
+      for (let i = 0; i < 10 && stops.length < 8; i += 1) {
+        await page.keyboard.press('Tab');
+        const info = await page.evaluate(() => {
+          const el = document.activeElement as HTMLElement | null;
+          if (!el || el === document.body) return null;
+          const style = getComputedStyle(el);
+          return {
+            id: el.id || el.tagName.toLowerCase(),
+            outlineStyle: style.outlineStyle,
+            outlineWidth: Number.parseFloat(style.outlineWidth) || 0,
+            boxShadow: style.boxShadow,
+            inOverlay: Boolean(el.closest('#taa-panel-overlay')),
+          };
+        });
+        if (!info) break;
+        stops.push(info);
+      }
+      expect(stops.length, JSON.stringify(stops)).toBeGreaterThanOrEqual(5);
+      for (const stop of stops) {
+        expect(stop.inOverlay, `${stop.id} must stay inside the dialog`).toBe(true);
+        const indicator = (stop.outlineStyle !== 'none' && stop.outlineWidth > 0) || stop.boxShadow !== 'none';
+        expect(indicator, `${stop.id} must show a visible focus indicator`).toBe(true);
+      }
+      expect((page as unknown as { __consoleErrors: string[] }).__consoleErrors).toEqual([]);
+    });
+  });
 });

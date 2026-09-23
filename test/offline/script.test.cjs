@@ -62,7 +62,7 @@ test('Given the offline lane, When its declared files are inspected, Then none i
 
 test('Given npm test, When its command is inspected, Then it aggregates exactly the node:test lanes', () => {
     const scripts = require('../../package.json').scripts;
-    assert.equal(scripts.test, 'npm run test:offline && npm run test:tools && npm run test:artifact');
+    assert.equal(scripts.test, 'npm run test:characterization && npm run test:offline && npm run test:tools && npm run test:artifact');
 });
 
 test('Given the offline lane, When its command is inspected, Then browser suites are excluded', () => {
@@ -7888,7 +7888,8 @@ test('Todo 8 migration is one-shot and keeps baseline, accounting, and schema ke
 
 // Public 1.0.0 identity: neutral host scope. The userscript installs on exactly
 // one neutral match (https://*.travian.com/alliance*), carries the public
-// @name/@namespace/@version, declares no update/download URLs, and opts out of
+// @name/@namespace/@version, propagates the configured release-branch
+// @updateURL/@downloadURL from config/userscript.json, and opts out of
 // iframes via @noframes (iframe contexts never run, so they cannot scan, write,
 // send, or reload). Runtime authority still requires the query-free canonical
 // /alliance/profile/members route; install scope alone never grants it.
@@ -7908,7 +7909,7 @@ function matchPatternToRegExp(match) {
     return new RegExp(`^${escaped}$`);
 }
 
-test('public 1.0.0 header: single neutral @match, public identity, protected update URLs, @noframes', () => {
+test('public 1.0.0 header: single neutral @match, public identity, release-branch update URLs, @noframes', () => {
     const { header, value } = readPublicHeader();
     assert.equal(value('@name'), 'Travian Attack Alert');
     assert.equal(value('@namespace'), 'travian-attack-alert-public');
@@ -7916,8 +7917,13 @@ test('public 1.0.0 header: single neutral @match, public identity, protected upd
     const matches = header.split('\n').filter((line) => line.startsWith('// @match'));
     assert.equal(matches.length, 1, 'exactly one neutral @match line');
     assert.equal(matches[0].slice('// @match'.length).trim(), 'https://*.travian.com/alliance*');
-    const protectedUrl = 'https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/main/dist/travian-attack-alert.user.js';
-    for (const key of ['@updateURL', '@downloadURL']) assert.equal(value(key), protectedUrl);
+    const userscriptConfig = require('../../config/userscript.json');
+    const releaseUrl = 'https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js';
+    for (const key of ['@updateURL', '@downloadURL']) {
+        assert.equal(value(key), userscriptConfig[key.slice(1)], `generated ${key} must propagate config/userscript.json ${key.slice(1)}`);
+    }
+    assert.equal(userscriptConfig.updateURL, releaseUrl, 'config updateURL must target the release branch, not the old main channel');
+    assert.equal(userscriptConfig.downloadURL, releaseUrl, 'config downloadURL must target the release branch, not the old main channel');
     assert.ok(header.split('\n').some((line) => line.trim() === '// @noframes'), '@noframes must be present');
 });
 

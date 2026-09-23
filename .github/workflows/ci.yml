@@ -10,15 +10,21 @@ on:
 permissions:
   contents: read
 
+# Every action is pinned to the immutable commit of its newest stable release
+# (resolved through the GitHub API in Task 26; the moving `v4` ref of each
+# repository pointed at the same commit when pinned). Job timeouts are bounded
+# but deliberately >= 2x the longest observed run so a timeout can never cancel
+# the always()-gated evidence steps of the browser job.
 jobs:
   offline-node-18:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Node.js 18
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 18
           cache: npm
@@ -39,6 +45,13 @@ jobs:
 
       - name: Artifact gates
         run: npm run test:artifact
+
+      # Receipt-backed accounting: every manifest-owned characterization suite
+      # must execute and leave a HEAD-bound receipt before the inventory gate
+      # (npm run check) consumes test-results/suite-receipts. Registration in
+      # the manifest alone is not execution proof.
+      - name: Characterization receipts (blocking)
+        run: npm run test:characterization
 
       - name: Checks (versions, artifact, inventory)
         run: npm run check
@@ -63,7 +76,7 @@ jobs:
           node -e "const r=require('./test-results/secret-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r.secretHits,null,2));process.exit(1);} console.log('secret pattern scan: clean');"
 
       - name: Upload determinism bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: determinism-node-18
           path: |
@@ -76,12 +89,13 @@ jobs:
 
   offline-node-20:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -100,6 +114,13 @@ jobs:
 
       - name: Artifact gates
         run: npm run test:artifact
+
+      # Receipt-backed accounting: every manifest-owned characterization suite
+      # must execute and leave a HEAD-bound receipt before the inventory gate
+      # (npm run check) consumes test-results/suite-receipts. Registration in
+      # the manifest alone is not execution proof.
+      - name: Characterization receipts (blocking)
+        run: npm run test:characterization
 
       - name: Checks (versions, artifact, inventory)
         run: npm run check
@@ -121,7 +142,7 @@ jobs:
           node -e "const r=require('./test-results/secret-scan.json'); if(r.verdict!=='PASS'){console.error(JSON.stringify(r.secretHits,null,2));process.exit(1);} console.log('secret pattern scan: clean');"
 
       - name: Upload determinism bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: determinism-node-20
           path: |
@@ -134,12 +155,13 @@ jobs:
 
   browser-node-20:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -160,27 +182,57 @@ jobs:
         timeout-minutes: 20
         run: npm run test:e2e
 
-      - name: Upload browser evidence
+      # Evidence pipeline: seal the complete test-results/ tree into ONE
+      # deterministic ZIP outside the mutable directory, scan that exact
+      # archive with the ZIP-recursive evidence scanner (while the pinned
+      # decoder dependencies are installed), then recheck the sealed digest.
+      # `if: always()` captures evidence even when the browser tests fail; the
+      # failed test steps still decide the job status.
+      - name: Seal browser evidence
+        id: evidence-seal
         if: always()
-        uses: actions/upload-artifact@v4
+        run: node tools/seal-evidence.cjs --input test-results --archive ci-evidence/upload/browser-evidence.zip --manifest ci-evidence/browser-evidence.manifest.json
+
+      - name: Scan sealed browser evidence (blocking)
+        id: evidence-scan
+        if: always()
+        run: node tools/audit-public-tree.cjs --mode evidence --root ci-evidence/upload --out ci-evidence/browser-evidence.scan.json
+
+      # Immediately before upload, recompute and compare the ZIP SHA-256
+      # against the seal manifest: a changed or missing digest makes the
+      # upload ineligible.
+      - name: Recheck sealed evidence digest
+        id: evidence-digest
+        if: always()
+        run: node tools/seal-evidence.cjs --verify --archive ci-evidence/upload/browser-evidence.zip --manifest ci-evidence/browser-evidence.manifest.json
+
+      # Upload ONLY the exact sealed ZIP bytes + the separate scan report,
+      # never the mutable test-results/ directory. Upload stays ineligible
+      # unless the seal, the evidence scan, and the digest recheck succeeded.
+      - name: Upload sealed browser evidence
+        if: always() && steps.evidence-seal.outcome == 'success' && steps.evidence-scan.outcome == 'success' && steps.evidence-digest.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-node-20-evidence
-          path: test-results/
+          path: |
+            ci-evidence/upload/browser-evidence.zip
+            ci-evidence/browser-evidence.scan.json
           if-no-files-found: error
           retention-days: 14
 
   cross-node-determinism:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [offline-node-18, offline-node-20]
     steps:
       - name: Download determinism-node-18
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: determinism-node-18
           path: determinism-node-18
 
       - name: Download determinism-node-20
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: determinism-node-20
           path: determinism-node-20
@@ -249,7 +301,7 @@ jobs:
           node /tmp/ci-identity.cjs
 
       - name: Upload ci-identity
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ci-identity
           path: ci-identity/ci-identity.json

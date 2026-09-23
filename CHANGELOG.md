@@ -26,6 +26,10 @@ rewritten here; it is noted as lineage only.
   is only `dist/*.sha256` plus generated `metadata.json`, whose
   `toolchain.node` now reports the actual build runtime instead of a
   hardcoded version.
+- The update channel is reconfigured: `config/userscript.json` `updateURL`
+  and `downloadURL` both point at the default release branch
+  `release/public-1.0.0`, and the generated header carries both directives.
+  The stale `/main/` channel URL is gone; `main` does not exist on the remote.
 
 ## 1.0.0 — first public release based on historical internal 6.x development (release candidate, unpublished)
 
@@ -36,8 +40,9 @@ Publication needs a separate owner decision (see `docs/release-history/1.0.0-rc/
 
 - Name `Travian Attack Alert`, namespace `travian-attack-alert-public`,
   version `1.0.0`, release ID `taa-1.0.0` (commit `3fc31c0`).
-- Single neutral match `https://*.travian.com/alliance*`; no update channel
-  (`@updateURL`/`@downloadURL` absent); `@noframes` retained.
+- Single neutral match `https://*.travian.com/alliance*`; no update channel in
+  this candidate (`@updateURL`/`@downloadURL` absent, added later by the
+  repository cleanup above); `@noframes` retained.
 - Installable file `dist/travian-attack-alert.user.js`, generated from `src/`
   via `npm run build`, with a sidecar SHA-256 (commit `4b3ec21`).
 - Complete offline quality gate `npm run check:release` (commit `e01adfa`).

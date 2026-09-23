@@ -20,10 +20,16 @@
  *                     browser-global reason scoped to src/text.js
  *                     (module-role rule: pure modules may not touch
  *                     browser entry globals).
+ *   no-input-global-error — temp root whose tsconfig.json include matches
+ *                     no inputs must fail tools/check-types-ratchet.cjs,
+ *                     and the failure must carry a compiler-global reason
+ *                     (TS18003/no-input), never `verdict:"PASS"` with
+ *                     `actualTotal:0` (fail-closed for configuration and
+ *                     global compiler failures).
  *
  * Usage:
  *   node test/fixtures/tools/run-quality-ratchet-mutations.cjs \
- *     --cases new-type-error,monolith-growth,illegal-global \
+ *     --cases new-type-error,monolith-growth,illegal-global,no-input-global-error \
  *     --json <attemptDir>/task-6-mutations.json
  *
  * Exit code is 0 IFF every selected case is rejected. The JSON report is
@@ -37,7 +43,7 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 
-const CASES = ['new-type-error', 'monolith-growth', 'illegal-global'];
+const CASES = ['new-type-error', 'monolith-growth', 'illegal-global', 'no-input-global-error'];
 
 function fail(message) {
   process.stderr.write(`run-quality-ratchet-mutations: ${message}\n`);
@@ -142,12 +148,40 @@ function checkIllegalGlobal() {
   }
 }
 
+function checkNoInputGlobalError() {
+  const temp = copyTreeToTemp('no-input-global-error');
+  try {
+    // Configuration failure, not a source diagnostic: point the tsconfig
+    // include at a glob that matches nothing. tsc reports global
+    // TS18003 ("No inputs were found"), which has no file(line,col)
+    // position. The ratchet must fail closed with a compiler-global
+    // reason instead of reporting PASS with actualTotal:0.
+    const tsconfigPath = path.join(temp, 'tsconfig.json');
+    const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, 'utf8'));
+    tsconfig.include = ['src/__taa-no-such-dir__/**/*.js'];
+    fs.writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
+    const result = runGate(temp, ['tools/check-types-ratchet.cjs']);
+    const output = `${result.stdout || ''}${result.stderr || ''}`;
+    if (
+      result.status !== 0
+      && /TS18003|compiler-global-failure|no-input/i.test(output)
+      && !/"verdict"\s*:\s*"PASS"/.test(result.stdout || '')
+    ) {
+      return { rejected: true, reason: `check-types-ratchet exited ${result.status} with a compiler-global reason (${temp})` };
+    }
+    return { rejected: false, reason: `expected no-input tsconfig to fail closed with a global reason, got exit ${result.status}: ${output.slice(-500)}` };
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+}
+
 function main() {
   const { cases, json } = parseArgs(process.argv.slice(2));
   const checks = {
     'new-type-error': checkNewTypeError,
     'monolith-growth': checkMonolithGrowth,
     'illegal-global': checkIllegalGlobal,
+    'no-input-global-error': checkNoInputGlobalError,
   };
   const results = {};
   let allRejected = true;

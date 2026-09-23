@@ -1,0 +1,34 @@
+# Release-note configuration for GitHub's automatically generated notes.
+# https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-release-notes
+#
+# Every label referenced here already exists in this repository; the contract
+# test in test/tools/repository-essentials.test.cjs pins them to the verified
+# label set, so no label is invented. The final category is an explicit "*"
+# catch-all: every pull request that is not deliberately excluded lands in a
+# category and none is silently omitted. This file only shapes generated notes;
+# it never publishes a release.
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - wontfix
+    authors:
+      - dependabot[bot]
+      - github-actions[bot]
+  categories:
+    - title: Bug fixes
+      labels:
+        - bug
+    - title: Enhancements
+      labels:
+        - enhancement
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Accessibility
+      labels:
+        - accessibility
+    - title: Other changes
+      labels:
+        - "*"

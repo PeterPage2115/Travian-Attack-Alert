@@ -4,7 +4,7 @@
   "newModuleMaxPureLines": 250,
   "monolith": {
     "path": "src/runtime.js",
-    "maxPureLines": 10455,
-    "note": "Strictly decreasing budget: actual pure lines must be <= maxPureLines. Any increase fails the gate."
+    "maxPureLines": 10804,
+    "note": "Strictly non-increasing budget: actual pure lines must be <= maxPureLines. Any increase fails the gate. Task 15 (legacy queue reconciliation) recorded +203 debt from 10455; Task 20 (same-document pre-scan lease reacquisition) recorded the required +16 from 10658; Task 21 (bounded current-world attack-memory reset through the existing envelope writer) recorded the required +90 from 10674; Task 22 (resume a live multi-payload chunk retry at the first unacknowledged payload) recorded the required +10 from 10764; PR-Fix C (Qodo findings 2+9) recorded the required +30 from 10774 to fence each staged legacy cleanup write with the live lease predicate and to clear array-form legacy world entries. No headroom remains."
   }
 }

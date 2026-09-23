@@ -13,8 +13,8 @@
  *
  * Order:
  *   build -> versions -> syntax-dist -> artifact -> artifact-matrix ->
- *   syntax-runtime -> source-offline -> static-format -> tools-tests ->
- *   types -> quality -> browser-tests -> e2e
+ *   syntax-runtime -> source-offline -> characterization -> test-inventory ->
+ *   static-format -> tools-tests -> types -> quality -> browser-tests -> e2e
  *
  * Each gate is captured as { name, cmd, exitCode, verdict, reason } where
  * verdict is PASS | FAIL. The summary is written to
@@ -36,10 +36,12 @@ const ROOT = path.resolve(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'test-results', 'release-1.0.0');
 const SUMMARY_PATH = path.join(OUT_DIR, 'offline-summary.json');
 
-for (const arg of process.argv.slice(2)) {
-  if (arg !== '--offline' && arg !== '--release') {
-    console.error(`check-release: unknown flag ${arg} (only --offline/--release are supported)`);
-    process.exit(2);
+function parseFlags(argv) {
+  for (const arg of argv) {
+    if (arg !== '--offline' && arg !== '--release') {
+      console.error(`check-release: unknown flag ${arg} (only --offline/--release are supported)`);
+      process.exit(2);
+    }
   }
 }
 
@@ -109,22 +111,37 @@ function artifactTestFiles() {
     .map((f) => path.join('test', 'artifact', f));
 }
 
+// Release e2e gate (Task 19): the runner must report separated counters and
+// PASS is granted only for exit 0 with a positive executed count and zero
+// unexpected/flaky/skipped executions. Missing counters fail closed: a runner
+// that cannot prove what it executed can never make the release gate pass.
 function runE2EGate() {
   const started = Date.now();
   const cmd = [process.execPath, 'tools/run-e2e.cjs', '--release'];
   const result = spawnSync(cmd[0], cmd.slice(1), { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const output = `${result.stdout || ''}${result.stderr || ''}`;
-  const executed = /executed=(\d+) across (\d+) specs/.exec(output);
+  const summary = /executed=(\d+) across (\d+) specs\s*\(expected=(\d+) unexpected=(\d+) flaky=(\d+) skipped=(\d+)/.exec(output);
   if (result.error) {
     return { name: 'e2e', cmd: cmd.join(' '), exitCode: result.status, verdict: 'FAIL', reason: `runner did not complete: ${result.error.message}`, durationMs: Date.now() - started, outputTail: tail(output) };
   }
-  if (result.status === 0 && executed) {
-    return { name: 'e2e', cmd: cmd.join(' '), exitCode: 0, verdict: 'PASS', reason: `all specs passed; executed=${executed[1]} across ${executed[2]} specs on the loopback QA config`, durationMs: Date.now() - started, outputTail: '' };
+  if (!summary) {
+    return { name: 'e2e', cmd: cmd.join(' '), exitCode: result.status, verdict: 'FAIL', reason: 'runner passed without explicit separated counts (executed/expected/unexpected/flaky/skipped)', durationMs: Date.now() - started, outputTail: tail(output) };
   }
-  return { name: 'e2e', cmd: cmd.join(' '), exitCode: result.status, verdict: 'FAIL', reason: result.status === 0 ? 'runner passed without an explicit executed count' : `exit ${result.status}${executed ? ` executed=${executed[1]}` : ''}; a skipped or failing e2e suite fails the release`, durationMs: Date.now() - started, outputTail: tail(output) };
+  const [, executed, specs, expected, unexpected, flaky, skipped] = summary;
+  const clean = result.status === 0
+    && Number(executed) > 0
+    && Number(expected) === Number(executed)
+    && Number(unexpected) === 0
+    && Number(flaky) === 0
+    && Number(skipped) === 0;
+  if (clean) {
+    return { name: 'e2e', cmd: cmd.join(' '), exitCode: 0, verdict: 'PASS', reason: `all specs passed; executed=${executed} across ${specs} specs (expected=${expected} unexpected=0 flaky=0 skipped=0) on the loopback QA config`, durationMs: Date.now() - started, outputTail: '' };
+  }
+  return { name: 'e2e', cmd: cmd.join(' '), exitCode: result.status, verdict: 'FAIL', reason: `exit ${result.status} executed=${executed} expected=${expected} unexpected=${unexpected} flaky=${flaky} skipped=${skipped}; release requires exit 0, a positive executed count, and zero unexpected/flaky/skipped executions`, durationMs: Date.now() - started, outputTail: tail(output) };
 }
 
 function main() {
+  parseFlags(process.argv.slice(2));
   const gates = [];
   // Build FIRST: every gate below consumes freshly rebuilt output.
   gates.push(runGate('build', ['npm', 'run', 'build'], 'deterministic dist rebuild'));
@@ -137,6 +154,9 @@ function main() {
   // Source gates: authority parses, offline suites, static format audit.
   gates.push(runGate('syntax-runtime', [process.execPath, '-e', "new Function(require('fs').readFileSync('src/runtime.js','utf8'))"], 'src runtime authority parses'));
   gates.push(runGate('source-offline', ['npm', 'run', 'test:offline'], 'offline + parity suites green'));
+  // Characterization receipts must exist before the inventory gate reads them.
+  gates.push(runGate('characterization', ['npm', 'run', 'test:characterization'], 'manifest-owned characterization suites produced HEAD-bound receipts'));
+  gates.push(runGate('test-inventory', [process.execPath, 'test/tools/test-inventory-v2.cjs', '--baseline', 'test/fixtures/contracts/test-suite-baseline.json', '--manifest', 'test/fixtures/contracts/test-suite-manifest.json', '--receipt-dir', 'test-results/suite-receipts'], 'manifest and receipt-backed accounting PASS'));
   gates.push(runGate('static-format', [process.execPath, 'test/fixtures/discord/static-format-audit.cjs', '--file', 'src/runtime.js', '--readme', 'README.md'], 'static format audit PASS'));
   // Tool gates: full tools matrix, types, quality.
   gates.push(runGate('tools-tests', [process.execPath, '--test', ...toolsTestFiles()], 'tools suites green'));
@@ -167,4 +187,8 @@ function main() {
   process.exit(overall === 'PASS' ? 0 : 1);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { runE2EGate, runGate, parseFlags };
