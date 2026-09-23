@@ -15,7 +15,7 @@
       "id": "suite:test/artifact/delivery-matrix.test.cjs",
       "path": "test/artifact/delivery-matrix.test.cjs",
       "classification": "dist-artifact",
-      "expectedExecutionCount": 16,
+      "expectedExecutionCount": 24,
       "coverage": [
         "dist-runtime",
         "delivery-matrix"
@@ -510,11 +510,11 @@
   ],
   "totals": {
     "suiteCount": 49,
-    "expectedExecutionCount": 1036,
+    "expectedExecutionCount": 1044,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
-        "expectedExecutionCount": 58
+        "expectedExecutionCount": 66
       },
       "browser": {
         "suiteCount": 12,
