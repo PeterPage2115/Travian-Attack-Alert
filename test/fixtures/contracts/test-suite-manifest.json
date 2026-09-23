@@ -193,7 +193,7 @@
       "id": "suite:test/e2e/attack-panel.spec.ts",
       "path": "test/e2e/attack-panel.spec.ts",
       "classification": "browser",
-      "expectedExecutionCount": 96,
+      "expectedExecutionCount": 114,
       "coverage": [
         "browser-runtime",
         "attack-panel"
@@ -522,7 +522,7 @@
   ],
   "totals": {
     "suiteCount": 50,
-    "expectedExecutionCount": 1073,
+    "expectedExecutionCount": 1091,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -530,7 +530,7 @@
       },
       "browser": {
         "suiteCount": 12,
-        "expectedExecutionCount": 353
+        "expectedExecutionCount": 371
       },
       "source-artifact": {
         "suiteCount": 16,
