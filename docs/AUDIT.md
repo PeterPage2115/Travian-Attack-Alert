@@ -1,9 +1,16 @@
 # Audit 1.0.0 — detector behavior matrix (plan Todo 7)
 
 > **Layout note (repository-cleanup restructure).** This audit predates the cleanup: its "Runtime authority" line names `script.txt`, which has since been removed — the installable `dist/travian-attack-alert.user.js` is now generated from `src/` via `npm run build`. The locked behaviors and limitations below still describe the `1.0.0` (`taa-1.0.0`) detector contract; only the authority path changed.
+>
+> **Current-state corrections (nothing below is rewritten).** Every verdict, date, SHA, and line citation in this file is a historical audit-time fact; the following pointers explain what a current reader must not misread:
+>
+> - `script.txt` was the monolithic runtime authority at audit time. It has been removed; the editable authority is `src/` (13 domain modules) and the installable artifact is `dist/travian-attack-alert.user.js`. Each `script.txt:<line>` citation is an audit-time citation; the behavior now lives in the equivalent `src/` module.
+> - The Method bullet that proved `dist` bytes === `script.txt` bytes described the pre-cleanup test. Current artifact identity is enforced by `npm run check:artifact` plus the version gate `npm run check:versions`.
+> - The Verification section's `npm run check:release -- --offline` transcript is a historical gate run. The current owner-gated release gate is `tools/check-release.cjs` and the ordered procedure is `docs/RELEASE-RUNBOOK.md`.
+> - The `tools/*.cjs` `FALLBACK_VERSION` row records the value as of this audit (`1.0.0`); the fallbacks now track the current release version, while the check itself still applies.
 
 Date: 2026-09-13 · Branch: `release/public-1.0.0` · Release: `taa-1.0.0`
-Runtime authority: `dist/travian-attack-alert.user.js` (byte-identical to `script.txt`, SHA `78f86665…44084` per inherited tree state; re-verified by the matrix test itself).
+Runtime authority at audit time: `dist/travian-attack-alert.user.js` (then byte-identical to the removed `script.txt`, SHA `78f86665…44084` per inherited tree state; re-verified by the matrix test itself).
 Matrix: `test/artifact/detector-matrix.test.cjs` — 17 tests, all green on unchanged code.
 
 Verdict: **no CONFIRMED bugs. No `script.txt` change was made.** Every row below
@@ -59,7 +66,7 @@ inventing fixes is explicitly out of scope for this task.
 
 ## Method
 
-- Tests execute `require(dist/travian-attack-alert.user.js)`; the first matrix
+- (Audit time.) Tests execute `require(dist/travian-attack-alert.user.js)`; the first matrix
   test proves dist bytes === `script.txt` bytes, sidecar SHA matches, version
   header + `RELEASE_ID` are 1.0.0/`taa-1.0.0`, and export sets are identical —
   so "dist or the identical runtime authority" holds either way.

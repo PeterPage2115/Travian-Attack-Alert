@@ -426,7 +426,7 @@
       "id": "suite:test/tools/readme-runtime-contract.test.cjs",
       "path": "test/tools/readme-runtime-contract.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 10,
+      "expectedExecutionCount": 19,
       "coverage": [
         "repository-tooling",
         "readme-runtime-contract"
@@ -602,7 +602,7 @@
   ],
   "totals": {
     "suiteCount": 58,
-    "expectedExecutionCount": 1254,
+    "expectedExecutionCount": 1263,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -618,7 +618,7 @@
       },
       "tool": {
         "suiteCount": 24,
-        "expectedExecutionCount": 377
+        "expectedExecutionCount": 386
       }
     }
   },

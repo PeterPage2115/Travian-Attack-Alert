@@ -1,10 +1,10 @@
 # Contributing to Travian Attack Alert
 
-Thank you for considering a contribution. This project is a Tampermonkey userscript (release candidate `1.0.0` / `taa-1.0.0`) with a small, strict workflow. Please read this file, `AGENTS.md`, and `SECURITY.md` before opening a pull request.
+Thank you for considering a contribution. This project is a Tampermonkey userscript (release candidate `1.0.1` / `taa-1.0.1`) with a small, strict workflow. Please read this file, `AGENTS.md`, and `SECURITY.md` before opening a pull request.
 
 ## Ground rules
 
-- **Single source of truth:** `package.json` (`version`, currently `1.0.0`). Version bumps follow semver (patch = fix, minor = new feature, major = storage/schema break) and must sync `package.json`, the generated `dist/` header, `RELEASE` records, `tools/*` fallbacks, test assertions, and `README.md`.
+- **Single source of truth:** `package.json` (`version`, currently `1.0.1`). Version bumps follow semver (patch = fix, minor = new feature, major = storage/schema break) and must sync `package.json`, the generated `dist/` header, `RELEASE` records, `tools/*` fallbacks, test assertions, and `README.md`.
 - **Node.js >= 18** (see `.node-version` and `package.json` `engines`). Dependencies are installed with `npm ci`.
 - **Tests are `node:test`, offline only.** `npm test` must be fully green (zero failures). Fixtures are deterministic loopback fixtures — never add real webhooks or requests to Travian.
 - **Build with esbuild via `npm run build`.** `src/` is the editable authority; `dist/travian-attack-alert.user.js` is generated and must never be hand-edited.
@@ -24,7 +24,7 @@ Respect the product boundary (enforced by `test/tools/readme-runtime-contract.te
 
 - Entry: `src/userscript-entry.js` → `src/runtime.js`. `src/` holds 13 domain modules (`storage`, `lease`, `parser`, `snapshot`, `envelope`, `migration`, `discord`, `transport`, `dispatch`, `conservation`, `diagnostics`, `panel`, `acquisition`); each `X.js` facade re-exports its `X-impl.js` contract by reference. `constants` / `text` / `route` are pure modules covered by `pure-module-parity`.
 - `src/runtime-api.js` is a thin aggregator over the 13 facades (reference-equal, no `select()`). `src/lifecycle.js` owns mutable lifecycle singletons; `src/adapters.js` provides the 7 seam factories. `src/runtime.js` is the legacy authority. Boundaries are enforced by `test/tools/module-architecture.test.cjs`.
-- Design tokens live in `docs/architecture.md`. Daily operations live in `docs/OPERATIONS.md` (and `docs/pl/OPERATIONS.md` in Polish).
+- Design tokens live in `docs/architecture.md`. Documentation entry routing: the index is `docs/README.md`; daily operations are English `docs/OPERATIONS.md` (primary) and Polish `docs/pl/OPERATIONS.md` (secondary, English governs disagreements); the alert payload contract is `docs/ALERT-FORMAT.md`.
 
 ## Workflow
 

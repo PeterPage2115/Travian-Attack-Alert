@@ -3,13 +3,13 @@
 ## Supported versions
 
 `docs/release-state.json` currently records `stable: false`: the published
-`1.0.0` is a release candidate, not a stable release. Security fixes are
+`1.0.1` is a release candidate, not a stable release. Security fixes are
 best-effort, and no response-time promise is made.
 
 | Version | Supported |
 | --- | --- |
-| 1.0.0 (release candidate; `docs/release-state.json` `stable: false`) | Best-effort security fixes |
-| Older than 1.0.0 | No |
+| 1.0.1 (release candidate; `docs/release-state.json` `stable: false`) | Best-effort security fixes |
+| Older than 1.0.1 | No |
 
 Nothing here claims stable or long-term support. `stable` may become `true`
 only through the owner-only process documented in `docs/release-state.json`

@@ -252,6 +252,77 @@ describe('readme-runtime contract (Panel vs menu recovery boundary)', () => {
   });
 });
 
+describe('readme-runtime contract (onboarding and navigation)', () => {
+  const docsIndex = fs.readFileSync(path.join(ROOT, 'docs', 'README.md'), 'utf8');
+  const contributing = fs.readFileSync(path.join(ROOT, 'CONTRIBUTING.md'), 'utf8');
+  const alertFormat = fs.readFileSync(path.join(ROOT, 'docs', 'ALERT-FORMAT.md'), 'utf8');
+
+  it('links the alert-format reference immediately before the generated examples', () => {
+    const link = '[`docs/ALERT-FORMAT.md`](docs/ALERT-FORMAT.md)';
+    const linkIndex = readme.indexOf(link);
+    assert.ok(linkIndex >= 0, 'README must link the deeper payload reference docs/ALERT-FORMAT.md');
+    const startMarker = '<!-- discord-alert-example:start -->';
+    const startIndex = readme.indexOf(startMarker);
+    assert.ok(startIndex > linkIndex, 'the alert-format link must precede the first generated example');
+    const between = readme.slice(linkIndex + link.length, startIndex);
+    assert.ok(
+      between.length <= 200 && /generated from the live canonical raid builder/i.test(between),
+      'the alert-format link must sit immediately before the generated examples',
+    );
+    assert.ok(alertFormat.includes('taa-1.0.1'), 'docs/ALERT-FORMAT.md must carry the current release ID');
+    assert.ok(alertFormat.includes('world.example.invalid'), 'docs/ALERT-FORMAT.md must use synthetic examples only');
+  });
+
+  it('documents the synthetic panel visual with descriptive alt text and a local asset', () => {
+    const images = [...readme.matchAll(/!\[([^\]]*)\]\(([^)\s]+)\)/g)];
+    assert.ok(images.length >= 1, 'README must embed the synthetic panel visual');
+    for (const [, alt, target] of images) {
+      assert.ok(!/^[a-z][a-z0-9+.-]*:/i.test(target), `README image targets must be local assets, got ${target}`);
+      assert.ok(alt.trim().length >= 40, `README image alt text must be descriptive, got "${alt}"`);
+    }
+    const panel = images.find(([, , target]) => target === 'docs/assets/panel-overview.png');
+    assert.ok(panel, 'README must embed docs/assets/panel-overview.png');
+    assert.ok(fs.existsSync(path.join(ROOT, 'docs', 'assets', 'panel-overview.png')), 'the committed panel visual must exist');
+    assert.match(readme, /synthetic/i, 'README must label the panel visual as synthetic');
+    assert.match(readme, /\*The panel above[\s\S]{0,200}fixture/i, 'README must caption the panel visual next to the image');
+  });
+
+  it('indexes every current docs page and marks the release-history archive historical', () => {
+    const current = [
+      ...fs.readdirSync(path.join(ROOT, 'docs'))
+        .filter((name) => name.endsWith('.md') && name !== 'README.md')
+        .map((name) => name),
+      ...fs.readdirSync(path.join(ROOT, 'docs', 'pl'))
+        .filter((name) => name.endsWith('.md'))
+        .map((name) => `pl/${name}`),
+    ];
+    for (const entry of current) {
+      assert.ok(docsIndex.includes(entry), `docs/README.md must index the current document ${entry}`);
+    }
+    assert.ok(docsIndex.includes('release-state.json'), 'docs/README.md must index release-state.json');
+    assert.ok(docsIndex.includes('release-history/1.0.0-rc/'), 'docs/README.md must link the release-history archive');
+    assert.match(docsIndex, /historical/i, 'docs/README.md must mark the release-history archive as historical');
+  });
+
+  it('resolves every relative markdown link in the onboarding and index pages', () => {
+    for (const [label, file, source] of [
+      ['README.md', 'README.md', readme],
+      ['docs/README.md', 'docs/README.md', docsIndex],
+      ['docs/ALERT-FORMAT.md', 'docs/ALERT-FORMAT.md', alertFormat],
+      ['CONTRIBUTING.md', 'CONTRIBUTING.md', contributing],
+    ]) {
+      for (const match of source.matchAll(/!?\[[^\]]*\]\(([^)\s]+)\)/g)) {
+        const target = match[1];
+        if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('#') || target.startsWith('mailto:')) continue;
+        const withoutAnchor = target.split('#')[0];
+        if (withoutAnchor === '') continue;
+        const resolved = path.resolve(ROOT, path.dirname(file), withoutAnchor);
+        assert.ok(fs.existsSync(resolved), `${label} link target must exist: ${target}`);
+      }
+    }
+  });
+});
+
 describe('readme-runtime contract (post-extraction module graph)', () => {
   it('aggregates exactly the 13 domain facades with no select() indirection', () => {
     const api = require(path.join(ROOT, 'src', 'runtime-api.js'));

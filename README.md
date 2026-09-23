@@ -1,15 +1,20 @@
 # Travian Attack Alert
 
-Alliance attack, raid, and departure alerts from Travian to your own Discord server.
+Alliance attack, raid, and departure alerts from Travian to your own Discord server. One Tampermonkey userscript runs in your browser tab: no backend, no account, no runtime dependency.
 
-**Version 1.0.1, release ID `taa-1.0.1`. Release candidate under pilot; the in-place update is not yet verified or published.**
+**Version 1.0.1, release ID `taa-1.0.1` — release candidate under pilot (`stable: false`).** The release-branch raw artifact is live and serves exactly this build (SHA-256 `0c187870…`), but no `v1.0.1` tag and no GitHub Release exists yet, and a second-person in-place manager update is still outstanding. Stable publication requires owner pilot evidence; the machine-readable gate is `docs/release-state.json` and the ordered procedure is `docs/RELEASE-RUNBOOK.md`.
 
-Release candidate under pilot; stable publication requires owner pilot evidence (historical pilot checklist `docs/release-history/1.0.0-rc/PILOT.md` plus the machine-readable gate `docs/release-state.json`). The ordered owner publication procedure is `docs/RELEASE-RUNBOOK.md`.
+![Synthetic screenshot of the Travian Attack Alert operations panel: the Alliance alert monitor dialog with the Overview, Players, Alerts, and Diagnostics tabs, leader status, accepted-scan status lines, and an established baseline.](docs/assets/panel-overview.png)
+
+*The panel above is rendered from this repository's own synthetic Playwright fixture — fixture player IDs and a loopback host only. No real alliance, player, host, account, or webhook data appears in it.*
+
+## What it does
 
 The script (`Travian Attack Alert`, namespace `travian-attack-alert-public`) periodically reads the alliance members table on the canonical page and sends Discord alerts when attacks, raids, or departures appear. No bundler, framework, or runtime dependency is required in the browser. The installable file is `dist/travian-attack-alert.user.js`, generated from `src/` via `npm run build`.
 
-## Constraints
+## Status and limitations
 
+- **Pilot, not stable.** `docs/release-state.json` records `stable: false` with every owner gate unrecorded (including `ownerManual.branchProtection: false`), and there is no `v1.0.1` tag or GitHub Release. The public GitHub API observes branch protection with four required checks, but that observation is separate from the owner attestation.
 - It has no backend. Everything runs in your browser tab.
 - It gives no 24/7 guarantee. Alerts are produced only while your browser, with an active installation, sits on the canonical page.
 - It is not exactly-once. Delivery is at-least-once, so a lost acknowledgement can deliver the same batch twice.
@@ -18,33 +23,27 @@ The script (`Travian Attack Alert`, namespace `travian-attack-alert-public`) per
 - One active monitoring installation per alliance and world. A second computer or browser profile is a second sender and WILL double-send; the local lock cannot prevent it.
 - Desktop Chrome with Tampermonkey is the tested combination. Firefox with Tampermonkey, and Violentmonkey, are candidate-only until proven. Mobile browser monitoring is unsupported; receiving alerts in the mobile Discord app works as usual.
 
-Daily routine, handover order, queue recovery, and diagnostics live in `docs/OPERATIONS.md` (English) and `docs/pl/OPERATIONS.md` (Polish). This page stays an overview.
+Daily routine, handover order, queue recovery, and diagnostics live in [`docs/OPERATIONS.md`](docs/OPERATIONS.md) (English) and [`docs/pl/OPERATIONS.md`](docs/pl/OPERATIONS.md) (Polish; the English text governs disagreements). This page stays an overview.
 
 ## Install and update
 
-Build the installable file from source (`src/` is the editable authority — `dist/` is generated, never hand-edited):
-
-```text
-npm run build
-```
-
-Then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window). Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version `1.0.1`.
-
-On Chrome 138 and newer, Tampermonkey 5.3+ additionally needs the browser's `Allow User Scripts` toggle (or Developer Mode) enabled; this is Tampermonkey FAQ Q209. With that permission off, the browser runs no userscript at all: there is no panel, no Tampermonkey menu entry, no scan, and no alert, and the script cannot diagnose or report the condition because it never executes. To recover, enable `Allow User Scripts` (or Developer Mode), reload the page, then reinstall the script.
-
-Updates are delivered through the `@updateURL` channel pointing at the default release branch `release/public-1.0.0` (`main` does not exist on the remote):
+**Install from the release-branch raw URL — the verified working path.** The channel URL below returned HTTP 200 and served exactly the committed `1.0.1` artifact (SHA-256 `0c187870…`) when verified on 2026-09-23; no `v1.0.1` GitHub Release download exists yet, so install from this URL rather than waiting for one or trusting a mirror:
 
 ```text
 https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
 ```
 
-The script therefore supports automatic updates from that URL; a new version can also be applied by repeating the install-from-file steps with the new file and confirming the version shown by the manager. Never enable two senders at once during an update.
+Open that URL with Tampermonkey enabled and confirm the install prompt, or paste it into the manager's install-from-URL flow. Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version `1.0.1`.
 
-The remote branch is observed protected through the public GitHub API with four required checks, while `docs/release-state.json` still records the owner attestation as unrecorded (`ownerManual.branchProtection: false`), so `stable` stays `false`. The API observation and the owner attestation are separate facts.
+On Chrome 138 and newer, Tampermonkey 5.3+ additionally needs the browser's `Allow User Scripts` toggle (or Developer Mode) enabled; this is Tampermonkey FAQ Q209. With that permission off, the browser runs no userscript at all: there is no panel, no Tampermonkey menu entry, no scan, and no alert, and the script cannot diagnose or report the condition because it never executes. To recover, enable `Allow User Scripts` (or Developer Mode), reload the page, then reinstall the script.
+
+Updates are delivered through the `@updateURL` channel pointing at the default release branch `release/public-1.0.0` (`main` does not exist on the remote), so managers that honor it update automatically from the same raw dist file. A new version can also be applied by repeating the install steps above and confirming the version shown by the manager. Never enable two senders at once during an update.
 
 Historical `1.0.0` copies that embedded the old broken `/main/` URL cannot self-heal at the same version: a same-version install never triggers an update, and the stale embedded URL never resolves. Reinstall from the corrected URL or file above (or re-run the install-from-file steps), keep all site data untouched, and confirm the version shown by the manager.
 
-Anyone migrating from the internal 6.2.1 line (historical internal development) should read `docs/MIGRATION-6X.md`: export settings first, disable the old sender, keep site data, then install 1.0.1.
+Contributors building from source: `src/` is the editable authority — `dist/` is generated, never hand-edited. Run `npm run build`, then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window), and confirm the same name, namespace, and version `1.0.1`.
+
+Anyone migrating from the internal 6.2.1 line (historical internal development) should read [`docs/MIGRATION-6X.md`](docs/MIGRATION-6X.md): export settings first, disable the old sender, keep site data, then install 1.0.1.
 
 ## Quick start
 
@@ -78,6 +77,8 @@ Alerts are short and delta-first:
 - Discord limits use JavaScript UTF-16 `.length`: content 2000, title 256, description 4096, field name 256, field value 1024, total embed text 6000, and at most 10 embeds per request.
 
 Payloads use safe links in DOM order and the mention policy is explicit. `allowed_mentions` is an explicit allowlist with no `parse` key. The first request of a batch may carry `content` such as `<@&leaveRoleId> <@userId>` together with `allowed_mentions` like `{ users: ["123456789012345678"], roles: ["987654321098765432"] }`, or `{ users: [] }` when no one is mentioned. Continuations use empty `content` with `{ users: [] }` and no `roles` key, and the list is bounded and deduplicated to fit the 2000 character content limit. Embed titles, descriptions, field values and footers never contain mention tokens; mentions live only in top-level `content`. Partial, repeated, malformed, or ambiguous input does not change authoritative state; acquisition is rejected without partial state and authoritative state remains unchanged.
+
+The full payload contract — field-by-field anatomy, mention policy, per-request limits, multi-part splitting, and delivery outcomes — is in [`docs/ALERT-FORMAT.md`](docs/ALERT-FORMAT.md).
 
 The following bytes are generated from the live canonical raid builder:
 
@@ -153,17 +154,23 @@ This page documents the Tampermonkey **1.0.1** userscript, identified by release
 
 ## Documentation
 
-- Docs index: `docs/README.md`.
-- Daily operations (English): `docs/OPERATIONS.md`.
-- Daily operations (Polish): `docs/pl/OPERATIONS.md`.
-- Migration from the 6.x line: `docs/MIGRATION-6X.md`.
-- Detector behavior audit: `docs/AUDIT.md`.
-- Module graph (post-extraction): `docs/architecture.md` §10.
-- Release history (historical archived `1.0.0-rc` candidate records): `docs/release-history/1.0.0-rc/`.
-- Changelog: `CHANGELOG.md`.
-- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md) (workflow, tests, backup, PR checklist).
-- Pull request template: [.github/pull_request_template.md](.github/pull_request_template.md).
-- Security policy: [SECURITY.md](SECURITY.md). License: [LICENSE](LICENSE).
+- Docs index: [`docs/README.md`](docs/README.md) — every current document, with archived release-history marked historical.
+- Daily operations (English): [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+- Daily operations (Polish): [`docs/pl/OPERATIONS.md`](docs/pl/OPERATIONS.md).
+- Alert payload format: [`docs/ALERT-FORMAT.md`](docs/ALERT-FORMAT.md).
+- Migration from the 6.x line: [`docs/MIGRATION-6X.md`](docs/MIGRATION-6X.md).
+- Architecture and design tokens: [`docs/architecture.md`](docs/architecture.md) (module graph §10).
+- Detector behavior audit (historical `1.0.0` record): [`docs/AUDIT.md`](docs/AUDIT.md).
+- Code-review verification rules: [`docs/CODE-REVIEW.md`](docs/CODE-REVIEW.md).
+- Repository settings owner checklist: [`docs/REPOSITORY-SETTINGS.md`](docs/REPOSITORY-SETTINGS.md).
+- Owner release runbook: [`docs/RELEASE-RUNBOOK.md`](docs/RELEASE-RUNBOOK.md).
+- Release history (historical archived `1.0.0-rc` candidate records): [`docs/release-history/1.0.0-rc/`](docs/release-history/1.0.0-rc/).
+- Changelog: [`CHANGELOG.md`](CHANGELOG.md).
+- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md) (workflow, tests, backup, PR checklist).
+- Pull request template: [`.github/pull_request_template.md`](.github/pull_request_template.md).
+- Security policy: [`SECURITY.md`](SECURITY.md). License: [`LICENSE`](LICENSE).
+
+This page documents the Tampermonkey **1.0.1** userscript, identified by release ID `taa-1.0.1`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
 
 ## Source layout
 

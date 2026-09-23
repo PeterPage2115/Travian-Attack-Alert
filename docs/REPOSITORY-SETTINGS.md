@@ -41,7 +41,7 @@ state, and unchecked items are pending owner actions.
   the pilot evidence, tag/Release, and archival record it references are
   owner-written. Until recorded, `docs/release-state.json` stays `stable:false`
   and the README keeps its release-candidate warning even though the target
-  version is 1.0.0.
+  version is 1.0.1.
 
 ## 1. Branch and update-channel identity
 
@@ -116,25 +116,26 @@ state, and unchecked items are pending owner actions.
       `npm run test:tools`, and `npm run test:artifact` are still green
       on a clean clone before announcing the update channel as healthy.
 
-## 7. DEV retirement and archival (owner only, manual)
+## 7. DEV retirement (owner only, manual, no archive)
 
 The sibling TravianAttackAlertDEV directory (one level above the repo root)
 is read-only migration input: it seeded `src/` and the fixtures, and it is
 non-authoritative from the cutover onward. `src/` is the editable authority;
 `dist/` is the generated artifact. Nothing in that directory is normative
-for 1.0.0.
+for 1.0.1.
 
 - [ ] Never commit any file from that directory to the public repo.
 - [ ] Never delete or upload backups — neither from that directory nor from
       `backups/` (gitignored) anywhere else.
 - [ ] Never delete that directory, its files, or its backups without
       explicit owner consent.
-- [ ] Private archival outside the repo: the owner copies it to private
-      storage, records the date and location privately, and keeps the public
-      repo free of its bytes.
-- [ ] Retirement is recorded only in the owner-written fields of
-      `docs/release-state.json` (`devArchival`); until then `stable` stays
-      `false`.
+- [ ] Execute the deletion with **no archive kept**: do not copy that
+      directory, its files, or its backups to private storage, cloud storage,
+      a release asset, or any other location. The ordered procedure is
+      `docs/RELEASE-RUNBOOK.md` Stage 4.
+- [ ] Record the deletion (timestamp, actor, record digest) and attest
+      `devArchival` in the owner-written fields of `docs/release-state.json`;
+      until then `stable` stays `false`.
 
 ## 8. Authenticated settings reconciliation (owner-only, all unchecked)
 
