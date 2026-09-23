@@ -160,6 +160,7 @@ This page documents the Tampermonkey **1.0.1** userscript, identified by release
 - Alert payload format: [`docs/ALERT-FORMAT.md`](docs/ALERT-FORMAT.md).
 - Migration from the 6.x line: [`docs/MIGRATION-6X.md`](docs/MIGRATION-6X.md).
 - Architecture and design tokens: [`docs/architecture.md`](docs/architecture.md) (module graph §10).
+- Distribution options (sourced decision record, no migration): [`docs/DISTRIBUTION-OPTIONS.md`](docs/DISTRIBUTION-OPTIONS.md) — four shells compared with cited constraints; the current userscript channel is retained.
 - Detector behavior audit (historical `1.0.0` record): [`docs/AUDIT.md`](docs/AUDIT.md).
 - Code-review verification rules: [`docs/CODE-REVIEW.md`](docs/CODE-REVIEW.md).
 - Development environment (WSL/DrvFS): [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — Node/npm selection, test tiers, evidence roots, line endings, protected canonical checkout.

@@ -13,6 +13,7 @@ Start with the English [`README.md`](../README.md) (primary): what the script do
 ## Technical records
 
 - Architecture and design tokens: [`architecture.md`](architecture.md) — module graph (§10), panel tokens, WCAG targets.
+- Distribution options (sourced decision record, no migration): [`DISTRIBUTION-OPTIONS.md`](DISTRIBUTION-OPTIONS.md) — userscript vs MV3 extension vs PWA vs desktop companion across DOM reach, install/update, permissions, storage migration, and unresolved policy; the current userscript is retained.
 - Detector behavior audit (historical `1.0.0` audit-time record): [`AUDIT.md`](AUDIT.md) — locked behaviors and limitations as audited on 2026-09-13; `script.txt` citations are audit-time references to the authority removed by the repository cleanup.
 - Code-review verification (standing rules): [`CODE-REVIEW.md`](CODE-REVIEW.md) — the 11 verified items and their existing gates.
 - Development environment (WSL/DrvFS and Linux): [`DEVELOPMENT.md`](DEVELOPMENT.md) — Node/npm selection, `npm ci`, Playwright test tiers, evidence roots, frozen provenance, line endings, protected canonical checkout.
