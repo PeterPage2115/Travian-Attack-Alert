@@ -1,3 +1,4 @@
+import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
 declare global {
@@ -68,6 +69,43 @@ export async function installLoopbackTransport(page: Page): Promise<void> {
 }
 
 const WEBHOOK = 'https://discord.com/api/webhooks/123456789/fake-fixture-token';
+
+/**
+ * Fixture-transport warm-up for the loopback /discord-webhook sink: burns the
+ * sink's first-attempt 429 so a measured window shows product traffic only.
+ *
+ * Playwright's page.request APIRequestContext reuses idle keep-alive sockets,
+ * and a socket the fixture closed between calls surfaces as a thrown
+ * ECONNRESET before the server ever sees the POST (CI run 35931796105). The
+ * retry is gated on the server log: the fixture records a request on `end`
+ * before it answers, so a non-zero count means the attempt already landed and
+ * MUST NOT be repeated. Only a request the fixture never logged is retried,
+ * after a short delay, until a bounded deadline; otherwise the error rethrows.
+ * The final poll keeps the original contract: exactly ONE warm-up entry.
+ */
+const WARMUP_RETRY_DEADLINE_MS = 10_000;
+const WARMUP_RETRY_DELAY_MS = 250;
+
+export async function warmupLoopbackTransport(
+  page: Page,
+  serverRequestCount: (page: Page) => Promise<number>,
+): Promise<void> {
+  const deadline = Date.now() + WARMUP_RETRY_DEADLINE_MS;
+  for (;;) {
+    try {
+      await page.request.post('/discord-webhook', {
+        data: { content: 'warmup', allowed_mentions: { users: [] } },
+        headers: { 'Content-Type': 'application/json' },
+      });
+      break;
+    } catch (error) {
+      if ((await serverRequestCount(page)) > 0) break; // already logged: never post twice
+      if (Date.now() >= deadline) throw error;
+      await new Promise<void>((resolve) => setTimeout(resolve, WARMUP_RETRY_DELAY_MS));
+    }
+  }
+  await expect.poll(() => serverRequestCount(page), { timeout: 5_000 }).toBe(1);
+}
 
 export async function installArtifactRuntime(page: Page, scenario: RuntimeScenario = {}): Promise<ArtifactRuntime> {
   const fixtureOrigin = new URL(page.url() || 'http://127.0.0.1:8899').origin;

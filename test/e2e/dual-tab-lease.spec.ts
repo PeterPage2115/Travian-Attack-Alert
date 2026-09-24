@@ -52,7 +52,7 @@ import type { Browser, BrowserContext, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { installArtifactRuntime, installLoopbackTransport } from './runtime-bootstrap';
+import { installArtifactRuntime, installLoopbackTransport, warmupLoopbackTransport } from './runtime-bootstrap';
 
 const DIST = '/dist/travian-attack-alert.user.js';
 const HTTPS_ORIGIN = 'https://127.0.0.1:8898';
@@ -332,8 +332,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       // flush below fires) for the measured delivery to be a single attempt.
       await bootRealPage(standby, { rename101: true });
       await setWebhook(standby); // standby CAN send (config present) — only fencing stops it
-      await owner.request.post('/discord-webhook', { data: { content: 'warmup', allowed_mentions: { users: [] } }, headers: { 'Content-Type': 'application/json' } });
-      await expect.poll(() => serverRequestCount(owner), { timeout: 5_000 }).toBe(1);
+      await warmupLoopbackTransport(owner, serverRequestCount);
       await standby.waitForTimeout(3000); // past boot jitter: still queued, still silent
 
       // Exactly one owner, named by ownerId/generation, visible from BOTH pages
@@ -474,8 +473,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       // Warmup AFTER the standby boot (which resets the sink log and re-arms
       // its first-attempt 429), so the takeover delivery below meets a 200
       // first try and the post-takeover window holds exactly one product post.
-      await standby.request.post('/discord-webhook', { data: { content: 'warmup', allowed_mentions: { users: [] } }, headers: { 'Content-Type': 'application/json' } });
-      await expect.poll(() => serverRequestCount(standby), { timeout: 5_000 }).toBe(1);
+      await warmupLoopbackTransport(standby, serverRequestCount);
 
       // Shared-GM emulation (production Tampermonkey shares GM across tabs):
       // carry the owner's full store — acked 101 + pending 102 — onto the
@@ -539,8 +537,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       await installPrepHook(page);
       await bootRealPage(page, { rename101: true }, true);
       await waitAuthoritativeSnapshot(page);
-      await page.request.post('/discord-webhook', { data: { content: 'warmup', allowed_mentions: { users: [] } }, headers: { 'Content-Type': 'application/json' } });
-      await expect.poll(() => serverRequestCount(page), { timeout: 5_000 }).toBe(1);
+      await warmupLoopbackTransport(page, serverRequestCount);
 
       // Queue one synthetic record (startup flush already ran pre-scan).
       const gm = await snapshotGM(page);
