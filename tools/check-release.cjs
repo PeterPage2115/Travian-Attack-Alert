@@ -26,6 +26,16 @@
  * `--offline` / `--release` are accepted for contract clarity. All gates are
  * offline by construction: deterministic loopback fixtures only, no
  * Travian/Discord/production network anywhere.
+ *
+ * `--no-browser` is a runtime-selection flag (Task 12): it excludes the last
+ * two gates (`browser-tests`, `e2e`) from EXECUTION only. The CI
+ * `offline-node-22` leg passes it so the browser/e2e family executes exactly
+ * once in `browser-node-20` (the duplicate was ~17m25s of identical e2e per
+ * run — Task 5). The complete 15-gate order above stays the documented order
+ * and both static `gates.push` call-sites below stay verbatim and in order
+ * (the developer-workflow contract extracts the gate order from this source
+ * text, not from a runtime count), so filtering never deletes or reorders a
+ * push. Without the flag, all 15 gates execute — exactly as before.
  */
 
 const { spawnSync } = require('node:child_process');
@@ -37,12 +47,20 @@ const OUT_DIR = path.join(ROOT, 'test-results', 'release-1.0.0');
 const SUMMARY_PATH = path.join(OUT_DIR, 'offline-summary.json');
 
 function parseFlags(argv) {
+  const flags = { offline: false, release: false, noBrowser: false };
   for (const arg of argv) {
-    if (arg !== '--offline' && arg !== '--release') {
-      console.error(`check-release: unknown flag ${arg} (only --offline/--release are supported)`);
+    if (arg === '--offline') {
+      flags.offline = true;
+    } else if (arg === '--release') {
+      flags.release = true;
+    } else if (arg === '--no-browser') {
+      flags.noBrowser = true;
+    } else {
+      console.error(`check-release: unknown flag ${arg} (only --offline/--release/--no-browser are supported)`);
       process.exit(2);
     }
   }
+  return flags;
 }
 
 function headCommit() {
@@ -141,7 +159,7 @@ function runE2EGate() {
 }
 
 function main() {
-  parseFlags(process.argv.slice(2));
+  const flags = parseFlags(process.argv.slice(2));
   const gates = [];
   // Build FIRST: every gate below consumes freshly rebuilt output.
   gates.push(runGate('build', ['npm', 'run', 'build'], 'deterministic dist rebuild'));
@@ -163,15 +181,24 @@ function main() {
   gates.push(runGate('types', ['npm', 'run', 'check:types'], 'tsc --noEmit clean'));
   gates.push(runGate('quality', ['npm', 'run', 'quality'], 'quality gate PASS'));
   // Browser gates: real Chromium integration, then the loopback e2e matrix.
-  gates.push(runGate('browser-tests', ['npm', 'run', 'test:browser'], 'browser integration suites green'));
-  gates.push(runE2EGate());
+  // Runtime selection (`--no-browser`, Task 12): exclude these two gates from
+  // execution only. The static call-sites below stay verbatim and in order so
+  // the source-text gate-order contract still extracts all 15 gates; the guard
+  // never deletes or reorders a push. `browser-node-20` remains the single CI
+  // executor of the browser/e2e family.
+  if (!flags.noBrowser) {
+    gates.push(runGate('browser-tests', ['npm', 'run', 'test:browser'], 'browser integration suites green'));
+    gates.push(runE2EGate());
+  }
 
   const failed = gates.filter((g) => g.verdict === 'FAIL');
   const skipped = gates.filter((g) => g.verdict !== 'PASS' && g.verdict !== 'FAIL');
   const overall = failed.length === 0 && skipped.length === 0 ? 'PASS' : 'FAIL';
   const summary = {
     overall,
-    mode: 'offline (all gates offline by construction; loopback fixtures only)',
+    mode: flags.noBrowser
+      ? 'offline --no-browser (browser-tests and e2e excluded from execution; browser-node-20 is the single CI executor)'
+      : 'offline (all gates offline by construction; loopback fixtures only)',
     gates,
     timestamp: new Date().toISOString(),
     node: process.version,
