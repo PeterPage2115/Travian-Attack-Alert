@@ -154,23 +154,38 @@ jobs:
           retention-days: 14
 
   # Development-major leg (Task 34): the documented development major
-  # (`.node-version` = 22.19.0) runs the COMPLETE offline release gate exactly
-  # once in CI. Only the two steps the gate cannot perform for itself are
-  # listed: the locked dependency install and the Playwright Chromium
-  # download. The gate rebuilds the generated artifacts itself and then
-  # executes every build/versions/artifact/offline/characterization/inventory/
-  # format/tool/type/quality/browser/e2e category, so running those categories
-  # here as well would only repeat the same work (and previously doubled most
-  # of this job's wall clock).
+  # (`.node-version` = 22.19.0) runs the offline release gate exactly once
+  # in CI with the documented runtime-selection flag `--no-browser`
+  # (Task 12). The gate rebuilds the generated artifacts itself and executes
+  # every build/versions/artifact/offline/characterization/inventory/format/
+  # tool/type/quality category here; the browser-tests/e2e family executes
+  # exactly once in `browser-node-20`, which is its single CI executor. The
+  # steps listed below are only what the gate cannot perform for itself:
+  # the locked dependency install and the Playwright Chromium download.
   #
-  # Timeout arithmetic (worst-case valid run): the release gate gives every
-  # e2e spec its own 480 s ceiling (never lowered), and discovery finds 12
-  # specs, so 12 x 480 s = 5,760 s = 96 min of legitimate e2e time alone. Add
+  # Engineering decision (Task 12, design Task 11): Node-22 e2e coverage is
+  # de-duplicated, not dropped — browser-node-20 already runs the identical
+  # `npm run test:browser` + `npm run test:e2e` commands (Task 5 measured
+  # both legs at ~17m25s of the same e2e per run). Falsifier: "no test or
+  # required check consumes the Node-22 e2e result" — held under the T11
+  # search (no needs:/outputs:/artifact/summary consumer of offline-node-22
+  # exists; its tests pin job existence/shape only). If any such consumer
+  # appears later, remove `--no-browser` here to restore Node-22 e2e.
+  #
+  # Timeout arithmetic (worst-case valid run WITH the full gate, i.e.
+  # without `--no-browser`): the release gate gives every e2e spec its own
+  # 480 s ceiling (never lowered), and discovery finds 12 specs, so
+  # 12 x 480 s = 5,760 s = 96 min of legitimate e2e time alone. Add
   # `npm ci`, the `--with-deps` Chromium install, and the 14 non-e2e gates
   # inside the gate: the previous revision of this job, which additionally
   # re-ran most of those gates by hand, completed in 19m19s. 96 min + 30 min
   # overhead = 126 min, bounded at 150 min so a slow-but-valid run always
   # writes its summary instead of being cancelled before it can report.
+  # The 150-minute ceiling is retained deliberately with `--no-browser`:
+  # the developer-workflow contract computes this envelope from the spec
+  # count on disk and ignores runtime flags (it must stay >= 126 min), and
+  # a timeout is a ceiling, not a cost — with the flag this job executes
+  # only the 13 non-browser gates.
   #
   # This job is informational: the four required status checks and the
   # branch-protection settings are unchanged until the owner separately
@@ -191,19 +206,36 @@ jobs:
       - name: Install (locked dependencies)
         run: npm ci
 
-      # The offline release gate rebuilds, then runs the full build/check/type/
-      # quality matrix plus the loopback browser and e2e gates, so Chromium
-      # must be installed first. There is no NOT_EXECUTED verdict: a gate that
-      # cannot execute fails this job instead of being reclassified as skipped.
+      # Playwright browser cache (Task 12): keyed by the pinned Playwright
+      # version in package.json (1.48.0; upgrades are owned by Task 18) plus
+      # the runner OS, so a Playwright bump invalidates the cache. The action
+      # itself is SHA-pinned to its release commit like every other action.
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-1.48.0
+
+      # Chromium is still installed here even though `--no-browser` excludes
+      # the browser gates from this job: `npx playwright install --with-deps
+      # chromium` is a hard-pinned ordered requiredRun of the
+      # developer-workflow/workflow-security contracts (Task 34; kept per the
+      # Task 11 default variant — zero test churn, seconds-scale cost — and it
+      # warms the browser cache above). There is no NOT_EXECUTED verdict: a
+      # gate that cannot execute fails this job instead of being reclassified
+      # as skipped.
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      # Single invocation of the complete gate matrix (build, versions,
-      # syntax, artifact matrix, offline, characterization receipts,
-      # inventory, static format, tools, type, quality, browser, e2e). No
-      # gate category is run by hand above: duplicates cannot drift.
+      # Single invocation of the release gate with the documented runtime-
+      # selection flag `--no-browser` (Task 12): build, versions, syntax,
+      # artifact matrix, offline, characterization receipts, inventory,
+      # static format, tools, type and quality execute here; browser and e2e
+      # are excluded from execution in this job and run exactly once in
+      # `browser-node-20` (their duplicate here was ~17m25s per run, T5).
+      # No gate category is run by hand above: duplicates cannot drift.
       - name: Offline release gate (blocking; complete gate matrix)
-        run: npm run check:release -- --offline
+        run: npm run check:release -- --offline --no-browser
 
   browser-node-20:
     runs-on: ubuntu-latest
@@ -223,6 +255,15 @@ jobs:
 
       - name: Build generated artifacts
         run: npm run build
+
+      # Playwright browser cache (Task 12): same version-pinned key as the
+      # offline-node-22 leg; this job is the single executor of the
+      # browser/e2e family and benefits most from the warm cache.
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-1.48.0
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
