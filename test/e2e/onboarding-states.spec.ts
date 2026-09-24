@@ -29,7 +29,9 @@ const MONITOR_KEY = 'travianAllianceMonitor_v1:127.0.0.1';
 const OPERATIONAL_IDS = [
   'taa-operational-runtime-value',
   'taa-operational-route-value',
-  'taa-operational-session-value',
+  // T14 retarget (T15): the Session row merges into the Storage health metric —
+  // the assertion moves to the surviving id; it is never deleted.
+  'taa-storage-health-value',
   'taa-operational-lease-value',
   'taa-operational-scan-value',
   'taa-operational-scan-detail-value',
@@ -59,12 +61,18 @@ const MERGED_CLAIM = /\bmonitor works\b|fully operational|all systems operationa
 test.describe('onboarding — operational states without a wizard (http fixture)', () => {
   test.beforeEach(async ({ page }) => { trackConsoleErrors(page); });
 
-  test('overview shows runtime/route/session/lease/scan/baseline/delivery separately', async ({ page }) => {
+  test('overview shows runtime/route/storage/lease/scan/baseline/delivery separately', async ({ page }) => {
     await page.goto('/alliance?panelState=overview&memberTable=canonical', { waitUntil: 'domcontentloaded' });
     await openPanel(page);
     const overlay = page.locator('#taa-panel-overlay');
     await expect(overlay.locator('#taa-operational-state')).toBeVisible();
 
+    // T14 retarget (T15): Scan detail moved behind a native <details> disclosure —
+    // open it first so the unchanged visibility assertions still read the same ids.
+    const scanDetailDetails = overlay.locator('#taa-operational-scan-detail-details');
+    if (!(await scanDetailDetails.evaluate((node) => node.hasAttribute('open')))) {
+      await scanDetailDetails.locator('summary').click();
+    }
     for (const id of OPERATIONAL_IDS) {
       await expect(overlay.locator(`#${id}`)).toBeVisible();
     }
@@ -363,6 +371,12 @@ test.describe('onboarding — synthetic TEST states in leader context (TLS loopb
       await openPanel(page);
       const overlay = page.locator('#taa-panel-overlay');
       expect(await overlay.locator('#taa-operational-scan-value').innerText()).toBe('parser-rejected/malformed-count');
+      // T14 retarget (T15): Scan detail sits behind a native <details> disclosure —
+      // open it first; the exact-value assertion itself is unchanged.
+      const rejectedScanDetail = overlay.locator('#taa-operational-scan-detail-details');
+      if (!(await rejectedScanDetail.evaluate((node) => node.hasAttribute('open')))) {
+        await rejectedScanDetail.locator('summary').click();
+      }
       expect(await overlay.locator('#taa-operational-scan-detail-value').innerText()).toBe('reason malformed-count · outcome rejected');
 
       // …and the synthetic TEST succeeds alongside it as a separate fact.
