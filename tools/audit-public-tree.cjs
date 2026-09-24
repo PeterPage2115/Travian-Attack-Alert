@@ -147,7 +147,7 @@ const TEST_READ_FAULT_ENV = 'TAA_AUDIT_TEST_READ_FAULT';
 // Pinned dev-only evidence decoders (package.json devDependencies must carry
 // these exact versions; evidence mode verifies the installed copies).
 const EVIDENCE_DEPS = {
-  yauzl: '3.2.0',
+  yauzl: '3.2.1',
   sharp: '0.34.3',
   'tesseract.js': '6.0.1',
 };
