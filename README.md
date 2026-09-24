@@ -69,9 +69,9 @@ Export the incident bundle FIRST, before touching anything: Diagnostics tab, `Ex
 Alerts are short and delta-first:
 
 - `🚨 Alliance attack`, `🛡️ Alliance raid`, or `🔄 Alliance changes`, with a linked title and singular/plural player count.
-- The first embed has exactly `New`, `Active now`, and `Priority` fields, in that order. Continuations repeat global context.
+- The first embed has exactly `New`, `Active now`, and `Priority` fields, in that order. Continuation embeds carry only the player descriptions: the title, URL, and those fields stay on the first embed, and the footer and timestamp on each request's final embed.
 - The footer is `<hostname> · <observation-text>`. One logical dispatch timestamp is placed on the last embed of every request.
-- Multi-request output adds `part X/Y`; continuations repeat global context.
+- Multi-request output adds `part X/Y`; each request repeats the batch title, URL, and summary fields on its first embed.
 - Mentions occur once only; continuations use empty mention allowlists.
 - Departure-operator roles: Attack role (`roleId`) pings on attack/mixed batches; Leave-moderator role (`leaveRoleId`) is a separate global role pinged when a batch contains a departure. Configure the leave role as `Leave-moderator role` (`taa-leave-role-input`, `taa-leave-role-set`, `taa-leave-role-clear`, `taa-leave-role-current`) or via the Tampermonkey menu; both IDs live in `travianAllianceDiscordConfig_v1` and are validated by `validateDiscordRoleId`. A role pings only when its Discord role is Mentionable. A departing player is personally mentioned only when a pre-existing `mappings[hostname][playerId]` mapping already exists, so the first request may carry `<@&leaveRoleId> <@userId>` exactly as the live builder emits it.
 - Discord limits use JavaScript UTF-16 `.length`: content 2000, title 256, description 4096, field name 256, field value 1024, total embed text 6000, and at most 10 embeds per request.
@@ -130,7 +130,7 @@ Timestamp: 2026-08-23T09:46:01.000Z
 ```
 <!-- discord-attack-example:end -->
 
-No historical or guessed time is invented. Missing observation time remains `Observation time unavailable`; inherited timestamps remain marked approximate observation. Delivery is at-least-once: a lost acknowledgement can produce a duplicate. HTTP 200 with a message ID acknowledges; network, timeout, abort, 429 and 5xx responses are retried, ordinary 4xx stays failed, and a malformed or ID-less 200 is uncertain and is not retried automatically. `wait=true` exists only in the in-memory send URL.
+No historical or guessed time is invented. Missing observation time remains `Observation time unavailable`; inherited timestamps remain marked approximate observation. Delivery is at-least-once: a lost acknowledgement can produce a duplicate. HTTP 200 with a message ID acknowledges; network, timeout, abort, 408, 429 and 5xx responses are retried, any other non-retryable 4xx stays failed, and a malformed or ID-less 200 is uncertain and is not retried automatically. `wait=true` exists only in the in-memory send URL.
 
 The superseded 5.2.6-era contract is historical; the 1.0.1 contract above is the one this candidate implements.
 

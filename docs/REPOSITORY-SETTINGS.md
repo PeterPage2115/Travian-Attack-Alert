@@ -118,24 +118,31 @@ state, and unchecked items are pending owner actions.
       `npm run test:tools`, and `npm run test:artifact` are still green
       on a clean clone before announcing the update channel as healthy.
 
-## 7. DEV retirement (owner only, manual, no archive)
+## 7. DEV retirement (owner only, manual, backups preserved)
 
 The sibling TravianAttackAlertDEV directory (one level above the repo root)
 is read-only migration input: it seeded `src/` and the fixtures, and it is
 non-authoritative from the cutover onward. `src/` is the editable authority;
 `dist/` is the generated artifact. Nothing in that directory is normative
-for 1.0.1.
+for 1.0.1. The owner already removed the legacy DEV snapshot on 2026-09-23
+and cancelled the archive program; this section records that retirement and
+how its attestation is completed.
 
 - [ ] Never commit any file from that directory to the public repo.
 - [ ] Never delete or upload backups — neither from that directory nor from
-      `backups/` (gitignored) anywhere else.
+      `backups/` (gitignored) anywhere else. Backups and any other
+      irreplaceable owner payload are excluded from every deletion
+      instruction, including the DEV retirement.
 - [ ] Never delete that directory, its files, or its backups without
       explicit owner consent.
-- [ ] Execute the deletion with **no archive kept**: do not copy that
-      directory, its files, or its backups to private storage, cloud storage,
-      a release asset, or any other location. The ordered procedure is
-      `docs/RELEASE-RUNBOOK.md` Stage 4.
-- [ ] Record the deletion (timestamp, actor, record digest) and attest
+- [ ] Any removal of owner data is an owner-approved, explicitly scoped
+      action with a recoverable/preservation step: name the exact paths,
+      confirm that no `backups/` or other irreplaceable payload is included,
+      and keep the preservation copy until the owner signs off. There is no
+      blanket "delete the directory including backups" instruction anywhere
+      in this repository; the ordered procedure is `docs/RELEASE-RUNBOOK.md`
+      Stage 4.
+- [ ] Record the retirement (timestamp, actor, record digest) and attest
       `devArchival` in the owner-written fields of `docs/release-state.json`;
       until then `stable` stays `false`.
 

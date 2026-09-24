@@ -12,7 +12,7 @@ One logical dispatch is one or more Discord requests. Each request is a JSON obj
 | --- | --- |
 | `content` | top-level mention tokens for the first request of a batch, bounded and deduplicated to fit the 2000-character content limit; empty on continuations |
 | `allowed_mentions` | an explicit allowlist (`{ users: [...], roles: [...] }`); there is never a `parse` key |
-| `embeds` | between 1 and 10 embeds; the first embed of a request carries the delta summary fields |
+| `embeds` | between 1 and 10 embeds; the title, URL, and three summary fields appear only on the first embed of a request, and the footer and timestamp only on that request's final embed |
 
 Embed titles, descriptions, field values, and footers never contain mention tokens. Mentions live only in the top-level `content` field, so a mention cannot leak into a link title or a field body.
 
@@ -24,13 +24,13 @@ The first embed of every request has exactly three fields, in this order:
 2. `Active now` — the observed totals at scan time (for example `Active now: 0 attacks / 2 raids`).
 3. `Priority` — the configured priority band for the batch (for example `Priority: Normal`).
 
-Continuation embeds repeat global context (the batch header and totals) instead of the per-request delta fields.
+Continuation embeds in the same request carry only the player-description body. The batch title, alliance URL, and the three summary fields above appear only on the first embed of each request; the footer and timestamp appear only on that request's final embed. When a request has a single embed, that embed carries the first-embed fields, the footer, and the timestamp together.
 
 ## Titles, footer, and timestamp
 
 - The title is `🚨 Alliance attack`, `🛡️ Alliance raid`, or `🔄 Alliance changes`, followed by a linked alliance/member title and a singular/plural player count.
 - The footer is `<hostname> · <observation-text>`.
-- One logical dispatch timestamp is placed on the last embed of every request, so a multi-request batch carries the timestamp exactly once. `Timestamp:` lines in the README examples come from the live canonical builder.
+- The footer and the one logical dispatch timestamp are placed on the final embed of every request, so each request carries that request's footer and timestamp once. `Timestamp:` lines in the README examples come from the live canonical builder.
 
 ## Mention policy
 
@@ -66,8 +66,8 @@ A batch that exceeds the per-request budget is split into multiple requests. Eve
 Delivery is at-least-once, so a lost acknowledgement can deliver the same batch twice:
 
 - HTTP 200 with a message ID acknowledges the payload.
-- Network errors, timeouts, aborts, 429, and 5xx responses are retried with bounded backoff.
-- An ordinary 4xx response stays `failed` and waits for manual recovery.
+- Network errors, timeouts, aborts, 408, 429, and 5xx responses are retried with bounded backoff.
+- Any other, non-retryable 4xx response stays `failed` and waits for manual recovery.
 - A malformed or ID-less 200 is `uncertain` and is not retried automatically.
 
 Failed and uncertain batches are never dropped silently. Recovery actions (`Retry failed Discord batches`, `Retry uncertain Discord batches`, `Mark uncertain Discord batches delivered`, `Flush pending Discord batches`) live in the Tampermonkey menu, never in the panel. See [`OPERATIONS.md`](OPERATIONS.md#queue-check).

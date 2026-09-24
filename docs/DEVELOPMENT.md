@@ -111,6 +111,11 @@ an operational or release document.
   archive, upload, or clean them, and never reset site data.
 - `test-results/` and `.omo/` are evidence inputs; do not remove them
   destructively. Temporary fixtures belong under `/tmp`, not in the repository.
+- Any removal of owner data is an owner-approved, explicitly scoped action with
+  a recoverable/preservation step: name the exact paths, confirm that no
+  `backups/` or other irreplaceable payload is included, and keep the
+  preservation copy until the owner signs off. Never issue a blanket "delete
+  the directory including backups" instruction.
 - Never run `git gc`, `git worktree prune`, `git reset --hard`, or delete a
   worktree, and never push, tag, or publish without explicit owner consent.
 
