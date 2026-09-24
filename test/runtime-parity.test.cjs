@@ -425,14 +425,14 @@ const EXPECTED_RUNTIME_CONTRACT = {
     ]
   },
   releaseIdentity: {
-    headerVersion: '1.0.1',
-    manifestReleaseId: 'taa-1.0.1',
-    manifestVersion: '1.0.1',
-    metadataReleaseId: 'taa-1.0.1',
-    metadataVersion: '1.0.1',
-    packageVersion: '1.0.1',
-    runtimeReleaseId: 'taa-1.0.1',
-    runtimeVersion: '1.0.1'
+    headerVersion: '1.0.2',
+    manifestReleaseId: 'taa-1.0.2',
+    manifestVersion: '1.0.2',
+    metadataReleaseId: 'taa-1.0.2',
+    metadataVersion: '1.0.2',
+    packageVersion: '1.0.2',
+    runtimeReleaseId: 'taa-1.0.2',
+    runtimeVersion: '1.0.2'
   }
 };
 

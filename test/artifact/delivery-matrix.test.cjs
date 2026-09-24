@@ -195,13 +195,13 @@ function seedEnvelope(storage, baseline101 = { attackCount: 0, raidCount: 0 }) {
 // T0 — artifact authority.
 // ---------------------------------------------------------------------------
 
-test('T0 artifact authority: dist is the generated 1.0.1 installable', () => {
+test('T0 artifact authority: dist is the generated 1.0.2 installable', () => {
     const distBytes = fs.readFileSync(DIST_FILE);
     assert.deepEqual(Object.keys(runtime).sort(), Object.keys(require(RUNTIME_FILE)).sort());
     const digest = crypto.createHash('sha256').update(distBytes).digest('hex');
     assert.equal(fs.readFileSync(DIST_SIDECAR, 'utf8').trim(), `${digest}  dist/travian-attack-alert.user.js`);
-    assert.match(distBytes.toString('utf8'), /^\/\/ @version\s+1\.0\.1$/m);
-    assert.ok(distBytes.includes('const RELEASE_ID = "taa-1.0.1"'));
+    assert.match(distBytes.toString('utf8'), /^\/\/ @version\s+1\.0\.2$/m);
+    assert.ok(distBytes.includes('const RELEASE_ID = "taa-1.0.2"'));
     assert.equal(runtime.MAX_ATTEMPT_COUNT, 3);
     assert.deepEqual([...runtime.RETRY_DELAY_MS], [1000, 3000]);
     assert.equal(runtime.MAX_RETRY_DELAY_MS, 60000);

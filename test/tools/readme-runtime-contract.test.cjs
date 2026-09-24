@@ -269,7 +269,7 @@ describe('readme-runtime contract (onboarding and navigation)', () => {
       between.length <= 200 && /generated from the live canonical raid builder/i.test(between),
       'the alert-format link must sit immediately before the generated examples',
     );
-    assert.ok(alertFormat.includes('taa-1.0.1'), 'docs/ALERT-FORMAT.md must carry the current release ID');
+    assert.ok(alertFormat.includes('taa-1.0.2'), 'docs/ALERT-FORMAT.md must carry the current release ID');
     assert.ok(alertFormat.includes('world.example.invalid'), 'docs/ALERT-FORMAT.md must use synthetic examples only');
   });
 

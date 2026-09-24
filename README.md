@@ -2,7 +2,7 @@
 
 Alliance attack, raid, and departure alerts from Travian to your own Discord server. One Tampermonkey userscript runs in your browser tab: no backend, no account, no runtime dependency.
 
-**Version 1.0.1, release ID `taa-1.0.1` — stable, published (owner-attested 2026-09-25).** The release-branch raw artifact is live and serves exactly this build (SHA-256 `0c187870…`), a second person has completed the in-place manager update to this release, and the annotated `v1.0.1` tag was published as an [immutable GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1) (release id `396778787`, seven attested assets) on 2026-09-25; `docs/release-state.json` records `publication.tagAndRelease`. The machine-readable gate is `docs/release-state.json` and the ordered procedure is `docs/RELEASE-RUNBOOK.md`.
+**Version 1.0.2, release ID `taa-1.0.2` — staged release candidate (`stable: false`).** This bump is staged off the release branch, so the live `release/public-1.0.0` channel keeps serving the published `1.0.1` stable release (tag `v1.0.1`, [immutable GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1), release id `396778787`, seven attested assets, SHA-256 `0c187870…`, 2026-09-25); its historical record is archived at `docs/release-history/1.0.1/release-state.json`. Stable `1.0.2` publication requires owner pilot evidence; the machine-readable gate is `docs/release-state.json` (the 1.0.2 candidate) and the ordered publication procedure is `docs/RELEASE-RUNBOOK.md`.
 
 ![Synthetic screenshot of the Travian Attack Alert operations panel: the Alliance alert monitor dialog with the Overview, Players, Alerts, and Diagnostics tabs, leader status, accepted-scan status lines, and an established baseline.](docs/assets/panel-overview.png)
 
@@ -14,13 +14,13 @@ The script (`Travian Attack Alert`, namespace `travian-attack-alert-public`) per
 
 ## Install and update
 
-**Install from the release-branch raw URL — the verified working path.** The channel URL below returned HTTP 200 and served exactly the committed `1.0.1` artifact (SHA-256 `0c187870…`) when verified on 2026-09-23; the immutable [`v1.0.1` GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1) with attested assets was published on 2026-09-25, and this release-branch URL remains the update channel that managers poll:
+**Install from the release-branch raw URL — the verified working path.** The channel URL below returned HTTP 200 and served exactly the committed `1.0.1` artifact (SHA-256 `0c187870…`) when verified on 2026-09-23 — the historical stable build, still served today; the immutable [`v1.0.1` GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1) with attested assets was published on 2026-09-25, and this release-branch URL remains the update channel that managers poll. The `1.0.2` identity of this tree is staged off the release branch and is not published yet — no `v1.0.2` GitHub Release download exists:
 
 ```text
 https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
 ```
 
-Open that URL with Tampermonkey enabled and confirm the install prompt, or paste it into the manager's install-from-URL flow. Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version `1.0.1`.
+Open that URL with Tampermonkey enabled and confirm the install prompt, or paste it into the manager's install-from-URL flow. Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and the channel build's version — the staged `1.0.2` candidate in this tree supersedes it once the owner publishes it.
 
 On Chrome 138 and newer, Tampermonkey 5.3+ additionally needs the browser's `Allow User Scripts` toggle (or Developer Mode) enabled; this is Tampermonkey FAQ Q209. With that permission off, the browser runs no userscript at all: there is no panel, no Tampermonkey menu entry, no scan, and no alert, and the script cannot diagnose or report the condition because it never executes. To recover, enable `Allow User Scripts` (or Developer Mode), reload the page, then reinstall the script.
 
@@ -28,9 +28,9 @@ Updates are delivered through the `@updateURL` channel pointing at the default r
 
 Historical `1.0.0` copies that embedded the old broken `/main/` URL cannot self-heal at the same version: a same-version install never triggers an update, and the stale embedded URL never resolves. Reinstall from the corrected URL or file above (or re-run the install-from-file steps), keep all site data untouched, and confirm the version shown by the manager.
 
-Contributors building from source: `src/` is the editable authority — `dist/` is generated, never hand-edited. Run `npm run build`, then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window), and confirm the same name, namespace, and version `1.0.1`.
+Contributors building from source: `src/` is the editable authority — `dist/` is generated, never hand-edited. Run `npm run build`, then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window), and confirm the same name, namespace, and version `1.0.2`.
 
-Anyone migrating from the internal 6.2.1 line (historical internal development) should read [`docs/MIGRATION-6X.md`](docs/MIGRATION-6X.md): export settings first, disable the old sender, keep site data, then install 1.0.1.
+Anyone migrating from the internal 6.2.1 line (historical internal development) should read [`docs/MIGRATION-6X.md`](docs/MIGRATION-6X.md): export settings first, disable the old sender, keep site data, then install 1.0.2.
 
 ## Setup order
 
@@ -114,7 +114,7 @@ Timestamp: 2026-08-23T09:46:01.000Z
 
 ## Status and limitations
 
-- **Stable and published.** `docs/release-state.json` records `stable: true` with every pre-publication owner gate populated (owner-attested 2026-09-25), and the annotated `v1.0.1` tag was published as an [immutable GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1) (release id `396778787`, seven attested assets) on 2026-09-25. The owner's branch-protection attestation and the public GitHub API observation (four required checks) are separate records.
+- **Pilot, not stable.** `docs/release-state.json` records `stable: false` for the staged `1.0.2` candidate with every owner gate unrecorded (including `ownerManual.branchProtection: false`), and there is no `v1.0.2` tag or GitHub Release. The published `1.0.1` (`stable: true`, tag `v1.0.1`, [immutable GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1), release id `396778787`, seven attested assets, 2026-09-25) remains the live stable channel; its historical record is archived at `docs/release-history/1.0.1/release-state.json`. The public GitHub API observes branch protection with four required checks, but that observation is separate from the owner attestation.
 - It has no backend. Everything runs in your browser tab.
 - It gives no 24/7 guarantee. Alerts are produced only while your browser, with an active installation, sits on the canonical page.
 - It is not exactly-once. Delivery is at-least-once, so a lost acknowledgement can deliver the same batch twice.
@@ -135,13 +135,13 @@ Daily routine, handover order, queue recovery, and diagnostics live in [`docs/OP
 
 ## Support
 
-Include the script version (`1.0.1`), your browser and userscript manager versions, steps to reproduce, what you expected, and what happened instead. Attach the redacted incident bundle. NEVER include a webhook URL or token, cookies, passwords, raw page HTML, or player data beyond what the bundle already contains in redacted form.
+Include the script version (`1.0.2`), your browser and userscript manager versions, steps to reproduce, what you expected, and what happened instead. Attach the redacted incident bundle. NEVER include a webhook URL or token, cookies, passwords, raw page HTML, or player data beyond what the bundle already contains in redacted form.
 
 To file a report, use the issue templates: [bug report](.github/ISSUE_TEMPLATE/bug_report.yml) or [feature request](.github/ISSUE_TEMPLATE/feature_request.yml). Please follow [CONTRIBUTING.md](CONTRIBUTING.md) and the [security policy](SECURITY.md) (synthetic/redacted data only, no secrets).
 
 Support for this project is entirely voluntary and optional. It has no influence on features, priorities, or fix timelines. There is no paid tier and nothing is locked behind support. The destination for voluntary support will be added by the maintainer.
 
-This page documents the Tampermonkey **1.0.1** userscript, identified by release ID `taa-1.0.1`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
+This page documents the Tampermonkey **1.0.2** userscript, identified by release ID `taa-1.0.2`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
 
 ## Privacy
 
@@ -165,7 +165,7 @@ This page documents the Tampermonkey **1.0.1** userscript, identified by release
 - Development environment (WSL/DrvFS): [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — Node/npm selection, test tiers, evidence roots, line endings, protected canonical checkout.
 - Repository settings owner checklist: [`docs/REPOSITORY-SETTINGS.md`](docs/REPOSITORY-SETTINGS.md).
 - Owner release runbook: [`docs/RELEASE-RUNBOOK.md`](docs/RELEASE-RUNBOOK.md).
-- Release history (historical archived `1.0.0-rc` candidate records): [`docs/release-history/1.0.0-rc/`](docs/release-history/1.0.0-rc/).
+- Release history (historical archived `1.0.0-rc` candidate records): [`docs/release-history/1.0.0-rc/`](docs/release-history/1.0.0-rc/). The owner-verified 1.0.1 release-state is archived byte-identically at [`docs/release-history/1.0.1/release-state.json`](docs/release-history/1.0.1/release-state.json).
 - Changelog: [`CHANGELOG.md`](CHANGELOG.md).
 - Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md) (workflow, tests, backup, PR checklist).
 - Pull request template: [`.github/pull_request_template.md`](.github/pull_request_template.md).

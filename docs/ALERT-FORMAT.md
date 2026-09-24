@@ -1,6 +1,6 @@
 # Alert format reference
 
-Deep payload reference for `Travian Attack Alert` `1.0.1` (`taa-1.0.1`). The short contract, the generated examples, and the install path live in the main [`README.md`](../README.md); this page explains the request anatomy, mention policy, per-request limits, multi-part splitting, and delivery outcomes. Daily operation and recovery steps are in [`OPERATIONS.md`](OPERATIONS.md).
+Deep payload reference for `Travian Attack Alert` `1.0.2` (`taa-1.0.2`). The short contract, the generated examples, and the install path live in the main [`README.md`](../README.md); this page explains the request anatomy, mention policy, per-request limits, multi-part splitting, and delivery outcomes. Daily operation and recovery steps are in [`OPERATIONS.md`](OPERATIONS.md).
 
 Every value on this page is synthetic (`world.example.invalid`, fixture player IDs `900001`+). No real alliance, player, host, or webhook appears here.
 
@@ -76,7 +76,7 @@ Failed and uncertain batches are never dropped silently. Recovery actions (`Retr
 
 No historical or guessed time is invented. When the observation time is missing, the text remains `Observation time unavailable`; inherited timestamps remain marked as approximate observation. Events that appear and disappear between two accepted scans cannot be inferred — that limitation is by design.
 
-The superseded 5.2.6-era contract is historical; the 1.0.1 contract documented here is the one this candidate implements.
+The superseded 5.2.6-era contract is historical; the 1.0.2 contract documented here is the one this candidate implements.
 
 ## Related
 

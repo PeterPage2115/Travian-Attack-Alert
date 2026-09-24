@@ -39,6 +39,25 @@ rewritten here; it is noted as lineage only.
   `release/public-1.0.0`, and the generated header carries both directives.
   The stale `/main/` channel URL is gone; `main` does not exist on the remote.
 
+## 1.0.2 — staged candidate (unpublished, off the release branch)
+
+No tag, no GitHub Release, and no channel publication exist for this entry.
+The bump is staged on `work/post-pr17-1.0.2-staging` so the live
+`release/public-1.0.0` channel keeps serving the published `1.0.1` release
+until the owner completes the `1.0.2` publication.
+
+- Version identity moved to `1.0.2` / `taa-1.0.2` across `package.json`,
+  `package-lock.json`, the runtime, the generated artifact, sidecar, metadata,
+  and module manifest, the `tools/*` fallbacks, `docs/release-state.json`,
+  the README/docs identity claims, and the current-version test assertions.
+- The complete published `1.0.1` release-state is archived at
+  `docs/release-history/1.0.1/release-state.json`; the live
+  `docs/release-state.json` tracks the `1.0.2` candidate with `stable: false`
+  and every owner gate still unrecorded — no gate is fabricated or flipped.
+- Content: the Overview panel moves to progressive disclosure with clearer
+  red states (presentation only; model semantics, four tabs, and the
+  alert contract are unchanged).
+
 ## 1.0.1 — stable (owner-attested, published)
 
 Owner decision 2026-09-25: `1.0.1` is marked stable. All six schema-v2
