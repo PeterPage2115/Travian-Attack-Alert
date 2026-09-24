@@ -11,14 +11,14 @@ One logical dispatch is one or more Discord requests. Each request is a JSON obj
 | field | contents |
 | --- | --- |
 | `content` | top-level mention tokens for the first request of a batch, bounded and deduplicated to fit the 2000-character content limit; empty on continuations |
-| `allowed_mentions` | an explicit allowlist (`{ users: [...], roles: [...] }`); there is never a `parse` key |
+| `allowed_mentions` | an explicit allowlist (`{ users: [...], roles: [...] }`); there is no `parse` key |
 | `embeds` | between 1 and 10 embeds; the title, URL, and three summary fields appear only on the first embed of a request, and the footer and timestamp only on that request's final embed |
 
-Embed titles, descriptions, field values, and footers never contain mention tokens. Mentions live only in the top-level `content` field, so a mention cannot leak into a link title or a field body.
+Embed titles, descriptions, field values, and footers never contain mention tokens. Mentions live only in the top-level `content` field, so a mention cannot leak into a link title or a field body. Payloads use safe links in DOM order and the mention policy is explicit.
 
 ## First embed fields
 
-The first embed of every request has exactly three fields, in this order:
+The first embed has exactly `New`, `Active now`, and `Priority` — the three summary fields of every request's first embed, in this order:
 
 1. `New` — the positive net delta since the previous accepted scan (for example `New: **+2 raids**`).
 2. `Active now` — the observed totals at scan time (for example `Active now: 0 attacks / 2 raids`).
@@ -30,7 +30,7 @@ Continuation embeds in the same request carry only the player-description body. 
 
 - The title is `🚨 Alliance attack`, `🛡️ Alliance raid`, or `🔄 Alliance changes`, followed by a linked alliance/member title and a singular/plural player count.
 - The footer is `<hostname> · <observation-text>`.
-- The footer and the one logical dispatch timestamp are placed on the final embed of every request, so each request carries that request's footer and timestamp once. `Timestamp:` lines in the README examples come from the live canonical builder.
+- The footer and the one logical dispatch timestamp are placed on the last embed of every request, so each request carries that request's footer and timestamp once. `Timestamp:` lines in the README examples come from the live canonical builder.
 
 ## Mention policy
 
@@ -75,6 +75,8 @@ Failed and uncertain batches are never dropped silently. Recovery actions (`Retr
 ## Observation time
 
 No historical or guessed time is invented. When the observation time is missing, the text remains `Observation time unavailable`; inherited timestamps remain marked as approximate observation. Events that appear and disappear between two accepted scans cannot be inferred — that limitation is by design.
+
+The superseded 5.2.6-era contract is historical; the 1.0.1 contract documented here is the one this candidate implements.
 
 ## Related
 

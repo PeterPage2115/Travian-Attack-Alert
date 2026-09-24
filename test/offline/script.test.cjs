@@ -2542,6 +2542,7 @@ const RAID_TWO = {
 
 test('README compact alert bytes and documented contracts', () => {
     const readme = fs.readFileSync('README.md', 'utf8');
+    const alertFormat = fs.readFileSync('docs/ALERT-FORMAT.md', 'utf8');
     const startMarker = '<!-- discord-alert-example:start -->';
     const endMarker = '<!-- discord-alert-example:end -->';
     assert.equal(readme.split(startMarker).length - 1, 1);
@@ -2557,29 +2558,29 @@ test('README compact alert bytes and documented contracts', () => {
         canonicalDiscord.serializePayloadsForDocumentation(canonicalDiscord.payloadsForCase('raid-two'))
     );
 
-    assert.match(readme, /2000/);
-    assert.match(readme, /4096/);
-    assert.match(readme, /1024/);
-    assert.match(readme, /6000/);
-    assert.match(readme, /10/);
-    assert.match(readme, /part X\/Y/);
-    assert.match(readme, /first embed has exactly `New`, `Active now`, and `Priority`/i);
-    assert.match(readme, /continuations use empty mention allowlists/i);
-    assert.match(readme, /allowed_mentions/);
-    assert.match(readme, /safe links/i);
-    assert.match(readme, /🚨.*🛡️.*🔄/s);
-    assert.match(readme, /New.*Active now.*Priority/s);
-    assert.match(readme, /5\.2\.6/);
-    assert.match(readme, /approximate observation/i);
-    assert.match(readme, /Observation time unavailable/);
-    assert.match(readme, /Now: .*attacks? \/ .*raids?/i);
-    assert.match(readme, /last embed of every request/i);
-    assert.match(readme, /one logical dispatch timestamp/i);
-    assert.match(readme, /not retried automatically/i);
+    assert.match(alertFormat, /2000/);
+    assert.match(alertFormat, /4096/);
+    assert.match(alertFormat, /1024/);
+    assert.match(alertFormat, /6000/);
+    assert.match(alertFormat, /10/);
+    assert.match(alertFormat, /part X\/Y/);
+    assert.match(alertFormat, /first embed has exactly `New`, `Active now`, and `Priority`/i);
+    assert.match(alertFormat, /continuations use empty mention allowlists/i);
+    assert.match(alertFormat, /allowed_mentions/);
+    assert.match(alertFormat, /safe links/i);
+    assert.match(alertFormat, /🚨.*🛡️.*🔄/s);
+    assert.match(alertFormat, /New.*Active now.*Priority/s);
+    assert.match(alertFormat, /5\.2\.6/);
+    assert.match(alertFormat, /approximate observation/i);
+    assert.match(alertFormat, /Observation time unavailable/);
+    assert.match(alertFormat, /Now: .*attacks? \/ .*raids?/i);
+    assert.match(alertFormat, /last embed of every request/i);
+    assert.match(alertFormat, /one logical dispatch timestamp/i);
+    assert.match(alertFormat, /not retried automatically/i);
     assert.match(readme, /without partial|unchanged/i);
     assert.match(readme, /at-least-once/);
-    assert.match(readme, /wait=true/);
-    assert.match(readme, /Timestamp/);
+    assert.match(alertFormat, /wait=true/);
+    assert.match(alertFormat, /Timestamp/);
 });
 
 test('README rejects stale grammar and secrets', () => {
@@ -2597,30 +2598,32 @@ test('README rejects stale grammar and secrets', () => {
 
 test('README departure operator guidance and allowed_mentions contract matches live builder', () => {
     const readme = fs.readFileSync('README.md', 'utf8');
+    const alertFormat = fs.readFileSync('docs/ALERT-FORMAT.md', 'utf8');
+    const operations = fs.readFileSync('docs/OPERATIONS.md', 'utf8');
 
-    assert.match(readme, /Attack role.*roleId/s);
-    assert.match(readme, /Leave-moderator role.*leaveRoleId/s);
-    assert.match(readme, /travianAllianceDiscordConfig_v1/);
-    assert.match(readme, /validateDiscordRoleId/);
-    assert.match(readme, /taa-leave-role-input/);
-    assert.match(readme, /taa-leave-role-set/);
-    assert.match(readme, /taa-leave-role-clear/);
-    assert.match(readme, /taa-leave-role-current/);
-    assert.match(readme, /mappings\[hostname\]\[playerId\]/);
-    assert.match(readme, /pre-existing.*mapping/i);
-    assert.match(readme, /separate.*global.*role/i);
+    assert.match(alertFormat, /Attack role.*roleId/s);
+    assert.match(alertFormat, /Leave-moderator role.*leaveRoleId/s);
+    assert.match(alertFormat, /travianAllianceDiscordConfig_v1/);
+    assert.match(alertFormat, /validateDiscordRoleId/);
+    assert.match(operations, /taa-leave-role-input/);
+    assert.match(operations, /taa-leave-role-set/);
+    assert.match(operations, /taa-leave-role-clear/);
+    assert.match(operations, /taa-leave-role-current/);
+    assert.match(alertFormat, /mappings\[hostname\]\[playerId\]/);
+    assert.match(alertFormat, /pre-existing.*mapping/i);
+    assert.match(alertFormat, /separate.*global.*role/i);
     assert.match(readme, /never removes Discord access automatically|manually revoke/i);
-    assert.match(readme, /Mentionable/i);
+    assert.match(alertFormat, /Mentionable/i);
     assert.match(readme, /at-least-once/i);
 
-    assert.match(readme, /allowed_mentions/);
-    assert.match(readme, /no.*parse/i);
-    assert.doesNotMatch(readme, /\{parse:\s*\[\]/);
-    assert.match(readme, /\{ users:/);
-    assert.match(readme, /roles:\s*\[/);
-    assert.match(readme, /first request.*content/i);
-    assert.match(readme, /continuations use empty.*content/i);
-    assert.match(readme, /Embed.*never contain mention/i);
+    assert.match(alertFormat, /allowed_mentions/);
+    assert.match(alertFormat, /no.*parse/i);
+    assert.doesNotMatch(alertFormat, /\{parse:\s*\[\]/);
+    assert.match(alertFormat, /\{ users:/);
+    assert.match(alertFormat, /roles:\s*\[/);
+    assert.match(alertFormat, /first request.*content/i);
+    assert.match(alertFormat, /continuations use empty.*content/i);
+    assert.match(alertFormat, /Embed.*never contain mention/i);
 
     const canonicalPayloads = canonicalDiscord.payloadsForCase('roster');
     assert.ok(Array.isArray(canonicalPayloads) && canonicalPayloads.length === 1);

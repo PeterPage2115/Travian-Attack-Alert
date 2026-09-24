@@ -12,19 +12,6 @@ Alliance attack, raid, and departure alerts from Travian to your own Discord ser
 
 The script (`Travian Attack Alert`, namespace `travian-attack-alert-public`) periodically reads the alliance members table on the canonical page and sends Discord alerts when attacks, raids, or departures appear. No bundler, framework, or runtime dependency is required in the browser. The installable file is `dist/travian-attack-alert.user.js`, generated from `src/` via `npm run build`.
 
-## Status and limitations
-
-- **Pilot, not stable.** `docs/release-state.json` records `stable: false` with every owner gate unrecorded (including `ownerManual.branchProtection: false`), and there is no `v1.0.1` tag or GitHub Release. The public GitHub API observes branch protection with four required checks, but that observation is separate from the owner attestation.
-- It has no backend. Everything runs in your browser tab.
-- It gives no 24/7 guarantee. Alerts are produced only while your browser, with an active installation, sits on the canonical page.
-- It is not exactly-once. Delivery is at-least-once, so a lost acknowledgement can deliver the same batch twice.
-- It can miss short-lived events by design: events that appear and disappear between two reads cannot be inferred.
-- It never removes Discord access automatically. When a player leaves, a moderator must revoke that player's Discord permissions by hand.
-- One active monitoring installation per alliance and world. A second computer or browser profile is a second sender and WILL double-send; the local lock cannot prevent it.
-- Desktop Chrome with Tampermonkey is the tested combination. Firefox with Tampermonkey, and Violentmonkey, are candidate-only until proven. Mobile browser monitoring is unsupported; receiving alerts in the mobile Discord app works as usual.
-
-Daily routine, handover order, queue recovery, and diagnostics live in [`docs/OPERATIONS.md`](docs/OPERATIONS.md) (English) and [`docs/pl/OPERATIONS.md`](docs/pl/OPERATIONS.md) (Polish; the English text governs disagreements). This page stays an overview.
-
 ## Install and update
 
 **Install from the release-branch raw URL — the verified working path.** The channel URL below returned HTTP 200 and served exactly the committed `1.0.1` artifact (SHA-256 `0c187870…`) when verified on 2026-09-23; no `v1.0.1` GitHub Release download exists yet, so install from this URL rather than waiting for one or trusting a mirror:
@@ -45,7 +32,7 @@ Contributors building from source: `src/` is the editable authority — `dist/` 
 
 Anyone migrating from the internal 6.2.1 line (historical internal development) should read [`docs/MIGRATION-6X.md`](docs/MIGRATION-6X.md): export settings first, disable the old sender, keep site data, then install 1.0.1.
 
-## Quick start
+## Setup order
 
 The Alerts tab shows a `Setup order` banner. Follow it in this order:
 
@@ -69,14 +56,9 @@ Export the incident bundle FIRST, before touching anything: Diagnostics tab, `Ex
 Alerts are short and delta-first:
 
 - `🚨 Alliance attack`, `🛡️ Alliance raid`, or `🔄 Alliance changes`, with a linked title and singular/plural player count.
-- The first embed has exactly `New`, `Active now`, and `Priority` fields, in that order. Continuation embeds carry only the player descriptions: the title, URL, and those fields stay on the first embed, and the footer and timestamp on each request's final embed.
-- The footer is `<hostname> · <observation-text>`. One logical dispatch timestamp is placed on the last embed of every request.
-- Multi-request output adds `part X/Y`; each request repeats the batch title, URL, and summary fields on its first embed.
-- Mentions occur once only; continuations use empty mention allowlists.
-- Departure-operator roles: Attack role (`roleId`) pings on attack/mixed batches; Leave-moderator role (`leaveRoleId`) is a separate global role pinged when a batch contains a departure. Configure the leave role as `Leave-moderator role` (`taa-leave-role-input`, `taa-leave-role-set`, `taa-leave-role-clear`, `taa-leave-role-current`) or via the Tampermonkey menu; both IDs live in `travianAllianceDiscordConfig_v1` and are validated by `validateDiscordRoleId`. A role pings only when its Discord role is Mentionable. A departing player is personally mentioned only when a pre-existing `mappings[hostname][playerId]` mapping already exists, so the first request may carry `<@&leaveRoleId> <@userId>` exactly as the live builder emits it.
-- Discord limits use JavaScript UTF-16 `.length`: content 2000, title 256, description 4096, field name 256, field value 1024, total embed text 6000, and at most 10 embeds per request.
-
-Payloads use safe links in DOM order and the mention policy is explicit. `allowed_mentions` is an explicit allowlist with no `parse` key. The first request of a batch may carry `content` such as `<@&leaveRoleId> <@userId>` together with `allowed_mentions` like `{ users: ["123456789012345678"], roles: ["987654321098765432"] }`, or `{ users: [] }` when no one is mentioned. Continuations use empty `content` with `{ users: [] }` and no `roles` key, and the list is bounded and deduplicated to fit the 2000 character content limit. Embed titles, descriptions, field values and footers never contain mention tokens; mentions live only in top-level `content`. Partial, repeated, malformed, or ambiguous input does not change authoritative state; acquisition is rejected without partial state and authoritative state remains unchanged.
+- The first embed carries the `New`, `Active now`, and `Priority` summary fields; continuation embeds carry only the player descriptions.
+- The footer is `<hostname> · <observation-text>`; multi-request output adds `part X/Y`.
+- Mentions occur once only, live only in top-level `content`, and never inside embed text.
 
 The full payload contract — field-by-field anatomy, mention policy, per-request limits, multi-part splitting, and delivery outcomes — is in [`docs/ALERT-FORMAT.md`](docs/ALERT-FORMAT.md).
 
@@ -130,17 +112,26 @@ Timestamp: 2026-08-23T09:46:01.000Z
 ```
 <!-- discord-attack-example:end -->
 
-No historical or guessed time is invented. Missing observation time remains `Observation time unavailable`; inherited timestamps remain marked approximate observation. Delivery is at-least-once: a lost acknowledgement can produce a duplicate. HTTP 200 with a message ID acknowledges; network, timeout, abort, 408, 429 and 5xx responses are retried, any other non-retryable 4xx stays failed, and a malformed or ID-less 200 is uncertain and is not retried automatically. `wait=true` exists only in the in-memory send URL.
+## Status and limitations
 
-The superseded 5.2.6-era contract is historical; the 1.0.1 contract above is the one this candidate implements.
+- **Pilot, not stable.** `docs/release-state.json` records `stable: false` with every owner gate unrecorded (including `ownerManual.branchProtection: false`), and there is no `v1.0.1` tag or GitHub Release. The public GitHub API observes branch protection with four required checks, but that observation is separate from the owner attestation.
+- It has no backend. Everything runs in your browser tab.
+- It gives no 24/7 guarantee. Alerts are produced only while your browser, with an active installation, sits on the canonical page.
+- It is not exactly-once. Delivery is at-least-once, so a lost acknowledgement can deliver the same batch twice.
+- It can miss short-lived events by design: events that appear and disappear between two reads cannot be inferred.
+- It never removes Discord access automatically. When a player leaves, a moderator must revoke that player's Discord permissions by hand.
+- One active monitoring installation per alliance and world. A second computer or browser profile is a second sender and WILL double-send; the local lock cannot prevent it.
+- Desktop Chrome with Tampermonkey is the tested combination. Firefox with Tampermonkey, and Violentmonkey, are candidate-only until proven. Mobile browser monitoring is unsupported; receiving alerts in the mobile Discord app works as usual.
 
-## Privacy
+Partial, repeated, malformed, or ambiguous input does not change authoritative state; acquisition is rejected without partial state and authoritative state remains unchanged.
 
-- Your Travian session stays in your browser. Credentials are not persisted and cookies are not read.
-- Your webhook URL lives only in your userscript manager storage. It is validated as an HTTPS Discord webhook URL, stored without a query string, and never logged or displayed in full.
-- The incident bundle is bounded (512 KiB) and redacted by construction.
-- The settings backup omits the webhook secret by default; the file carries it only with your explicit opt-in checkbox.
-- All player names, hosts, and tokens shown in docs and alert examples are synthetic fixtures only. No real player data, hosts, or secrets appear in this repository's documentation.
+Daily routine, handover order, queue recovery, and diagnostics live in [`docs/OPERATIONS.md`](docs/OPERATIONS.md) (English) and [`docs/pl/OPERATIONS.md`](docs/pl/OPERATIONS.md) (Polish; the English text governs disagreements). This page stays an overview.
+
+## Troubleshooting
+
+1. Export the incident bundle FIRST (Setup order above): Diagnostics tab, `Export incident bundle` — bounded (512 KiB) and redacted by construction.
+2. Match your state against the diagnostics-first checklist in [`docs/OPERATIONS.md`](docs/OPERATIONS.md): no script running (Chrome `Allow User Scripts`), webhook missing, wrong page, login page, parser rejection, failed or uncertain batches, TEST versus scan confusion, and still-stuck escalation.
+3. Re-enter only the values proved absent by the `Storage provenance` labels. Do not clear site data to "fix" a rejected scan.
 
 ## Support
 
@@ -151,6 +142,14 @@ To file a report, use the issue templates: [bug report](.github/ISSUE_TEMPLATE/b
 Support for this project is entirely voluntary and optional. It has no influence on features, priorities, or fix timelines. There is no paid tier and nothing is locked behind support. The destination for voluntary support will be added by the maintainer.
 
 This page documents the Tampermonkey **1.0.1** userscript, identified by release ID `taa-1.0.1`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
+
+## Privacy
+
+- Your Travian session stays in your browser. Credentials are not persisted and cookies are not read.
+- Your webhook URL lives only in your userscript manager storage. It is validated as an HTTPS Discord webhook URL, stored without a query string, and never logged or displayed in full.
+- The incident bundle is bounded (512 KiB) and redacted by construction.
+- The settings backup omits the webhook secret by default; the file carries it only with your explicit opt-in checkbox.
+- All player names, hosts, and tokens shown in docs and alert examples are synthetic fixtures only. No real player data, hosts, or secrets appear in this repository's documentation.
 
 ## Documentation
 
@@ -172,8 +171,6 @@ This page documents the Tampermonkey **1.0.1** userscript, identified by release
 - Pull request template: [`.github/pull_request_template.md`](.github/pull_request_template.md).
 - Security policy: [`SECURITY.md`](SECURITY.md). License: [`LICENSE`](LICENSE).
 
-This page documents the Tampermonkey **1.0.1** userscript, identified by release ID `taa-1.0.1`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
-
 ## Source layout
 
-`src/` is the editable authority; `dist/travian-attack-alert.user.js` is generated (`npm run build`) and never hand-edited. The runtime is 13 domain modules (`storage`, `lease`, `parser`, `snapshot`, `envelope`, `migration`, `discord`, `transport`, `dispatch`, `conservation`, `diagnostics`, `panel`, `acquisition`): each `X.js` facade re-exports its `X-impl.js` contract by reference (`storage` spans 12 sub-modules), while `constants`/`text`/`route` are pure modules covered by `pure-module-parity`. `src/runtime-api.js` is a thin aggregator over the 13 facades (reference-equal, no `select()` indirection) and does not depend on the legacy authority. Mutable lifecycle state has a single owner, `src/lifecycle.js` (`createLifecycleController`), fed through the seven-factory seam in `src/adapters.js`; `src/runtime.js` remains the legacy authority (325 exports, release ID `taa-1.0.1`) and production wiring is unchanged. Boundaries are enforced by `test/tools/module-architecture.test.cjs`; the panel-vs-menu boundary on this page is enforced by `test/tools/readme-runtime-contract.test.cjs`.
+`src/` is the editable authority; `dist/travian-attack-alert.user.js` is generated (`npm run build`) and never hand-edited. The 13-domain module graph, the aggregator seam, the lifecycle owner, and the adapter factories are documented in [`docs/architecture.md`](docs/architecture.md) §10, enforced by `test/tools/module-architecture.test.cjs`.

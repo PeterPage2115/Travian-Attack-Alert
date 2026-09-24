@@ -231,7 +231,7 @@ Pure modules `constants`/`text`/`route` keep independent implementations verifie
 
 ### 10.2 Aggregator, lifecycle, adapters, authority
 
-- `src/runtime-api.js` is a thin aggregator: direct re-exports of the 13 domain facades. Every domain object IS the facade module itself (reference-equal), never a copied subset. The legacy `select()` indirection is removed and `runtime-api.js` does not depend on `src/runtime.js`.
+- `src/runtime-api.js` is a thin aggregator over the 13 facades: direct re-exports with no `select()` indirection. Every domain object IS the facade module itself (reference-equal), never a copied subset. The legacy `select()` indirection is removed and `runtime-api.js` does not depend on `src/runtime.js`.
 - `src/lifecycle.js` is the sole owner of mutable lifecycle state (`createLifecycleController` is its only export; 13 named singletons + 10 timer/listener handles live exactly once here). All other domains receive the controller object and never retain copies of its fields.
 - `src/adapters.js` is the seven-factory extraction seam (`createStorageAdapter`, `createClockAdapter`, `createSleepAdapter`, `createGmRequestAdapter`, `createDocumentLocationAdapter`, `createWebLocksAdapter`, `createSessionStorageAdapter`); domain modules never name host globals directly.
 - `src/runtime.js` remains the legacy authority: 325 exports pinned by the frozen `runtime-contract.json` oracle, release ID `taa-1.0.1`. Production wiring is unchanged (`src/userscript-entry.js` → `src/runtime.js` → `startBrowserRuntime`); `dist/*.user.js` is generated output, never hand-edited.
