@@ -9237,23 +9237,9 @@ ${entry.line}`;
           append(panelView, panelLeaseBanner);
           if (adminTab === "overview") {
             const section = makeSection("taa-overview", "Overview");
-            const grid = create("div");
-            grid.className = "taa-stats";
             const metrics = envelope && envelope.metrics || {};
             const pending = envelope && envelope.pending || [];
             const inFlight = envelope && envelope.inFlight || [];
-            append(grid, makeMetric("Last authoritative observation", runtimeDiag.observedAtMs || metrics.lastAuthoritativeScanAtMs ? new Date(runtimeDiag.observedAtMs || metrics.lastAuthoritativeScanAtMs).toLocaleString() : "Not recorded", "taa-last-observation-value"));
-            append(grid, makeMetric("Next refresh", nextReloadAtMs ? Math.max(0, Math.ceil((nextReloadAtMs - Date.now()) / 1e3)) + "s" : "Not scheduled", "taa-next-refresh-value"));
-            append(grid, makeMetric("Queue / in flight", pending.length + " / " + inFlight.length, "taa-queue-count-value"));
-            append(grid, makeMetric("Failed / uncertain", envelope ? envelope.failed.length + " / " + envelope.uncertain.length : "0 / 0", "taa-failure-count-value"));
-            append(grid, makeMetric("Storage health", state && state.outcome ? state.outcome : "Unavailable", "taa-storage-health-value"));
-            append(grid, makeMetric("Scan duration", runtimeDiag.timings && runtimeDiag.timings.scanMs != null ? runtimeDiag.timings.scanMs + "ms" : metrics.timings && metrics.timings.scanMs != null ? metrics.timings.scanMs + "ms" : "Not recorded", "taa-scan-duration-value"));
-            append(grid, makeMetric("Queue age", pending[0] && pending[0].observedAtMs ? Math.max(0, Date.now() - pending[0].observedAtMs) + "ms" : "0ms", "taa-queue-age-value"));
-            append(grid, makeMetric("Last sent", runtimeDiag.dispatchedAtMs ? new Date(runtimeDiag.dispatchedAtMs).toLocaleString() : "Not recorded", "taa-last-sent-value"));
-            const observedAtMs = Number(runtimeDiag.observedAtMs) || Number(metrics.lastAuthoritativeScanAtMs) || 0;
-            append(grid, makeMetric("Freshness", describeFreshnessState(observedAtMs, Date.now()), "taa-freshness-value"));
-            append(grid, makeMetric("Scan result", reconciliation.scanLabel, "taa-overview-scan-result-value"));
-            append(section, grid);
             const operationalSection = makeSection("taa-operational-state", "Setup and operational state");
             if (reconciliation.routeRole !== "canonical-member") {
               append(operationalSection, makeStatusBanner("Noncanonical page", "This page shows inert guidance only — it never scans, writes, sends, or reloads. Open the canonical members route (/alliance/profile/members) to monitor. If Travian shows a login page instead, log in first; the monitor never scans a login page and never mutates state there.", "warning"));
@@ -9275,9 +9261,45 @@ ${entry.line}`;
               webhookConfigured: loadWebhookUrl() !== null,
               failed: failed.length,
               uncertain: uncertain.length
-            })) append(operationalGrid, makeMetric(line.label, line.value, line.id));
+            })) {
+              if (line.id === "taa-operational-session-value") continue;
+              if (line.id === "taa-operational-scan-detail-value") {
+                const scanDetailDetails = create("details");
+                scanDetailDetails.id = "taa-operational-scan-detail-details";
+                const scanDetailSummary = create("summary");
+                scanDetailSummary.textContent = "Scan reason and outcome";
+                append(scanDetailDetails, scanDetailSummary);
+                append(scanDetailDetails, makeMetric(line.label, line.value, line.id));
+                append(operationalGrid, scanDetailDetails);
+                continue;
+              }
+              append(operationalGrid, makeMetric(line.label, line.value, line.id));
+            }
             append(operationalSection, operationalGrid);
             append(section, operationalSection);
+            const grid = create("div");
+            grid.className = "taa-stats";
+            const observedAtMs = Number(runtimeDiag.observedAtMs) || Number(metrics.lastAuthoritativeScanAtMs) || 0;
+            append(grid, makeMetric("Freshness", describeFreshnessState(observedAtMs, Date.now()), "taa-freshness-value"));
+            append(grid, makeMetric("Scan result", reconciliation.scanLabel, "taa-overview-scan-result-value"));
+            append(grid, makeMetric("Failed / uncertain", envelope ? envelope.failed.length + " / " + envelope.uncertain.length : "0 / 0", "taa-failure-count-value"));
+            append(grid, makeMetric("Storage health", state && state.outcome ? state.outcome : "Unavailable", "taa-storage-health-value"));
+            append(grid, makeMetric("Queue / in flight", pending.length + " / " + inFlight.length, "taa-queue-count-value"));
+            append(grid, makeMetric("Last authoritative observation", runtimeDiag.observedAtMs || metrics.lastAuthoritativeScanAtMs ? new Date(runtimeDiag.observedAtMs || metrics.lastAuthoritativeScanAtMs).toLocaleString() : "Not recorded", "taa-last-observation-value"));
+            append(grid, makeMetric("Next refresh", nextReloadAtMs ? Math.max(0, Math.ceil((nextReloadAtMs - Date.now()) / 1e3)) + "s" : "Not scheduled", "taa-next-refresh-value"));
+            append(grid, makeMetric("Last sent", runtimeDiag.dispatchedAtMs ? new Date(runtimeDiag.dispatchedAtMs).toLocaleString() : "Not recorded", "taa-last-sent-value"));
+            append(section, grid);
+            const rawDetails = create("details");
+            rawDetails.id = "taa-overview-raw-details";
+            const rawSummary = create("summary");
+            rawSummary.textContent = "Raw counters";
+            append(rawDetails, rawSummary);
+            const rawGrid = create("div");
+            rawGrid.className = "taa-stats";
+            append(rawGrid, makeMetric("Scan duration", runtimeDiag.timings && runtimeDiag.timings.scanMs != null ? runtimeDiag.timings.scanMs + "ms" : metrics.timings && metrics.timings.scanMs != null ? metrics.timings.scanMs + "ms" : "Not recorded", "taa-scan-duration-value"));
+            append(rawGrid, makeMetric("Queue age", pending[0] && pending[0].observedAtMs ? Math.max(0, Date.now() - pending[0].observedAtMs) + "ms" : "0ms", "taa-queue-age-value"));
+            append(rawDetails, rawGrid);
+            append(section, rawDetails);
             append(panelView, section);
           } else if (adminTab === "players") {
             const section = makeSection("taa-players", "Players and mappings");
@@ -9636,7 +9658,13 @@ ${entry.line}`;
           } else {
             const section = makeSection("taa-diagnostics-view", "Diagnostics and incident bundle");
             append(section, makeStatusBanner("Recovery starts here", "1. Export the incident bundle FIRST, before touching anything. 2. Read the first rejected/error trace below. 3. Retry or settle from the Tampermonkey menu. The bundle is bounded (512 KiB) and redacted: no webhook, token, raw DOM, player data, queue payloads, URLs, cookies, or response bodies.", "info"));
-            append(section, makeStatusBanner("Storage provenance", storageProvenanceText(buildStorageProvenanceModel(hostname)).join(" "), "info"));
+            const provenanceDetails = create("details");
+            provenanceDetails.id = "taa-storage-provenance-details";
+            const provenanceSummary = create("summary");
+            provenanceSummary.textContent = "Storage detail";
+            append(provenanceDetails, provenanceSummary);
+            append(provenanceDetails, makeStatusBanner("Storage provenance", storageProvenanceText(buildStorageProvenanceModel(hostname)).join(" "), "info"));
+            append(section, provenanceDetails);
             const metricsSection = makeSection("taa-count-reconciliation", "Count reconciliation");
             const metricGrid = create("div");
             metricGrid.className = "taa-stats taa-overview-metrics";
@@ -9685,10 +9713,22 @@ ${entry.line}`;
             const bounds = envelope && envelope.bounds && typeof envelope.bounds === "object" ? envelope.bounds : {};
             const overflowCount = Number(bounds.overflowCount) || Number(runtimeDiag.overflowCount) || 0;
             const overflowReason = String(bounds.overflowReason || runtimeDiag.overflowReason || "queue-cap");
-            append(section, makeStatusBanner("Bounded state", "Queue overflow count: " + overflowCount + "; reason: " + overflowReason + ". Export bound: 512 KiB; sensitive data omitted.", "warning"));
-            append(section, filterForm);
+            const boundedDetails = create("details");
+            boundedDetails.id = "taa-bounded-details";
+            const boundedSummary = create("summary");
+            boundedSummary.textContent = "Overflow and export bounds";
+            append(boundedDetails, boundedSummary);
+            append(boundedDetails, makeStatusBanner("Bounded state", "Queue overflow count: " + overflowCount + "; reason: " + overflowReason + ". Export bound: 512 KiB; sensitive data omitted.", "warning"));
+            append(section, boundedDetails);
             append(section, traceCount);
-            append(section, traceList);
+            const traceDetails = create("details");
+            traceDetails.id = "taa-trace-details";
+            const traceSummary = create("summary");
+            traceSummary.textContent = "Filters and recent traces";
+            append(traceDetails, traceSummary);
+            append(traceDetails, filterForm);
+            append(traceDetails, traceList);
+            append(section, traceDetails);
             drawTraces();
             const exportButton = makeButton("Export incident bundle", "taa-incident-bundle-export", () => {
               const bundle = buildIncidentBundle({ envelope, diagnostics: runtimeDiag, traces, routeRole: reconciliation.routeRole, filters: { scanId: scanFilter.value, stage: stageFilter.value, outcome: outcomeFilter.value }, webhookConfigured: Boolean(loadWebhookUrl()) });

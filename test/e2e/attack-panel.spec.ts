@@ -209,6 +209,12 @@ test.describe('attack panel — 6.0.0 attack-only', () => {
     await page.getByRole('button', { name: /Alert monitor|Open monitor/i }).click({ force: true });
     await page.getByRole('tab', { name: 'Diagnostics' }).click({ force: true });
     await expect(page.getByRole('button', { name: 'Export incident bundle' })).toBeVisible();
+    // T14 retarget (T15): recent traces moved behind a native <details> disclosure —
+    // open it before reading; the byte-bound assertion itself is unchanged.
+    const traceDetails = page.locator('#taa-trace-details');
+    if (!(await traceDetails.evaluate((node) => node.hasAttribute('open')))) {
+      await traceDetails.locator('summary').click();
+    }
     const text = await page.locator('#taa-recent-traces').innerText();
     expect(text.length).toBeLessThan(32 * 400);
   });
@@ -321,6 +327,12 @@ test.describe('attack panel — 6.0.0 attack-only', () => {
       await page.goto('/alliance?panelState=overview', { waitUntil: 'domcontentloaded' });
       await page.getByRole('button', { name: /Alert monitor|Open monitor/i }).click({ force: true });
       await page.getByRole('tab', { name: 'Diagnostics' }).click({ force: true });
+      // T14 retarget (T15): the Bounded state banner moved behind a native <details>
+      // disclosure — expand it before the visibility and parent-text reads.
+      const boundedDetails = page.locator('#taa-bounded-details');
+      if (!(await boundedDetails.evaluate((node) => node.hasAttribute('open')))) {
+        await boundedDetails.locator('summary').click();
+      }
       const bounded = page.getByText('Bounded state');
       await expect(bounded).toBeVisible();
       await expect(bounded.locator('..')).toContainText(/overflow|export|counts|omitted/i);
