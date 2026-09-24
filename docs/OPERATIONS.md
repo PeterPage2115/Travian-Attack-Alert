@@ -68,6 +68,10 @@ The Alerts tab shows failed and uncertain counts. The recovery actions live in t
 
 Failed means a permanent rejection (ordinary 4xx) kept for manual recovery. Uncertain means the acknowledgement was lost (malformed or ID-less 200) and is never retried automatically. Both stay recoverable; neither is dropped silently.
 
+## Leave-moderator role configuration
+
+The departure ping is configured on the Alerts tab (`taa-tab-alerts`) or via the Tampermonkey menu. The four panel controls are `taa-leave-role-input` (paste the Discord role ID), `taa-leave-role-set` (save it), `taa-leave-role-clear` (remove it), and `taa-leave-role-current` (show the stored value). Both role IDs live in `travianAllianceDiscordConfig_v1` and are validated by `validateDiscordRoleId`. A role pings only when its Discord role is Mentionable; a departing player is personally mentioned only when a pre-existing `mappings[hostname][playerId]` mapping already exists. Configuring the leave role never removes Discord access: when a player leaves, a moderator must revoke that player's Discord permissions by hand.
+
 ## Transfer from the 6.x line
 
 Anyone moving a private 6.2.1 profile (historical internal development) to public 1.0.1 follows `docs/MIGRATION-6X.md`. Quoted order, not duplicated here: export a private settings backup on the old sender, disable the 6.x script and verify zero sends for a full cycle, install the 1.0.1 file as a new script, import the backup file or re-enter the webhook by hand, verify queue/baseline/config in Diagnostics, and only then enable monitoring. Never clear site data during the transfer; never copy cookies, profiles, or credentials. Public `1.0.1` is numerically lower than private `6.2.1`, so no manager offers it as an update. Rollback is re-importing the prior `.user.js` file, keeping site data, and reloading the canonical route.

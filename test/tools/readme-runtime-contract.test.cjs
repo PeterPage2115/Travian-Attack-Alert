@@ -171,8 +171,8 @@ describe('readme-runtime contract (Panel vs menu recovery boundary)', () => {
       'Toggle debug details',
     ]) {
       assert.ok(
-        readme.includes(label),
-        `README must name the Tampermonkey menu command "${label}" so operators find it`,
+        operations.includes(label),
+        `OPERATIONS.md must name the Tampermonkey menu command "${label}" so operators find it`,
       );
     }
     assert.match(
@@ -347,15 +347,15 @@ describe('readme-runtime contract (post-extraction module graph)', () => {
     assert.deepEqual(Object.keys(adapters).sort(), [...EXPECTED_ADAPTERS].sort());
   });
 
-  it('documents the 13 domains, lifecycle, adapters, and aggregator in README', () => {
+  it('documents the 13 domains, lifecycle, adapters, and aggregator in architecture.md', () => {
     for (const domain of EXPECTED_DOMAINS) {
-      assert.ok(readme.includes(`\`${domain}\``), `README must name the domain module \`${domain}\``);
+      assert.ok(architecture.includes(`\`${domain}\``), `architecture.md must name the domain module \`${domain}\``);
     }
     for (const token of ['src/lifecycle.js', 'src/adapters.js', 'src/runtime-api.js', 'src/runtime.js']) {
-      assert.ok(readme.includes(token), `README must reference ${token}`);
+      assert.ok(architecture.includes(token), `architecture.md must reference ${token}`);
     }
-    assert.match(readme, /no [`']?select\(\)[`']? indirection/, 'README must state the select() indirection is gone');
-    assert.match(readme, /aggregator/, 'README must name the aggregator pattern');
+    assert.match(architecture, /no [`']?select\(\)[`']? indirection/, 'architecture.md must state the select() indirection is gone');
+    assert.match(architecture, /aggregator/, 'architecture.md must name the aggregator pattern');
   });
 
   it('documents the post-extraction graph in AGENTS.md and architecture.md', () => {
