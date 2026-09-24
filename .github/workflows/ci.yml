@@ -206,15 +206,16 @@ jobs:
       - name: Install (locked dependencies)
         run: npm ci
 
-      # Playwright browser cache (Task 12): keyed by the pinned Playwright
-      # version in package.json (1.48.0; upgrades are owned by Task 18) plus
-      # the runner OS, so a Playwright bump invalidates the cache. The action
-      # itself is SHA-pinned to its release commit like every other action.
+      # Playwright browser cache (Task 12): keyed by package.json playwright
+      # version (1.55.1; keep this literal in sync when bumping playwright /
+      # @playwright/test) plus the runner OS, so a Playwright bump
+      # invalidates the cache. The action itself is SHA-pinned to its
+      # release commit like every other action.
       - name: Cache Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-browsers-${{ runner.os }}-1.48.0
+          key: playwright-browsers-${{ runner.os }}-1.55.1
 
       # Chromium is still installed here even though `--no-browser` excludes
       # the browser gates from this job: `npx playwright install --with-deps
@@ -263,7 +264,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-browsers-${{ runner.os }}-1.48.0
+          key: playwright-browsers-${{ runner.os }}-1.55.1
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
