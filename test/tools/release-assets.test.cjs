@@ -67,11 +67,25 @@ function check(dir, extraEnv = {}) {
 
 function git(repo, args) { return execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim(); }
 
+function refExists(repo, ref) {
+  return spawnSync('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: repo }).status === 0;
+}
+
 function cloneRepo(t) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'taa-release-fixture-'));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const repo = path.join(base, 'repo');
   execFileSync('git', ['clone', '--quiet', '--shared', ROOT, repo], { encoding: 'utf8' });
+  // Context-independence: `clone --shared` inherits the parent's checked-out
+  // branch (attached release/public-1.0.0, or a residual local branch while
+  // the parent is detached). Detach HEAD and purge any inherited local
+  // release branch so setReleaseBranch can never target a checked-out branch
+  // and resolveReleaseRef cannot find a stale local ref the parent left
+  // behind — the fixture must behave identically under any parent checkout.
+  execFileSync('git', ['checkout', '--quiet', '--detach'], { cwd: repo });
+  if (refExists(repo, 'refs/heads/release/public-1.0.0')) {
+    execFileSync('git', ['update-ref', '-d', 'refs/heads/release/public-1.0.0'], { cwd: repo });
+  }
   execFileSync('git', ['config', 'user.email', 'fixture@example.invalid'], { cwd: repo });
   execFileSync('git', ['config', 'user.name', 'TAA Release Fixture'], { cwd: repo });
   return { base, repo };
@@ -133,6 +147,26 @@ test('Given package.json, when scripts are inspected, then release:prepare and r
 test('Given .gitignore, when the release output is checked, then it is ignored and disposable', () => {
   execFileSync('git', ['check-ignore', '-q', 'release/release-manifest.json'], { cwd: ROOT });
   execFileSync('git', ['check-ignore', '-q', 'release-determinism-123/SHA256SUMS'], { cwd: ROOT });
+});
+
+// Regression (context-independence): the fixture must behave identically no
+// matter which branch the parent checkout has checked out. CI runs detached
+// with zero local branches; a developer parent may sit on
+// release/public-1.0.0. `git clone --shared` inherits the parent's
+// checked-out branch, which made `git branch -f` fail in setReleaseBranch and
+// left a local refs/heads/release/public-1.0.0 that resolveReleaseRef finds
+// before the remote ref — so the fixture must detach HEAD and purge that
+// inherited local branch immediately after cloning.
+test('Given a parent checkout, when cloneRepo runs, then the fixture is detached and free of the inherited release branch', (t) => {
+  const { repo } = cloneRepo(t);
+  assert.equal(git(repo, ['rev-parse', '--abbrev-ref', 'HEAD']), 'HEAD', 'fixture HEAD must be detached');
+  assert.notEqual(
+    spawnSync('git', ['rev-parse', '--verify', '--quiet', 'refs/heads/release/public-1.0.0'], { cwd: repo }).status,
+    0,
+    'fixture must not inherit a local refs/heads/release/public-1.0.0 branch',
+  );
+  setReleaseBranch(repo, 'HEAD');
+  assert.equal(git(repo, ['rev-parse', 'refs/heads/release/public-1.0.0']), git(repo, ['rev-parse', 'HEAD']));
 });
 
 test('Given an annotated exact-version tag on the release branch, when prepared, then the seven declared assets are valid', (t) => {
@@ -220,7 +254,14 @@ test('Given a commit past the tag, when prepared, then preparation is rejected',
 test('Given no release branch, when prepared, then preparation is rejected', (t) => {
   const { base, repo } = cloneRepo(t);
   annotate(repo);
-  execFileSync('git', ['update-ref', '-d', 'refs/remotes/origin/release/public-1.0.0'], { cwd: repo });
+  // resolveReleaseRef tries refs/heads/ before refs/remotes/origin/, so the
+  // fixture must remove BOTH the inherited local branch (guard: it may already
+  // be purged by cloneRepo) and the remote-tracking ref, each only when present.
+  for (const ref of ['refs/heads/release/public-1.0.0', 'refs/remotes/origin/release/public-1.0.0']) {
+    if (refExists(repo, ref)) {
+      execFileSync('git', ['update-ref', '-d', ref], { cwd: repo });
+    }
+  }
   assert.equal(failCode(prepare(repo, path.join(base, 'release'))), 'release-branch-missing');
 });
 
