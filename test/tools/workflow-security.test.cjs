@@ -47,7 +47,7 @@ const ALLOWED_ACTION_OWNERS = ['actions'];
 const ACTION_REFERENCE_RE = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)@(\S+)$/u;
 const COMMIT_SHA_RE = /^[0-9a-f]{40}$/u;
 const VERSION_COMMENT_RE = /^v\d+\.\d+\.\d+$/u;
-const MAX_JOB_TIMEOUT_MINUTES = 120;
+const MAX_JOB_TIMEOUT_MINUTES = 180;
 const MAX_OPEN_PULL_REQUESTS = 10;
 const PUBLISH_SIGNATURES = [
   /npm\s+publish/u,
@@ -328,14 +328,6 @@ test('the Node 22 development leg is bounded and runs the offline release gate o
   const runs = steps.map((step) => step.run);
   const requiredRuns = [
     'npm ci',
-    'npm run build',
-    'npm run test:offline',
-    'npm run test:tools',
-    'npm run test:artifact',
-    'npm run test:characterization',
-    'npm run check',
-    'npm run check:types',
-    'npm run quality',
     'npx playwright install --with-deps chromium',
     RELEASE_GATE_COMMAND,
   ];

@@ -50,8 +50,37 @@ const DEVELOPMENT_DOC_HEADINGS = [
 const REQUIRED_JOBS = ['offline-node-18', 'offline-node-20', 'browser-node-20', 'cross-node-determinism'];
 const DEVELOPMENT_JOB = 'offline-node-22';
 const DEVELOPMENT_MAJOR = 22;
-const MAX_JOB_TIMEOUT_MINUTES = 120;
+const MAX_JOB_TIMEOUT_MINUTES = 180;
+const E2E_PER_SPEC_CEILING_MS = 480_000;
+const E2E_FIXED_OVERHEAD_MINUTES = 30;
 const RELEASE_GATE_COMMAND = 'npm run check:release -- --offline';
+const RELEASE_GATE_ORDER = [
+  'build',
+  'versions',
+  'syntax-dist',
+  'artifact',
+  'artifact-matrix',
+  'syntax-runtime',
+  'source-offline',
+  'characterization',
+  'test-inventory',
+  'static-format',
+  'tools-tests',
+  'types',
+  'quality',
+  'browser-tests',
+  'e2e',
+];
+const DUPLICATED_GATE_COMMANDS = [
+  'npm run build',
+  'npm run test:offline',
+  'npm run test:tools',
+  'npm run test:artifact',
+  'npm run test:characterization',
+  'npm run check',
+  'npm run check:types',
+  'npm run quality',
+];
 const REQUIRED_PINS = new Map([
   ['actions/checkout', '11d5960a326750d5838078e36cf38b85af677262'],
   ['actions/setup-node', '49933ea5288caeca8642d1e84afbd3f7d6820020'],
@@ -178,32 +207,38 @@ test('the Node 22 development leg matches .node-version without dropping 18/20 o
   assert.equal(pkg.engines?.node, '>=18', 'engines.node must stay >=18 until a compatibility proof exists');
 });
 
-test('the Node 22 job is bounded and runs the offline suites plus the release gate in order', () => {
+test('the Node 22 job is bounded and delegates every gate category to the release gate', () => {
   const jobs = jobBlocks(read(CI_REL), 'ci.yml');
   const job = jobs.get(DEVELOPMENT_JOB);
   assert.ok(job, `${DEVELOPMENT_JOB} job must exist`);
   assert.match(jobSource(job), /runs-on:\s+ubuntu-latest/u, `${DEVELOPMENT_JOB} must run on ubuntu-latest`);
   const timeout = jobTimeoutMinutes(job);
   assert.ok(timeout >= 1 && timeout <= MAX_JOB_TIMEOUT_MINUTES, `${DEVELOPMENT_JOB} timeout ${timeout} must be 1..${MAX_JOB_TIMEOUT_MINUTES}`);
+  const specs = fs.readdirSync(path.join(ROOT, 'test', 'e2e')).filter((name) => name.endsWith('.spec.ts')).length;
+  assert.ok(specs > 0, 'test/e2e must contain at least one spec');
+  const e2eCeilingMinutes = Math.ceil((specs * E2E_PER_SPEC_CEILING_MS) / 60_000);
+  assert.ok(
+    timeout >= e2eCeilingMinutes + E2E_FIXED_OVERHEAD_MINUTES,
+    `${DEVELOPMENT_JOB} timeout ${timeout} must enclose the worst-case valid envelope:`
+    + ` ${specs} specs x 480 s = ${e2eCeilingMinutes} min plus ${E2E_FIXED_OVERHEAD_MINUTES} min of install/gate overhead`,
+  );
   const runs = jobRuns(job);
   const requiredRuns = [
     'npm ci',
-    'npm run build',
-    'npm run test:offline',
-    'npm run test:tools',
-    'npm run test:artifact',
-    'npm run test:characterization',
-    'npm run check',
-    'npm run check:types',
-    'npm run quality',
     'npx playwright install --with-deps chromium',
     RELEASE_GATE_COMMAND,
   ];
   let cursor = 0;
   for (const expected of requiredRuns) {
     const index = runs.findIndex((run, position) => position >= cursor && run.includes(expected));
-    assert.notEqual(index, -1, `${DEVELOPMENT_JOB} must run "${expected}" after the previous gate`);
+    assert.notEqual(index, -1, `${DEVELOPMENT_JOB} must run "${expected}" after the previous step`);
     cursor = index;
+  }
+  for (const duplicated of DUPLICATED_GATE_COMMANDS) {
+    assert.ok(
+      !runs.some((run) => run.trim() === duplicated),
+      `${DEVELOPMENT_JOB} must not re-run "${duplicated}"; ${RELEASE_GATE_COMMAND} already covers it`,
+    );
   }
 });
 
@@ -218,6 +253,14 @@ test('the offline release gate is wired exactly once, in the Node 22 job, and st
   }
   assert.ok(!/continue-on-error/u.test(jobSource(job)), 'the Node 22 job must not tolerate a failing step');
   assert.ok(!/^ {8}if:/mu.test(jobSource(job)), 'the Node 22 job must not conditionally skip a step');
+  const gateSource = read(path.join('tools', 'check-release.cjs'));
+  const gateOrder = [...gateSource.matchAll(/gates\.push\(\s*(?:runGate\(\s*'([^']+)'|runE2EGate\(\))/gu)]
+    .map((match) => match[1] || 'e2e');
+  assert.deepEqual(
+    gateOrder,
+    RELEASE_GATE_ORDER,
+    'the delegated release gate must keep executing every gate category in order',
+  );
 });
 
 test('ci.yml keeps every action pinned to a full commit SHA with a version comment', () => {

@@ -154,13 +154,30 @@ jobs:
           retention-days: 14
 
   # Development-major leg (Task 34): the documented development major
-  # (`.node-version` = 22.19.0) runs the same offline suites plus the complete
-  # offline release gate exactly once in CI. This job is informational: the
-  # four required status checks and the branch-protection settings are
-  # unchanged until the owner separately updates them.
+  # (`.node-version` = 22.19.0) runs the COMPLETE offline release gate exactly
+  # once in CI. Only the two steps the gate cannot perform for itself are
+  # listed: the locked dependency install and the Playwright Chromium
+  # download. The gate rebuilds the generated artifacts itself and then
+  # executes every build/versions/artifact/offline/characterization/inventory/
+  # format/tool/type/quality/browser/e2e category, so running those categories
+  # here as well would only repeat the same work (and previously doubled most
+  # of this job's wall clock).
+  #
+  # Timeout arithmetic (worst-case valid run): the release gate gives every
+  # e2e spec its own 480 s ceiling (never lowered), and discovery finds 12
+  # specs, so 12 x 480 s = 5,760 s = 96 min of legitimate e2e time alone. Add
+  # `npm ci`, the `--with-deps` Chromium install, and the 14 non-e2e gates
+  # inside the gate: the previous revision of this job, which additionally
+  # re-ran most of those gates by hand, completed in 19m19s. 96 min + 30 min
+  # overhead = 126 min, bounded at 150 min so a slow-but-valid run always
+  # writes its summary instead of being cancelled before it can report.
+  #
+  # This job is informational: the four required status checks and the
+  # branch-protection settings are unchanged until the owner separately
+  # updates them.
   offline-node-22:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 150
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -174,34 +191,6 @@ jobs:
       - name: Install (locked dependencies)
         run: npm ci
 
-      - name: Build generated artifacts
-        run: npm run build
-
-      - name: Offline unit gates
-        run: npm run test:offline
-
-      - name: Tools gates
-        run: npm run test:tools
-
-      - name: Artifact gates
-        run: npm run test:artifact
-
-      # Receipt-backed accounting: every manifest-owned characterization suite
-      # must execute and leave a HEAD-bound receipt before the inventory gate
-      # (npm run check) consumes test-results/suite-receipts. Registration in
-      # the manifest alone is not execution proof.
-      - name: Characterization receipts (blocking)
-        run: npm run test:characterization
-
-      - name: Checks (versions, artifact, inventory)
-        run: npm run check
-
-      - name: Type gate (blocking; Todo-6 ratchet vs type-error-baseline.json)
-        run: npm run check:types
-
-      - name: Quality gate (blocking; Todo-6 ratchet vs quality-baseline.json)
-        run: npm run quality
-
       # The offline release gate rebuilds, then runs the full build/check/type/
       # quality matrix plus the loopback browser and e2e gates, so Chromium
       # must be installed first. There is no NOT_EXECUTED verdict: a gate that
@@ -209,7 +198,11 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Offline release gate (blocking)
+      # Single invocation of the complete gate matrix (build, versions,
+      # syntax, artifact matrix, offline, characterization receipts,
+      # inventory, static format, tools, type, quality, browser, e2e). No
+      # gate category is run by hand above: duplicates cannot drift.
+      - name: Offline release gate (blocking; complete gate matrix)
         run: npm run check:release -- --offline
 
   browser-node-20:
