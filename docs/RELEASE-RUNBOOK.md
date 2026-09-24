@@ -102,16 +102,25 @@ next stage no longer reports `BLOCKED`.
 
 ## Stage 4 — Record the DEV deletion and attest `devArchival`
 
-1. The owner executes the deletion of the sibling DEV directory (one level above
-   the repository root) with **no archive** kept, and records the deletion.
-2. Manually attest `devArchival` in `docs/release-state.json` with that record.
-   Do not commit any byte of that directory to the public repository and do not
-   upload any backup.
+1. The owner already removed the legacy sibling DEV directory (one level above
+   the repository root) on 2026-09-23, with no archive program. That removal
+   did not include any `backups/` directory or other irreplaceable owner
+   payload; backups are excluded from every deletion instruction.
+2. Record the deletion and manually attest `devArchival` in
+   `docs/release-state.json`. Do not commit any byte of that directory to the
+   public repository and do not upload any backup.
+3. Any later removal of owner data is an owner-approved, explicitly scoped
+   action with a recoverable/preservation step: name the exact paths, confirm
+   that no `backups/` or other irreplaceable payload is included, and keep the
+   preservation copy until the owner signs off. Never issue a blanket
+   "delete the directory including backups" instruction.
 
 - **Evidence:** owner deletion record with timestamp, actor, and record digest.
-- **Stop:** any attempt to archive or upload the directory stops the run.
-- **Rollback:** this step is irreversible by design; if the deletion is not
-  intended, stop before executing it.
+- **Stop:** any attempt to archive or upload owner data, or any deletion
+  instruction that would include backups, stops the run.
+- **Rollback:** recover owner data from the preserved copy; the legacy DEV
+  snapshot itself was removed with no archive program, and that precedent is
+  never a reason to delete backups irreversibly.
 
 ## Stage 5 — Configure repository protections
 

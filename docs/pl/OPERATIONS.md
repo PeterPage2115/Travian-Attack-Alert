@@ -1,10 +1,10 @@
 # Codzienna obsługa
 
-Procedura operatorska dla `Travian Attack Alert` w wersji `1.0.0` (ID wydania `taa-1.0.0`).
+Procedura operatorska dla `Travian Attack Alert` w wersji `1.0.1` (ID wydania `taa-1.0.1`).
 
 > Uwaga: to jest polski odpowiednik strony `docs/OPERATIONS.md`. Angielska strona `README.md` pozostaje głównym dokumentem. W razie rozbieżności obowiązuje tekst angielski.
 
-Ta strona opisuje codzienną pracę. Konfiguracja, instalacja i fakty o pierwszym skanie znajdują się w angielskim `README.md` (indeks dokumentów: `docs/README.md`).
+Ta strona opisuje codzienną pracę. Konfiguracja, instalacja i fakty o pierwszym skanie znajdują się w angielskim `README.md` (indeks dokumentów: `docs/README.md`); kontrakt formatu alarmów to `docs/ALERT-FORMAT.md`.
 
 ## Poranna procedura
 
@@ -125,7 +125,7 @@ Potem dopasuj swój stan:
 
 Skopiuj te pola do zgłoszenia. Załącz zredagowany pakiet incydentu. NIGDY nie dołączaj URL webhooka ani tokenu, ciasteczek, haseł, surowego HTML strony, ładunków kolejki ani danych graczy ponad to, co pakiet już zawiera w formie zredagowanej.
 
-- Wersja skryptu (na przykład `1.0.0`).
+- Wersja skryptu (na przykład `1.0.1`).
 - Wersja przeglądarki i wersja menedżera skryptów (na przykład wersja Tampermonkey).
 - Kroki odtworzenia (jaka strona, jaki stan kart, co kliknięto, po kolei).
 - Czego oczekiwałeś.
@@ -134,8 +134,8 @@ Skopiuj te pola do zgłoszenia. Załącz zredagowany pakiet incydentu. NIGDY nie
 
 ## Uwaga o wersji
 
-Ta strona dokumentuje `1.0.0` (`taa-1.0.0`). Wcześniejsze zachowanie z ery 6.2.1 (historyczny rozwój wewnętrzny) nie jest częścią kontraktu tego kandydata.
+Ta strona dokumentuje `1.0.1` (`taa-1.0.1`). Wcześniejsze zachowanie z ery 6.2.1 (historyczny rozwój wewnętrzny) nie jest częścią kontraktu tego kandydata.
 
 ## Mapa implementacji
 
-Opisane wyżej zachowanie implementuje 13 modułów domenowych w `src/` (każdy to fasada `X.js` nad kontraktem `X-impl.js`; `storage` obejmuje 12 podmodułów), agregowanych przez referencję w `src/runtime-api.js` bez indirection `select()`. Mutowalny stan cyklu życia ma jedynego właściciela, `src/lifecycle.js`, zasilanego przez siedem fabryk z `src/adapters.js`; `src/runtime.js` pozostaje autorytetem legacy (`taa-1.0.0`), a produkcyjne wiring jest bez zmian. Autorytatywna mapa to `docs/architecture.md` §10, wymuszana przez `test/tools/module-architecture.test.cjs`. Nic tu nie zmienia obsługi: podział panel/menu, trasy i kroki odzyskiwania powyżej są dokładnie takie, jak podano.
+Opisane wyżej zachowanie implementuje 13 modułów domenowych w `src/` (każdy to fasada `X.js` nad kontraktem `X-impl.js`; `storage` obejmuje 12 podmodułów), agregowanych przez referencję w `src/runtime-api.js` bez indirection `select()`. Mutowalny stan cyklu życia ma jedynego właściciela, `src/lifecycle.js`, zasilanego przez siedem fabryk z `src/adapters.js`; `src/runtime.js` pozostaje autorytetem legacy (`taa-1.0.1`), a produkcyjne wiring jest bez zmian. Autorytatywna mapa to `docs/architecture.md` §10, wymuszana przez `test/tools/module-architecture.test.cjs`. Nic tu nie zmienia obsługi: podział panel/menu, trasy i kroki odzyskiwania powyżej są dokładnie takie, jak podano.

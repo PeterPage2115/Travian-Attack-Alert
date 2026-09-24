@@ -11,6 +11,19 @@ const PANEL_HTML = path.join(__dirname, 'attack-panel.html');
 const sockets = new Set();
 const e2eState = { discordRequests: [], openRequests: 0, webhookAttempts: 0, deliveryHold: false };
 
+// Playwright's page.request APIRequestContext reuses idle keep-alive sockets.
+// Node's default keepAliveTimeout (5 s) closes them while a spec does other
+// work (observed as ECONNRESET on the warm-up POST, CI run 35931796105), so
+// keep loopback sockets alive for the whole run. headersTimeout must stay
+// above keepAliveTimeout (Node's documented pairing).
+const KEEP_ALIVE_TIMEOUT_MS = 120_000;
+const HEADERS_TIMEOUT_MS = 125_000;
+
+function configureKeepAlive(target) {
+  target.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+  target.headersTimeout = HEADERS_TIMEOUT_MS;
+}
+
 function sendFile(response, filePath, contentType) {
   fs.readFile(filePath, (error, content) => {
     if (error) {
@@ -204,6 +217,7 @@ function handleRequest(request, response) {
 }
 
 const server = http.createServer(handleRequest);
+configureKeepAlive(server);
 
 server.on('connection', (socket) => {
   sockets.add(socket);
@@ -239,6 +253,7 @@ try {
       { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) },
       handleRequest,
     );
+    configureKeepAlive(httpsServer);
     httpsServer.on('connection', (socket) => {
       sockets.add(socket);
       socket.once('close', () => sockets.delete(socket));

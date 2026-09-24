@@ -268,6 +268,15 @@ test('the npm package stays private and cannot be published', () => {
   }
 });
 
+test('package.json declares no runtime dependencies and keeps the devDependencies', () => {
+  const pkg = readJson('package.json');
+  assert.deepEqual(pkg.dependencies ?? {}, {}, 'the userscript must ship without runtime dependencies');
+  assert.ok(
+    pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0,
+    'devDependencies (build/test tooling) must remain declared',
+  );
+});
+
 test('.editorconfig pins UTF-8, LF, final-newline and two-space defaults', () => {
   const { preamble, sections } = parseEditorConfig(read('.editorconfig'));
   assert.equal(preamble.get('root'), 'true');

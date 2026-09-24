@@ -43,7 +43,7 @@ import type { Browser, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { installArtifactRuntime, installLoopbackTransport } from './runtime-bootstrap';
+import { installArtifactRuntime, installLoopbackTransport, warmupLoopbackTransport } from './runtime-bootstrap';
 
 const DIST = '/dist/travian-attack-alert.user.js';
 const HTTPS_ORIGIN = 'https://127.0.0.1:8898';
@@ -90,9 +90,11 @@ async function serverRequests(page: Page): Promise<Array<{ body: unknown }>> {
 // Fixture-transport warm-up (Node-side, no page console noise): burns the sink's
 // first-attempt 429 so the measured window shows product traffic only. The entry
 // stays in the server log flagged as warmup; phases after it assert deltas.
+// A stale idle keep-alive socket can throw ECONNRESET before the fixture logs
+// the POST; the shared helper retries only while the server log is still empty,
+// so the warm-up always adds EXACTLY one entry (never two).
 async function warmupTransport(page: Page): Promise<void> {
-  await page.request.post('/discord-webhook', { data: { content: 'warmup', allowed_mentions: { users: [] } }, headers: { 'Content-Type': 'application/json' } });
-  await expect.poll(() => serverRequestCount(page), { timeout: 5_000 }).toBe(1);
+  await warmupLoopbackTransport(page, serverRequestCount);
 }
 
 async function waitSnapshot(page: Page, timeout = 10_000): Promise<SnapshotEvent[]> {

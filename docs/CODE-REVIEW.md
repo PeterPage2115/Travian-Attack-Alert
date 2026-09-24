@@ -5,7 +5,7 @@ violations. Independent verification confirmed 9 of 11, 2 partial, 0 refuted.
 Threads were resolved to unblock merge without per-claim fixes. This file is
 the standing commitment to keep all 11 correct.
 
-## Process (obowiazuje zawsze)
+## Process (always applies)
 
 1. Every external review comment is verified with a repro command before it is
    resolved or dismissed. Resolving threads without evidence is forbidden.

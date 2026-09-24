@@ -23,6 +23,10 @@ const test = require('node:test');
 const ROOT = path.resolve(__dirname, '..', '..');
 const WORKFLOW_PATH = path.join(ROOT, '.github', 'workflows', 'ci.yml');
 const REQUIRED_JOBS = ['offline-node-18', 'offline-node-20', 'browser-node-20', 'cross-node-determinism'];
+// Task 34 adds one informational development-major leg; the four required
+// check names must survive verbatim.
+const DEVELOPMENT_JOB = 'offline-node-22';
+const EXPECTED_JOBS = [...REQUIRED_JOBS, DEVELOPMENT_JOB];
 const BROWSER_JOB = 'browser-node-20';
 const SEALED_DIR_PREFIX = 'ci-evidence';
 
@@ -161,7 +165,10 @@ test('workflow keeps the four required jobs, triggers, and read-only permissions
     .slice(jobsHeader + 1)
     .filter(line => /^ {2}[A-Za-z0-9_-]+:$/u.test(line))
     .map(line => line.trim().replace(/:$/u, ''));
-  assert.deepEqual(jobNames.sort(), [...REQUIRED_JOBS].sort());
+  assert.deepEqual(jobNames.sort(), [...EXPECTED_JOBS].sort());
+  for (const name of REQUIRED_JOBS) {
+    assert.ok(jobNames.includes(name), `required check job ${name} must survive verbatim`);
+  }
 
   const triggers = lines.slice(lines.indexOf('on:'), lines.indexOf('permissions:')).join('\n');
   assert.match(triggers, /pull_request:/u);

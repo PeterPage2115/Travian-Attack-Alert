@@ -1,8 +1,8 @@
 # Daily operations
 
-Operator routine for `Travian Attack Alert` version `1.0.0` (release ID `taa-1.0.0`).
+Operator routine for `Travian Attack Alert` version `1.0.1` (release ID `taa-1.0.1`).
 
-This page covers daily use. Setup, install, and first-scan facts live in `README.md`; the Polish equivalent of this page is `docs/pl/OPERATIONS.md`. The English `README.md` stays primary.
+This page covers daily use. Setup, install, and first-scan facts live in `README.md`; the alert payload contract is `docs/ALERT-FORMAT.md`; the Polish equivalent of this page is `docs/pl/OPERATIONS.md`. The English `README.md` stays primary.
 
 ## Morning routine
 
@@ -123,7 +123,7 @@ Then match your state:
 
 Copy these fields into the issue. Attach the redacted incident bundle. NEVER include a webhook URL or token, cookies, passwords, raw page HTML, queue payloads, or player data beyond what the bundle already contains in redacted form.
 
-- Script version (for example `1.0.0`).
+- Script version (for example `1.0.1`).
 - Browser version and userscript manager version (for example Tampermonkey version).
 - Steps to reproduce (what page, what tab state, what you clicked, in order).
 - What you expected to happen.
@@ -132,8 +132,8 @@ Copy these fields into the issue. Attach the redacted incident bundle. NEVER inc
 
 ## Version note
 
-This page documents `1.0.0` (`taa-1.0.0`). Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
+This page documents `1.0.1` (`taa-1.0.1`). Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
 
 ## Implementation map
 
-The behavior above is implemented by 13 domain modules under `src/` (each an `X.js` facade over its `X-impl.js` contract; `storage` spans 12 sub-modules), aggregated reference-equal by `src/runtime-api.js` with no `select()` indirection. Mutable lifecycle state is owned solely by `src/lifecycle.js` and fed through the seven factories in `src/adapters.js`; `src/runtime.js` remains the legacy authority (`taa-1.0.0`) and production wiring is unchanged. The authoritative map is `docs/architecture.md` §10, enforced by `test/tools/module-architecture.test.cjs`. Nothing here changes operations: the panel/menu split, routes, and recovery steps above are exactly as stated.
+The behavior above is implemented by 13 domain modules under `src/` (each an `X.js` facade over its `X-impl.js` contract; `storage` spans 12 sub-modules), aggregated reference-equal by `src/runtime-api.js` with no `select()` indirection. Mutable lifecycle state is owned solely by `src/lifecycle.js` and fed through the seven factories in `src/adapters.js`; `src/runtime.js` remains the legacy authority (`taa-1.0.1`) and production wiring is unchanged. The authoritative map is `docs/architecture.md` §10, enforced by `test/tools/module-architecture.test.cjs`. Nothing here changes operations: the panel/menu split, routes, and recovery steps above are exactly as stated.

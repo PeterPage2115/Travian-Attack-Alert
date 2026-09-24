@@ -6,19 +6,21 @@ Settings; verify from a clean clone. The ordered owner publication procedure
 that consumes these settings is `docs/RELEASE-RUNBOOK.md`.
 
 Public-state observation (read-only GitHub API GETs on 2026-09-23): the
-default branch is `release/public-1.0.0` and it is the only branch on the
-remote (`main` and `master` do not exist); that branch is protected with the
-four required status checks `offline-node-18`, `offline-node-20`,
-`browser-node-20`, and `cross-node-determinism`; no repository ruleset is
-installed; no deployment environment exists (`GET /environments` reports
-`total_count: 0`); private vulnerability reporting is reported disabled
+default branch is `release/public-1.0.0`; `main` and `master` do not exist, and
+the fresh read also sees eight open `dependabot/*` dependency branches next to
+it; that branch is protected with the four required status checks
+`offline-node-18`, `offline-node-20`, `browser-node-20`, and
+`cross-node-determinism`; no repository ruleset is installed; no deployment
+environment exists (`GET /environments` reports `total_count: 0`); private
+vulnerability reporting is reported disabled
 (`GET /private-vulnerability-reporting` returns `enabled: false`); the
-description, homepage, and topics are set. Authenticated endpoints (branch
-protection detail, immutable releases, Actions workflow permissions) answer
-401 anonymously, so those requirements are owner attestations in §8, not
-observed facts. This is a point-in-time API observation, not owner
-attestation. The separate owner-manual record in `docs/release-state.json`
-still holds `ownerManual.branchProtection: false`,
+description, homepage, and topics are set. Anonymous requests to authenticated
+endpoints (branch protection detail, immutable releases, Actions workflow
+permissions) answer 401, so §8 now records a separate authenticated read-only
+owner comparison (GET-only, no setting changed) instead of owner attestation.
+This is a point-in-time API observation, not owner attestation. The separate
+owner-manual record in `docs/release-state.json` still holds
+`ownerManual.branchProtection: false`,
 `ownerManual.releaseEnvironment: false`,
 `ownerManual.immutableReleases: false`, and `stable: false` until the owner
 completes the pilot and records the evidence. This file is an owner checklist,
@@ -41,7 +43,7 @@ state, and unchecked items are pending owner actions.
   the pilot evidence, tag/Release, and archival record it references are
   owner-written. Until recorded, `docs/release-state.json` stays `stable:false`
   and the README keeps its release-candidate warning even though the target
-  version is 1.0.0.
+  version is 1.0.1.
 
 ## 1. Branch and update-channel identity
 
@@ -116,25 +118,33 @@ state, and unchecked items are pending owner actions.
       `npm run test:tools`, and `npm run test:artifact` are still green
       on a clean clone before announcing the update channel as healthy.
 
-## 7. DEV retirement and archival (owner only, manual)
+## 7. DEV retirement (owner only, manual, backups preserved)
 
 The sibling TravianAttackAlertDEV directory (one level above the repo root)
 is read-only migration input: it seeded `src/` and the fixtures, and it is
 non-authoritative from the cutover onward. `src/` is the editable authority;
 `dist/` is the generated artifact. Nothing in that directory is normative
-for 1.0.0.
+for 1.0.1. The owner already removed the legacy DEV snapshot on 2026-09-23
+and cancelled the archive program; this section records that retirement and
+how its attestation is completed.
 
 - [ ] Never commit any file from that directory to the public repo.
 - [ ] Never delete or upload backups — neither from that directory nor from
-      `backups/` (gitignored) anywhere else.
+      `backups/` (gitignored) anywhere else. Backups and any other
+      irreplaceable owner payload are excluded from every deletion
+      instruction, including the DEV retirement.
 - [ ] Never delete that directory, its files, or its backups without
       explicit owner consent.
-- [ ] Private archival outside the repo: the owner copies it to private
-      storage, records the date and location privately, and keeps the public
-      repo free of its bytes.
-- [ ] Retirement is recorded only in the owner-written fields of
-      `docs/release-state.json` (`devArchival`); until then `stable` stays
-      `false`.
+- [ ] Any removal of owner data is an owner-approved, explicitly scoped
+      action with a recoverable/preservation step: name the exact paths,
+      confirm that no `backups/` or other irreplaceable payload is included,
+      and keep the preservation copy until the owner signs off. There is no
+      blanket "delete the directory including backups" instruction anywhere
+      in this repository; the ordered procedure is `docs/RELEASE-RUNBOOK.md`
+      Stage 4.
+- [ ] Record the retirement (timestamp, actor, record digest) and attest
+      `devArchival` in the owner-written fields of `docs/release-state.json`;
+      until then `stable` stays `false`.
 
 ## 8. Authenticated settings reconciliation (owner-only, all unchecked)
 
@@ -146,24 +156,47 @@ digest-bound to the tagged commit, per §9); no automated job can verify or
 change these settings. Each one is an owner-only checklist item, not an implied
 setting.
 
+Fresh authenticated read-only comparison (GET-only with the owner's token,
+2026-09-23; no setting was changed, and the response digests are recorded in
+the Task 34 evidence root):
+
+- Branch protection detail is now observable: require-pull-request is enabled
+  with `required_approving_review_count: 0`, stale approvals dismissed, force
+  pushes and deletions blocked, `enforce_admins` enabled, and linear history
+  disabled. Owner-only recommendation: raise the required approving review
+  count to at least 1 — the observed 0 does not meet the §2 target.
+- Required status checks: exactly the four contexts above; the Task 34
+  `offline-node-22` CI job is informational and is NOT a required check, so it
+  implies no branch-protection change.
+- Actions policy: default workflow permissions are already `read` (target met);
+  `allowed_actions` is `all` and `sha_pinning_required` is `false`. Owner-only
+  recommendation: restrict allowed actions to selected/verified actions and
+  enable the SHA-pinning requirement.
+- Private vulnerability reporting: observed `enabled: false` (target =
+  enabled).
+- Immutable releases: observed `enabled: false` (target = enabled).
+- Release environment: none exists (target = protected `release` environment).
+- Tag protection / ruleset: no ruleset installed (target = a `v*` tag ruleset);
+  zero remote tags and no GitHub Release exist.
+
 - [ ] Required status checks: observed via the public API as protected with
       the four exact contexts `offline-node-18`, `offline-node-20`,
-      `browser-node-20`, and `cross-node-determinism`; target state = exactly
-      those four checks required on `release/public-1.0.0`. Owner attestation
-      pending an authenticated read — the anonymous protection endpoint is 401.
-- [ ] Required approving reviews (approval count): the public API does not
-      expose review requirements; target state = at least 1 approving review,
-      stale approvals dismissed on new commits. Owner attestation pending.
-- [ ] Private vulnerability reporting: the public API reported
-      `enabled: false` on 2026-09-23; target state = enabled, so the private
+      `browser-node-20`, and `cross-node-determinism`, and confirmed by the
+      authenticated read; target state = exactly those four checks required on
+      `release/public-1.0.0`. Owner attestation pending.
+- [ ] Required approving reviews (approval count): observed as 0 with stale
+      approvals dismissed; target state = at least 1 approving review. Owner
+      attestation pending.
+- [ ] Private vulnerability reporting: observed as `enabled: false` on
+      2026-09-23; target state = enabled, so the private
       link in `SECURITY.md` and `.github/ISSUE_TEMPLATE/config.yml` works
       (Settings → Code security). Owner attestation pending.
 - [ ] Protected `release` environment: no environment exists on 2026-09-23
       (`GET /environments` reports `total_count: 0`); target state = an
       environment named `release` with a required reviewer, prevent
       self-review, and a deployment tag rule `v*`. Owner attestation pending.
-- [ ] Immutable releases: the public API does not expose this (401
-      anonymously); target state = immutable releases enabled, so a published
+- [ ] Immutable releases: observed as `enabled: false` on 2026-09-23; target
+      state = immutable releases enabled, so a published
       asset or tag cannot be silently replaced. Owner attestation pending.
 - [ ] Tag protection / ruleset: no repository ruleset is installed
       (`GET /rulesets` returns `[]`); target state = a ruleset (or tag
