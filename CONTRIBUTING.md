@@ -1,10 +1,10 @@
 # Contributing to Travian Attack Alert
 
-Thank you for considering a contribution. This project is a Tampermonkey userscript (release candidate `1.0.1` / `taa-1.0.1`) with a small, strict workflow. Please read this file, `AGENTS.md`, and `SECURITY.md` before opening a pull request.
+Thank you for considering a contribution. This project is a Tampermonkey userscript (release candidate `1.0.2` / `taa-1.0.2`) with a small, strict workflow. Please read this file, `AGENTS.md`, and `SECURITY.md` before opening a pull request.
 
 ## Ground rules
 
-- **Single source of truth:** `package.json` (`version`, currently `1.0.1`). Version bumps follow semver (patch = fix, minor = new feature, major = storage/schema break) and must sync `package.json`, the generated `dist/` header, `RELEASE` records, `tools/*` fallbacks, test assertions, and `README.md`.
+- **Single source of truth:** `package.json` (`version`, currently `1.0.2`). Version bumps follow semver (patch = fix, minor = new feature, major = storage/schema break) and must sync `package.json`, the generated `dist/` header, `RELEASE` records, `tools/*` fallbacks, test assertions, and `README.md`.
 - **Node.js >= 18** (see `.node-version` and `package.json` `engines`). Dependencies are installed with `npm ci`.
 - **Tests are `node:test`, offline only.** `npm test` must be fully green (zero failures). Fixtures are deterministic loopback fixtures — never add real webhooks or requests to Travian.
 - **Build with esbuild via `npm run build`.** `src/` is the editable authority; `dist/travian-attack-alert.user.js` is generated and must never be hand-edited.

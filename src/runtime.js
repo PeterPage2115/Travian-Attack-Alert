@@ -1,7 +1,7 @@
 (function() {
   "use strict";
-const RELEASE_VERSION = "1.0.1";
-const RELEASE_ID = "taa-1.0.1";
+const RELEASE_VERSION = "1.0.2";
+const RELEASE_ID = "taa-1.0.2";
   const CONFIG = {
     // Losowe odświeżanie strony co 1–2 minuty.
     reloadMinSeconds: 60,

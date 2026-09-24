@@ -18,7 +18,7 @@ Start with the English [`README.md`](../README.md) (primary): what the script do
 - Code-review verification (standing rules): [`CODE-REVIEW.md`](CODE-REVIEW.md) — the 11 verified items and their existing gates.
 - Development environment (WSL/DrvFS and Linux): [`DEVELOPMENT.md`](DEVELOPMENT.md) — Node/npm selection, `npm ci`, Playwright test tiers, evidence roots, frozen provenance, line endings, protected canonical checkout.
 - Repository settings owner checklist: [`REPOSITORY-SETTINGS.md`](REPOSITORY-SETTINGS.md) — observed public state, required targets, and owner attestations.
-- Machine-readable release state (owner gates): [`release-state.json`](release-state.json) — `stable: true` (owner-attested 2026-09-25); `publication.tagAndRelease` stays false until the tag and Release exist.
+- Machine-readable release state (owner gates): [`release-state.json`](release-state.json) — the live `1.0.2` candidate (`stable: false`, every owner gate still unrecorded); the published `1.0.1` record (`stable: true`, `publication.tagAndRelease` recorded) is archived under release history.
 - Changelog: [`../CHANGELOG.md`](../CHANGELOG.md).
 
 ## Release history (historical archive, not current proof)
@@ -29,6 +29,7 @@ Unpublished 1.0.0 release-candidate records, kept with honest archive headers (p
 - [`release-history/1.0.0-rc/VERDICTS.md`](release-history/1.0.0-rc/VERDICTS.md)
 - [`release-history/1.0.0-rc/PILOT.md`](release-history/1.0.0-rc/PILOT.md)
 - [`release-history/1.0.0-rc/RELEASE-CHECKLIST.md`](release-history/1.0.0-rc/RELEASE-CHECKLIST.md)
+- [`release-history/1.0.1/release-state.json`](release-history/1.0.1/release-state.json) — byte-identical archive of the published, owner-attested `1.0.1` release-state record (`stable: true`, `publication.tagAndRelease` recorded), kept as history while the live `release-state.json` tracks the staged `1.0.2` candidate.
 
 ## Entry points
 

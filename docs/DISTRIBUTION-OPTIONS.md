@@ -1,6 +1,6 @@
 # Distribution options — sourced decision record (no migration)
 
-Status: **decision record only — no distribution change is performed or authorized by this page.** Recorded 2026-09-24 against identity `1.0.1` / `taa-1.0.1` (`package.json`). This page generates no extension manifest, extension code, PWA code, dependency, storage migration, or release channel. It compares four shells for the existing runtime, cites the constraints to primary sources, marks the policy questions unresolved, and recommends keeping the tested Tampermonkey userscript as the current release artifact.
+Status: **decision record only — no distribution change is performed or authorized by this page.** Recorded 2026-09-24 against identity `1.0.1` / `taa-1.0.1` (`package.json` as of that date; the staged identity is now `1.0.2` / `taa-1.0.2`). This page generates no extension manifest, extension code, PWA code, dependency, storage migration, or release channel. It compares four shells for the existing runtime, cites the constraints to primary sources, marks the policy questions unresolved, and recommends keeping the tested Tampermonkey userscript as the current release artifact.
 
 Superseded historical drafts are not authorization: `.omo/drafts/attackalert-productization.md` and `.omo/drafts/privacy-first-travian-product.md` are **unapproved planning inputs** (both carry `status: awaiting-approval`). They are outside the Git checkout and may be absent; nothing in this record depends on them being present.
 

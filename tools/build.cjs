@@ -15,7 +15,7 @@ const DIST_DIR = path.join(ROOT, 'dist');
 const DIST_BASENAME = 'travian-attack-alert.user.js';
 const DIST_FILE = path.join(DIST_DIR, DIST_BASENAME);
 const DIST_SIDECAR = `${DIST_FILE}.sha256`;
-const FALLBACK_VERSION = '1.0.1';
+const FALLBACK_VERSION = '1.0.2';
 
 // Sole generated-output owner: dist runtime, sidecar, metadata.json, and the
 // generated-and-ignored root module-manifest.json are written only here.

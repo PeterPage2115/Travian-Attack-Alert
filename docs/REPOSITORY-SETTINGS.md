@@ -43,7 +43,7 @@ state, and unchecked items are pending owner actions.
   the pilot evidence, tag/Release, and archival record it references are
   owner-written. Until recorded, `docs/release-state.json` stays `stable:false`
   and the README keeps its release-candidate warning even though the target
-  version is 1.0.1.
+  version is 1.0.2.
 
 ## 1. Branch and update-channel identity
 
@@ -124,7 +124,7 @@ The sibling TravianAttackAlertDEV directory (one level above the repo root)
 is read-only migration input: it seeded `src/` and the fixtures, and it is
 non-authoritative from the cutover onward. `src/` is the editable authority;
 `dist/` is the generated artifact. Nothing in that directory is normative
-for 1.0.1. The owner already removed the legacy DEV snapshot on 2026-09-23
+for 1.0.2. The owner already removed the legacy DEV snapshot on 2026-09-23
 and cancelled the archive program; this section records that retirement and
 how its attestation is completed.
 
