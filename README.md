@@ -4,12 +4,7 @@ Alliance attack, raid, and departure alerts from Travian to your own Discord ser
 
 **English** | [Polski](README.pl.md)
 
-<p align="center">
-  <a href="https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/PeterPage2115/Travian-Attack-Alert?label=release&amp;color=2ea44f"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/PeterPage2115/Travian-Attack-Alert?color=blue"></a>
-  <a href="https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest/download/travian-attack-alert.user.js"><img alt="Install userscript" src="https://img.shields.io/badge/install-userscript-2ea44f"></a>
-  <a href="https://github.com/PeterPage2115/Travian-Attack-Alert/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/PeterPage2115/Travian-Attack-Alert/ci.yml?label=CI"></a>
-</p>
+> **Release:** `1.0.2` (stable) · **License:** MIT · **[Install ↓](#install)** · **[Documentation](docs/README.md)**
 
 ![Synthetic screenshot of the Travian Attack Alert operations panel: the Alliance alert monitor dialog with the Overview, Players, Alerts, and Diagnostics tabs, leader status, accepted-scan status lines, and an established baseline.](docs/assets/panel-overview.png)
 

@@ -66,6 +66,7 @@ const ALLOWLIST = [
   'CHANGELOG.md',
   'CONTRIBUTING.md',
   'README.md',
+  'README.pl.md',
   'config/',
   'dist/',
   'docs/',

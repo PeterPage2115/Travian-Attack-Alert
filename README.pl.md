@@ -4,12 +4,7 @@ Alerty o atakach, rajdach i odejściach sojuszników z Traviana prosto na Twój 
 
 [English](README.md) | **Polski**
 
-<p align="center">
-  <a href="https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest"><img alt="Najnowsze wydanie" src="https://img.shields.io/github/v/release/PeterPage2115/Travian-Attack-Alert?label=release&amp;color=2ea44f"></a>
-  <a href="LICENSE"><img alt="Licencja: MIT" src="https://img.shields.io/github/license/PeterPage2115/Travian-Attack-Alert?color=blue"></a>
-  <a href="https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest/download/travian-attack-alert.user.js"><img alt="Zainstaluj userscript" src="https://img.shields.io/badge/install-userscript-2ea44f"></a>
-  <a href="https://github.com/PeterPage2115/Travian-Attack-Alert/actions/workflows/ci.yml"><img alt="Status CI" src="https://img.shields.io/github/actions/workflow/status/PeterPage2115/Travian-Attack-Alert/ci.yml?label=CI"></a>
-</p>
+> **Wydanie:** `1.0.2` (stabilne) · **Licencja:** MIT · **[Instalacja ↓](#instalacja)** · **[Dokumentacja](docs/README.md)**
 
 ![Syntetyczny zrzut ekranu panelu operacyjnego Travian Attack Alert: okno monitora alertów sojuszu z kartami Overview, Players, Alerts i Diagnostics, statusem lidera, liniami zaakceptowanego skanu i ustaloną linią bazową.](docs/assets/panel-overview.png)
 
