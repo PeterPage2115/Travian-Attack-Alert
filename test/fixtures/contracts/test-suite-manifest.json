@@ -476,7 +476,7 @@
       "id": "suite:test/tools/release-workflow.test.cjs",
       "path": "test/tools/release-workflow.test.cjs",
       "classification": "tool",
-      "expectedExecutionCount": 36,
+      "expectedExecutionCount": 31,
       "coverage": [
         "repository-tooling",
         "release-workflow"
@@ -612,7 +612,7 @@
   ],
   "totals": {
     "suiteCount": 59,
-    "expectedExecutionCount": 1275,
+    "expectedExecutionCount": 1270,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -628,7 +628,7 @@
       },
       "tool": {
         "suiteCount": 25,
-        "expectedExecutionCount": 398
+        "expectedExecutionCount": 393
       }
     }
   },

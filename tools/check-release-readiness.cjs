@@ -11,7 +11,7 @@
 //      seven declared assets and every byte re-hashes to the digests recorded
 //      in `release-manifest.json` and `SHA256SUMS`.
 //
-//   2. The owner-gated PUBLICATION READINESS evaluator (`evaluateReadiness`).
+//   2. The solo-owner PUBLICATION READINESS evaluator (`evaluateReadiness`).
 //      It consumes a self-contained, machine-readable readiness bundle and
 //      reports exactly one of four states WITHOUT mutating GitHub:
 //        BLOCKED                    — a prerequisite is absent (earliest typed
@@ -26,15 +26,14 @@
 //      It validates the clean commit, exact tag, branch ancestry/protection/
 //      checks, update-channel HTTP/SHA, pilot evidence, the Task 23 seed and
 //      Task 31 update receipts, the owner-executed DEV-deletion record with its
-//      `devArchival` attestation, the release environment checklist, immutable
-//      releases, owner evidence bound to the canonical repository identity and
-//      the recorded release head, owner fields, assets/checksums, draft state
-//      and published/attestation verification. Owner evidence is accepted only
-//      when its repository, ref, tag and commit match the canonical identity;
-//      publication.tagAndRelease is accepted only as a structured record whose
-//      tag/version/releaseId match the identity and which carries verification
-//      evidence. `--offline-fixture <path>` evaluates a committed bundle
-//      deterministically (no git, no network).
+//      `devArchival` attestation, that the release environment exists (solo
+//      mode requires no reviewer, environment secret or settings-read token),
+//      immutable releases, owner fields, assets/checksums, draft state and
+//      published/attestation verification. publication.tagAndRelease is
+//      accepted only as a structured record whose tag/version/releaseId match
+//      the identity and which carries verification evidence. `--offline-fixture
+//      <path>` evaluates a committed bundle deterministically (no git, no
+//      network).
 //
 // The seven assets (flat, basename-only):
 //   1. travian-attack-alert.user.js          generated userscript
@@ -126,7 +125,6 @@ const READINESS_BUNDLE_KEYS = [
   'devDeletion',
   'releaseEnvironment',
   'immutableReleases',
-  'ownerEvidence',
   'releaseState',
   'assets',
   'draft',
@@ -164,24 +162,6 @@ function validateReadinessBundle(bundle) {
     }
   }
   return bundle;
-}
-
-// Owner evidence is only accepted when it carries the four required binding
-// fields plus a read-only API response digest; no secret value is ever read.
-// Every binding field must match the canonical release identity and the
-// recorded release head, so evidence harvested from another repository or ref
-// can never satisfy readiness.
-function ownerEvidenceComplete(ownerEvidence, identity, repository) {
-  return isTimestamp(ownerEvidence.timestamp)
-    && isNonEmptyString(ownerEvidence.actor)
-    && isNonEmptyString(ownerEvidence.repository)
-    && ownerEvidence.repository === identity.repository
-    && (ownerEvidence.ref === identity.tag || ownerEvidence.ref === `refs/tags/${identity.tag}`)
-    && ownerEvidence.tag === identity.tag
-    && isHex(ownerEvidence.commit, 40)
-    && ownerEvidence.commit === identity.commit
-    && ownerEvidence.commit === repository.headCommit
-    && isHex(ownerEvidence.apiResponseDigest, 64);
 }
 
 // `publication.tagAndRelease` must be a structured record of the published
@@ -302,23 +282,12 @@ function evaluateReadiness(bundle) {
     releaseEnvironment.exists === true
       && releaseEnvironment.name === 'release'
       && releaseEnvironment.autoCreated !== true
-      && releaseEnvironment.requiredReviewer === true
-      && releaseEnvironment.distinctReviewer === true
-      && releaseEnvironment.preventSelfReview === true
-      && releaseEnvironment.tagPolicyVStar === true
-      && releaseEnvironment.environmentSecretsOnly === true
-      && releaseEnvironment.approvalProofSecret === true
-      && releaseEnvironment.settingsReadToken === true
-      && isTimestamp(releaseEnvironment.settingsReadTokenExpiresAt),
-    'the protected release environment must have a distinct reviewer, prevent self-review, a v* tag policy and environment-only short-lived secrets');
+      && releaseEnvironment.tagPolicyVStar === true,
+    'solo mode: the release environment must exist (name release, not auto-created) with a v* tag policy; no reviewer, environment secret or settings-read token is required');
 
   record('pre-tag', 'immutable-releases', 'immutable-releases-missing',
     immutableReleases.enabled === true && isHex(immutableReleases.evidenceDigest, 64),
     'immutable releases must be enabled with digest-bound evidence');
-
-  record('pre-tag', 'owner-evidence', 'owner-evidence-incomplete',
-    ownerEvidenceComplete(bundle.ownerEvidence, identity, repository),
-    'owner evidence must bind timestamp, actor, the canonical repository, the exact release tag ref/commit and a read-only API response digest');
 
   record('pre-tag', 'release-state', 'release-state-not-ready',
     releaseState.schemaVersion === 2
@@ -455,9 +424,8 @@ function describeBlocker(code) {
     'seed-receipt-missing': 'the Task 23 seed receipt is absent or not digest-bound',
     'update-receipt-missing': 'the Task 31 update receipt is absent or not digest-bound',
     'dev-archival-missing': 'the owner DEV-deletion record with devArchival attestation is absent',
-    'release-environment-missing': 'the protected release environment is absent or incomplete',
+    'release-environment-missing': 'the release environment is absent or lacks its v* tag policy',
     'immutable-releases-missing': 'immutable releases are not enabled with evidence',
-    'owner-evidence-incomplete': 'an owner evidence item is missing timestamp/actor/ref/API digest',
     'release-state-not-ready': 'schema-v2 release state is not stable:true with every pre-publication gate',
     'assets-unverified': 'the exact release assets are not present or do not match the artifact digest',
     'checksum-mismatch': 'a release asset checksum or published asset digest does not match',
@@ -790,7 +758,6 @@ module.exports = {
   isPlainName,
   evaluateReadiness,
   validateReadinessBundle,
-  ownerEvidenceComplete,
   publicationTagAndReleaseValid,
   READINESS_STATES,
   PRE_PUBLICATION_GATES,
