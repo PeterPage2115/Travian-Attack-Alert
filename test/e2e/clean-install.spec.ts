@@ -43,7 +43,7 @@ import type { Browser, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { installArtifactRuntime, installLoopbackTransport, warmupLoopbackTransport } from './runtime-bootstrap';
+import { installArtifactRuntime, installLoopbackTransport, warmupLoopbackTransport, writeEvidencePhase as writeEvidencePhaseShared } from './runtime-bootstrap';
 
 const DIST = '/dist/travian-attack-alert.user.js';
 const HTTPS_ORIGIN = 'https://127.0.0.1:8898';
@@ -72,18 +72,18 @@ function consoleErrors(page: Page): string[] {
   return (page as unknown as { __consoleErrors: string[] }).__consoleErrors ?? [];
 }
 
-function writeEvidencePhase(phase: string, value: Record<string, unknown>): void {
-  fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
-  const existing = fs.existsSync(EVIDENCE_PATH) ? JSON.parse(fs.readFileSync(EVIDENCE_PATH, 'utf8')) : {};
-  fs.writeFileSync(EVIDENCE_PATH, `${JSON.stringify({ ...existing, [phase]: value }, null, 2)}\n`);
+function writeEvidencePhase(phase: string, value: Record<string, unknown>, workerIndex: number): void {
+  writeEvidencePhaseShared(EVIDENCE_PATH, phase, value, workerIndex);
 }
 
-async function serverRequestCount(page: Page): Promise<number> {
-  return await page.evaluate(async () => (await (await fetch('/e2e-log')).json()).discordRequests?.length ?? 0);
+async function serverRequestCount(page: Page, ns: string | number = ''): Promise<number> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  return await page.evaluate(async (q: string) => (await (await fetch(`/e2e-log${q}`)).json()).discordRequests?.length ?? 0, nsQuery);
 }
 
-async function serverRequests(page: Page): Promise<Array<{ body: unknown }>> {
-  const log = await page.evaluate(async () => await (await fetch('/e2e-log')).json());
+async function serverRequests(page: Page, ns: string | number = ''): Promise<Array<{ body: unknown }>> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  const log = await page.evaluate(async (q: string) => await (await fetch(`/e2e-log${q}`)).json(), nsQuery);
   return (log.discordRequests ?? []) as Array<{ body: unknown }>;
 }
 
@@ -93,8 +93,8 @@ async function serverRequests(page: Page): Promise<Array<{ body: unknown }>> {
 // A stale idle keep-alive socket can throw ECONNRESET before the fixture logs
 // the POST; the shared helper retries only while the server log is still empty,
 // so the warm-up always adds EXACTLY one entry (never two).
-async function warmupTransport(page: Page): Promise<void> {
-  await warmupLoopbackTransport(page, serverRequestCount);
+async function warmupTransport(page: Page, ns: string | number = ''): Promise<void> {
+  await warmupLoopbackTransport(page, (p) => serverRequestCount(p, ns), ns);
 }
 
 async function waitSnapshot(page: Page, timeout = 10_000): Promise<SnapshotEvent[]> {
@@ -155,8 +155,8 @@ async function restoreGM(page: Page, snap: string): Promise<void> {
 
 // Re-installs the loopback transport after a navigation (the fixture page's
 // inline fake-ack stub would otherwise short-circuit artifact dispatch).
-async function useLoopbackTransport(page: Page): Promise<void> {
-  await installLoopbackTransport(page);
+async function useLoopbackTransport(page: Page, ns: string | number = ''): Promise<void> {
+  await installLoopbackTransport(page, ns);
 }
 
 async function injectDist(page: Page): Promise<void> {
@@ -194,7 +194,8 @@ async function transportTargets(page: Page): Promise<string[]> {
 }
 
 test.describe('clean install — first scan commits baseline, sends nothing', () => {
-  test('empty start: first accepted scan persists baseline/roster, zero Discord requests', async ({ browser }) => {
+  test('empty start: first accepted scan persists baseline/roster, zero Discord requests', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     const target = await newHttpsPage(browser);
     const { page } = target;
     try {
@@ -206,11 +207,11 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       expect(await page.evaluate(() => Object.keys(window.__TAA_GM_VALUES__ ?? {}))).toEqual([]);
 
       await stagePrep(page, { rename101: true });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
       // No post-install storage assertion here: install injects the artifact
       // immediately, so any read already races its first legitimate writes.
       // Empty-start is proven by the pre-install reads above.
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       const events = await waitSnapshot(page);
       expect(events.filter((e) => e.kind === 'snapshot' && e.status === 'authoritative')).toHaveLength(1);
 
@@ -226,7 +227,7 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
 
       // Zero Discord traffic: neither the in-page transport log nor the loopback sink saw anything.
       expect(await transportTargets(page)).toEqual([]);
-      expect(await serverRequestCount(page)).toBe(0);
+      expect(await serverRequestCount(page, ns)).toBe(0);
 
       // UI distinguishes script-running / baseline-established / scan-accepted / webhook-missing.
       await openPanel(page);
@@ -257,13 +258,14 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
         rosterHosts: Object.keys(JSON.parse(roster as string)),
         discordRequestsAfterFirstScan: 0,
         overview: { scanResult: 'accepted/authoritative', queue: '0 / 0', lastSent: 'Not recorded' },
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }
   });
 
-  test('synthetic +1 attack for 101 delivers exactly one loopback request, then acknowledges', async ({ browser }) => {
+  test('synthetic +1 attack for 101 delivers exactly one loopback request, then acknowledges', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(90_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
@@ -274,11 +276,11 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       await installPrepHook(page);
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await stagePrep(page, { rename101: true });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
-      await useLoopbackTransport(page);
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
+      await useLoopbackTransport(page, ns);
       await waitSnapshot(page);
-      expect(await serverRequestCount(page)).toBe(0);
-      await warmupTransport(page);
+      expect(await serverRequestCount(page, ns)).toBe(0);
+      await warmupTransport(page, ns);
 
       // Cycle 2: reload (GM restored = persistent Tampermonkey GM), same rename plus
       // the synthetic attack icon, webhook configured. The scan must QUEUE the delta
@@ -286,14 +288,14 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       const cycle2events = await waitSnapshot(page);
       expect(cycle2events.filter((e) => e.kind === 'snapshot' && e.status === 'authoritative')).toHaveLength(1);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);
-      expect(await serverRequestCount(page)).toBe(1); // warmup only — product queued, did not send
+      expect(await serverRequestCount(page, ns)).toBe(1); // warmup only — product queued, did not send
       const queued = await monitorEnvelope(page);
       expect((queued.pending[0] as { playerId?: string; addedAttackCount?: number }).playerId).toBe('101');
       expect((queued.pending[0] as { playerId?: string; addedAttackCount?: number }).addedAttackCount).toBe(1);
@@ -303,13 +305,13 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
-      await expect.poll(() => serverRequestCount(page), { timeout: 20_000 }).toBe(2);
-      const requests = await serverRequests(page);
+      await expect.poll(() => serverRequestCount(page, ns), { timeout: 20_000 }).toBe(2);
+      const requests = await serverRequests(page, ns);
       const productRequests = requests.slice(1);
       expect(productRequests).toHaveLength(1);
       const serialized = JSON.stringify(productRequests[0].body);
@@ -344,13 +346,14 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
         productRequests: 1,
         productRequestBody: productRequests[0].body,
         terminalAcknowledged: 1,
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }
   });
 
-  test('reload with identical state duplicates nothing; queue and ledger intact', async ({ browser }) => {
+  test('reload with identical state duplicates nothing; queue and ledger intact', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(120_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
@@ -359,14 +362,14 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       await installPrepHook(page);
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await stagePrep(page, { rename101: true });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
-      await useLoopbackTransport(page);
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
+      await useLoopbackTransport(page, ns);
       await waitSnapshot(page);
-      await warmupTransport(page);
+      await warmupTransport(page, ns);
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
@@ -375,12 +378,12 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
-      await expect.poll(() => serverRequestCount(page), { timeout: 20_000 }).toBe(2);
+      await expect.poll(() => serverRequestCount(page, ns), { timeout: 20_000 }).toBe(2);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(0);
       await expect.poll(async () => (await monitorEnvelope(page)).terminal.filter((t) => t.terminalStatus === 'acknowledged').length, { timeout: 10_000 }).toBe(1);
       const before = await monitorEnvelope(page);
@@ -391,14 +394,14 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       const reloadEvents = await waitSnapshot(page);
       expect(reloadEvents.filter((e) => e.kind === 'snapshot' && e.status === 'authoritative')).toHaveLength(1);
       await page.waitForTimeout(8000); // settle past startup flush + scan commit
-      expect(await serverRequestCount(page)).toBe(2);
+      expect(await serverRequestCount(page, ns)).toBe(2);
       expect(await transportTargets(page)).toHaveLength(0);
       const after = await monitorEnvelope(page);
       expect(after.pending).toEqual([]);
@@ -413,21 +416,22 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
         serverRequestsAfterReload: 2,
         acknowledgedTerminal: 1,
         baseline101Unchanged: true,
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }
   });
 
-  test('malformed DOM is rejected (malformed-count) and creates no baseline record', async ({ browser }) => {
+  test('malformed DOM is rejected (malformed-count) and creates no baseline record', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     const target = await newHttpsPage(browser);
     const { page } = target;
     try {
       await installPrepHook(page);
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await stagePrep(page, { malformedIcon: true, iconRow: '/profile/900001' });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
-      await useLoopbackTransport(page);
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
+      await useLoopbackTransport(page, ns);
       const events = await waitSnapshot(page);
       expect(events.filter((e) => e.kind === 'snapshot' && e.status === 'rejected' && e.reason === 'malformed-count')).toHaveLength(1);
 
@@ -435,7 +439,7 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       // localStorage holds no roster. Only route/lease/diagnostics traces may exist.
       expect(await page.evaluate(() => Object.keys(window.__TAA_GM_VALUES__ ?? {}))).toEqual([]);
       expect(await page.evaluate((key: string) => localStorage.getItem(key), ROSTER_KEY)).toBeNull();
-      expect(await serverRequestCount(page)).toBe(0);
+      expect(await serverRequestCount(page, ns)).toBe(0);
       expect(consoleErrors(page)).toEqual([]);
 
       writeEvidencePhase('malformed-rejected-no-baseline', {
@@ -443,13 +447,14 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
         gmKeys: [],
         roster: null,
         discordRequests: 0,
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }
   });
 
-  test('missing member table is rejected (readiness-timeout) and never becomes a zero baseline', async ({ browser }) => {
+  test('missing member table is rejected (readiness-timeout) and never becomes a zero baseline', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(60_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
@@ -457,8 +462,8 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       await installPrepHook(page);
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await stagePrep(page, { removeTable: true });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
-      await useLoopbackTransport(page);
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
+      await useLoopbackTransport(page, ns);
       await expect.poll(async () => await page.evaluate(() => {
         const stored = localStorage.getItem('travianAllianceDiagnostics_v2') || '{}';
         const diagnostics = JSON.parse(stored) as Record<string, { records?: Array<{ reason?: string; stage?: string; status?: string }> }>;
@@ -472,7 +477,7 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       expect(reasons).toContain('readiness-timeout');
       expect(await page.evaluate(() => Object.keys(window.__TAA_GM_VALUES__ ?? {}))).toEqual([]);
       expect(await page.evaluate((key: string) => localStorage.getItem(key), ROSTER_KEY)).toBeNull();
-      expect(await serverRequestCount(page)).toBe(0);
+      expect(await serverRequestCount(page, ns)).toBe(0);
       expect(consoleErrors(page)).toEqual([]);
 
       writeEvidencePhase('missing-table-rejected-no-baseline', {
@@ -480,13 +485,14 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
         gmKeys: [],
         roster: null,
         discordRequests: 0,
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }
   });
 
-  test('missing webhook keeps a recoverable pending queue with no false delivery-success', async ({ browser }) => {
+  test('missing webhook keeps a recoverable pending queue with no false delivery-success', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(90_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
@@ -497,23 +503,23 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       await installPrepHook(page);
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await stagePrep(page, { rename101: true });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
-      await useLoopbackTransport(page);
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
+      await useLoopbackTransport(page, ns);
       await waitSnapshot(page);
-      expect(await serverRequestCount(page)).toBe(0);
+      expect(await serverRequestCount(page, ns)).toBe(0);
 
       // Cycle 2: the +1 delta is detected but the webhook is still missing.
       // The record stays pending (recoverable, never acknowledged) and nothing is sent.
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await injectDist(page);
       await waitSnapshot(page);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);
       await page.waitForTimeout(5000); // settle: no flush vector fires without a webhook
-      expect(await serverRequestCount(page)).toBe(0);
+      expect(await serverRequestCount(page, ns)).toBe(0);
       const queued = await monitorEnvelope(page);
       expect((queued.pending[0] as { playerId?: string }).playerId).toBe('101');
       expect(queued.failed).toEqual([]);
@@ -527,17 +533,17 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       expect(await overlayMetric(page, 'Diagnostics', 'taa-delivery-totals-value')).toBe('1 / 0 / 0 / 0 / 0');
 
       // Recoverable: configuring the webhook later delivers the SAME record once.
-      await warmupTransport(page);
+      await warmupTransport(page, ns);
       gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
-      await expect.poll(() => serverRequestCount(page), { timeout: 20_000 }).toBe(2);
-      const productRequests = (await serverRequests(page)).slice(1);
+      await expect.poll(() => serverRequestCount(page, ns), { timeout: 20_000 }).toBe(2);
+      const productRequests = (await serverRequests(page, ns)).slice(1);
       expect(productRequests).toHaveLength(1);
       expect(JSON.stringify(productRequests[0].body)).toContain('/profile/101');
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(0);
@@ -549,7 +555,7 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
         queuedWhileMissing: 1,
         deliveredAfterWebhookConfigured: 1,
         falseDeliverySuccess: false,
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }

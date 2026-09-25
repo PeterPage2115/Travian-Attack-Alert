@@ -32,7 +32,7 @@ import type { Browser, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { installArtifactRuntime, installLoopbackTransport } from './runtime-bootstrap';
+import { installArtifactRuntime, installLoopbackTransport, writeEvidencePhase as writeEvidencePhaseShared } from './runtime-bootstrap';
 
 const DIST = '/dist/travian-attack-alert.user.js';
 const HTTPS_ORIGIN = 'https://127.0.0.1:8898';
@@ -80,21 +80,20 @@ function redactEvidenceSecrets(value: unknown): unknown {
   return value;
 }
 
-function writeEvidencePhase(phase: string, value: Record<string, unknown>): void {
-  fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
-  const existing = fs.existsSync(EVIDENCE_PATH) ? JSON.parse(fs.readFileSync(EVIDENCE_PATH, 'utf8')) : {};
-  fs.writeFileSync(EVIDENCE_PATH, `${JSON.stringify(redactEvidenceSecrets({ ...existing, [phase]: value }), null, 2)}\n`);
+function writeEvidencePhase(phase: string, value: Record<string, unknown>, workerIndex: number): void {
+  writeEvidencePhaseShared(EVIDENCE_PATH, phase, value, workerIndex, redactEvidenceSecrets);
 }
 
 type WireRequest = { attempt: number; startedAt: number; endedAt: number; body: Record<string, unknown> };
 
-async function wireRequests(page: Page): Promise<WireRequest[]> {
-  const log = await page.evaluate(async () => await (await fetch('/e2e-log')).json());
+async function wireRequests(page: Page, ns: string | number = ''): Promise<WireRequest[]> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  const log = await page.evaluate(async (q: string) => await (await fetch(`/e2e-log${q}`)).json(), nsQuery);
   return (log.discordRequests ?? []) as WireRequest[];
 }
 
-async function wireCount(page: Page): Promise<number> {
-  return (await wireRequests(page)).length;
+async function wireCount(page: Page, ns: string | number = ''): Promise<number> {
+  return (await wireRequests(page, ns)).length;
 }
 
 async function waitSnapshot(page: Page, timeout = 10_000): Promise<void> {
@@ -144,8 +143,8 @@ async function restoreGM(page: Page, snap: string): Promise<void> {
   }, snap);
 }
 
-async function useLoopbackTransport(page: Page): Promise<void> {
-  await installLoopbackTransport(page);
+async function useLoopbackTransport(page: Page, ns: string | number = ''): Promise<void> {
+  await installLoopbackTransport(page, ns);
 }
 
 async function injectDist(page: Page): Promise<void> {
@@ -190,7 +189,8 @@ function lineageOf(record: Record<string, unknown>): Record<string, unknown> {
 }
 
 test.describe('artifact dispatch — durable delivery and recovery', () => {
-  test('429 retry_after:1 then 200+ID: 2 attempts ~1000 ms apart, acknowledged once', async ({ browser }) => {
+  test('429 retry_after:1 then 200+ID: 2 attempts ~1000 ms apart, acknowledged once', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(120_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
@@ -199,22 +199,22 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       await installPrepHook(page);
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await stagePrep(page, { rename101: true });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
-      await useLoopbackTransport(page);
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
+      await useLoopbackTransport(page, ns);
       await waitSnapshot(page);
-      expect(await wireCount(page)).toBe(0);
+      expect(await wireCount(page, ns)).toBe(0);
 
       // Cycle 2: the +1 delta queues (startup flush already ran before the scan).
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);
-      expect(await wireCount(page)).toBe(0);
+      expect(await wireCount(page, ns)).toBe(0);
 
       // Cycle 3: the startup flush delivers against the sink whose FIRST
       // attempt is 429 + retry_after:1. The artifact must retry once (~1000 ms)
@@ -222,13 +222,13 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
-      await expect.poll(() => wireCount(page), { timeout: 30_000 }).toBe(2);
-      const requests = await wireRequests(page);
+      await expect.poll(() => wireCount(page, ns), { timeout: 30_000 }).toBe(2);
+      const requests = await wireRequests(page, ns);
       const gapMs = requests[1].startedAt - requests[0].startedAt;
       expect(gapMs).toBeGreaterThanOrEqual(900);
       expect(gapMs).toBeLessThanOrEqual(20_000);
@@ -246,13 +246,14 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       writeEvidencePhase('retry-then-acknowledged', {
         wireAttempts: 2, gapMs, acknowledgedTerminal: 1,
         firstBody: requests[0].body, secondBody: requests[1].body,
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }
   });
 
-  test('queued batch survives restart with identical record, then delivers once', async ({ browser }) => {
+  test('queued batch survives restart with identical record, then delivers once', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(120_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
@@ -260,8 +261,8 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       await installPrepHook(page);
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await stagePrep(page, { rename101: true });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
-      await useLoopbackTransport(page);
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
+      await useLoopbackTransport(page, ns);
       await waitSnapshot(page);
 
       // Queue the delta (webhook configured, but the startup flush for this
@@ -269,7 +270,7 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
@@ -284,7 +285,7 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
@@ -295,19 +296,20 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       expect(lineageOf(recoverable[0])).toEqual(lineageBefore);
 
       // The same startup flush then delivers (429 + 200) and acknowledges once.
-      await expect.poll(() => wireCount(page), { timeout: 30_000 }).toBe(2);
+      await expect.poll(() => wireCount(page, ns), { timeout: 30_000 }).toBe(2);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(0);
       await expect.poll(async () => (await monitorEnvelope(page)).terminal.filter((t) => t.terminalStatus === 'acknowledged').length, { timeout: 10_000 }).toBe(1);
 
       writeEvidencePhase('restart-preserves-then-acks', {
         lineageIdentical: true, wireAttempts: 2, acknowledgedTerminal: 1,
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }
   });
 
-  test('player nicknamed @everyone never pings on the wire', async ({ browser }) => {
+  test('player nicknamed @everyone never pings on the wire', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(120_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
@@ -317,18 +319,18 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       // Nickname the row "@everyone" from the very first scan and map 101 to
       // an explicit Discord user: any ping would have to come from content.
       await stagePrep(page, { rename101: true, displayName: '@everyone' });
-      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST });
-      await useLoopbackTransport(page);
+      await installArtifactRuntime(page, { path: '/alliance/profile/members', artifactPath: DIST, ns });
+      await useLoopbackTransport(page, ns);
       await page.evaluate(([key, uid]: [string, string]) => localStorage.setItem(
         key, JSON.stringify({ '127.0.0.1': { 101: [uid] } })
       ), [MAPPINGS_KEY, MAPPED_USER] as unknown as [string, string]);
       await waitSnapshot(page);
-      expect(await wireCount(page)).toBe(0);
+      expect(await wireCount(page, ns)).toBe(0);
 
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, displayName: '@everyone', attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
@@ -338,13 +340,13 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, displayName: '@everyone', attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
-      await expect.poll(() => wireCount(page), { timeout: 30_000 }).toBe(2);
-      const requests = await wireRequests(page);
+      await expect.poll(() => wireCount(page, ns), { timeout: 30_000 }).toBe(2);
+      const requests = await wireRequests(page, ns);
       for (const req of requests) {
         const body = req.body as { content?: string; allowed_mentions?: Record<string, unknown>; embeds?: unknown[] };
         expect(body.allowed_mentions).toEqual({ users: [MAPPED_USER] });
@@ -359,7 +361,7 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       writeEvidencePhase('everyone-nickname-no-ping', {
         wireAttempts: 2, allowlist: requests[1].body.allowed_mentions,
         content: (requests[1].body as { content?: string }).content,
-      });
+      }, ns);
     } finally {
       await closeHttpsPage(target);
     }

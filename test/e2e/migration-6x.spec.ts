@@ -41,6 +41,7 @@ import { test, expect } from '@playwright/test';
 import type { Browser, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { writeEvidencePhase as writeEvidencePhaseShared } from './runtime-bootstrap';
 
 const DIST_PATH = '/dist/travian-attack-alert.user.js';
 const WORLD = 's6.example.travian.com';
@@ -105,14 +106,13 @@ function migrationTransferPreflight(input: {
   return { ok: true, reason: 'ready', message: 'Preflight passed: single disabled-old sender, site data preserved.' };
 }
 
-function writeEvidencePhase(phase: string, value: Record<string, unknown>): void {
-  fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
-  const existing = fs.existsSync(EVIDENCE_PATH) ? JSON.parse(fs.readFileSync(EVIDENCE_PATH, 'utf8')) : {};
-  fs.writeFileSync(EVIDENCE_PATH, `${JSON.stringify({ ...existing, [phase]: value }, null, 2)}\n`);
+function writeEvidencePhase(phase: string, value: Record<string, unknown>, workerIndex: number): void {
+  writeEvidencePhaseShared(EVIDENCE_PATH, phase, value, workerIndex);
 }
 
-async function serverRequestCount(page: Page): Promise<number> {
-  return await page.evaluate(async () => (await (await fetch('/e2e-log')).json()).discordRequests?.length ?? 0);
+async function serverRequestCount(page: Page, ns: string | number = ''): Promise<number> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  return await page.evaluate(async (q: string) => (await (await fetch(`/e2e-log${q}`)).json()).discordRequests?.length ?? 0, nsQuery);
 }
 
 // Loads the REAL shipped bytes with a module shim: publishes the export
@@ -170,12 +170,13 @@ test.describe('migration 6.x -> 1.0.0 owner transfer', () => {
     await browser.close();
   });
 
-  test('T1 import-flow: secret-omitting file + manual re-entry preserves webhook and merges fields', async () => {
+  test('T1 import-flow: secret-omitting file + manual re-entry preserves webhook and merges fields', async ({}, testInfo) => {
+    const ns = testInfo.workerIndex;
     const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8899' });
     const page = await context.newPage();
     try {
       await loadTransferRuntime(page);
-      const before = await serverRequestCount(page);
+      const before = await serverRequestCount(page, ns);
       const outcome = await page.evaluate(
         ({ world, oldWebhook, newWebhook, keys }) => {
           const rt = (window as unknown as { module: { exports: Record<string, (...args: never[]) => unknown> } }).module.exports as unknown as {
@@ -264,23 +265,24 @@ test.describe('migration 6.x -> 1.0.0 owner transfer', () => {
       expect(outcome.pendingUntouched).toBe(true);
       expect(outcome.siteDataPreserved).toBe(true);
       // No historical flood: zero Discord traffic across the whole flow.
-      expect(await serverRequestCount(page)).toBe(before);
+      expect(await serverRequestCount(page, ns)).toBe(before);
       expect(await fetchTrapCount(page)).toBe(0);
       writeEvidencePhase('t1-import-flow', {
         importKind: outcome.importKind, webhookPreserved: outcome.webhookPreserved,
         pendingUntouched: outcome.pendingUntouched, discordRequests: 0,
-      });
+      }, ns);
     } finally {
       await context.close();
     }
   });
 
-  test('T2 no-historical-flood: migrated queue recovers ls1:, parks lh1:, plans only new deltas', async () => {
+  test('T2 no-historical-flood: migrated queue recovers ls1:, parks lh1:, plans only new deltas', async ({}, testInfo) => {
+    const ns = testInfo.workerIndex;
     const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8899' });
     const page = await context.newPage();
     try {
       await loadTransferRuntime(page);
-      const before = await serverRequestCount(page);
+      const before = await serverRequestCount(page, ns);
       const outcome = await page.evaluate(({ world }) => {
         const rt = (window as unknown as { module: { exports: Record<string, (...args: never[]) => unknown> } }).module.exports as unknown as {
           planMonitorLegacyMigration: (legacy: unknown, snapshot: unknown, w: string) => {
@@ -355,18 +357,19 @@ test.describe('migration 6.x -> 1.0.0 owner transfer', () => {
       expect(outcome.ackedAnywhere).toBe(false);
       expect(outcome.steadyDetections).toBe(0);
       expect(outcome.deltaDetections).toBe(1);
-      expect(await serverRequestCount(page)).toBe(before);
+      expect(await serverRequestCount(page, ns)).toBe(before);
       expect(await fetchTrapCount(page)).toBe(0);
       writeEvidencePhase('t2-no-flood', {
         pending: outcome.pendingCount, inFlight: outcome.inFlightCount, history: outcome.historyCount,
         steadyDetections: outcome.steadyDetections, deltaDetections: outcome.deltaDetections, discordRequests: 0,
-      });
+      }, ns);
     } finally {
       await context.close();
     }
   });
 
-  test('T3 no-double-sender guard: both identities enabled fails the preflight loudly', async () => {
+  test('T3 no-double-sender guard: both identities enabled fails the preflight loudly', async ({}, testInfo) => {
+    const ns = testInfo.workerIndex;
     const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8899' });
     const page = await context.newPage();
     try {
@@ -401,7 +404,7 @@ test.describe('migration 6.x -> 1.0.0 owner transfer', () => {
       expect(released.reason).toBe('ready');
       writeEvidencePhase('t3-no-double-sender', {
         blockedReason: blocked.reason, releasedReason: released.reason,
-      });
+      }, ns);
     } finally {
       await context.close();
     }

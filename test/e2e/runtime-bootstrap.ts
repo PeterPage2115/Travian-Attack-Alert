@@ -1,5 +1,42 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// Worker-safe evidence writer. Parallel workers all append phases to the SAME
+// per-spec evidence file, so a naive read-modify-write loses updates. Each
+// worker writes its own fragment under os.tmpdir() (never inside test-results/,
+// which CI seals and scans for an exact file count) and the final merged file
+// is rebuilt from all fragments; the merge is idempotent, last-writer-wins.
+export function writeEvidencePhase(
+  evidencePath: string,
+  phase: string,
+  value: Record<string, unknown>,
+  workerIndex: number,
+  redact: (input: unknown) => unknown = (input) => input,
+): void {
+  fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
+  const fragmentDir = path.join(os.tmpdir(), 'taa-e2e-evidence-fragments');
+  fs.mkdirSync(fragmentDir, { recursive: true });
+  const fragmentKey = `${path.resolve(evidencePath).replace(/[^a-zA-Z0-9]+/gu, '_')}.worker-${workerIndex}.json`;
+  const fragmentPath = path.join(fragmentDir, fragmentKey);
+  const fragment = fs.existsSync(fragmentPath) ? JSON.parse(fs.readFileSync(fragmentPath, 'utf8')) : {};
+  fragment[phase] = value;
+  fs.writeFileSync(fragmentPath, `${JSON.stringify(fragment, null, 2)}\n`);
+
+  const merged: Record<string, unknown> = {};
+  const prefix = fragmentKey.replace(/\.worker-\d+\.json$/u, '.worker-');
+  for (const entry of fs.readdirSync(fragmentDir)) {
+    if (!entry.startsWith(prefix) || !entry.endsWith('.json')) continue;
+    try {
+      Object.assign(merged, JSON.parse(fs.readFileSync(path.join(fragmentDir, entry), 'utf8')));
+    } catch {
+      // A fragment being written concurrently is retried on the next phase.
+    }
+  }
+  fs.writeFileSync(evidencePath, `${JSON.stringify(redact(merged), null, 2)}\n`);
+}
 
 declare global {
   interface Window {
@@ -33,6 +70,10 @@ export type RuntimeScenario = {
   // shared localStorage, like two real tabs). Defaults to false, so every
   // pre-existing spec keeps its deterministic leader/standby stub.
   readonly realLocks?: boolean;
+  // Per-worker fixture-state namespace (parallel runs). Defaults to '' which
+  // is the single-worker behavior; specs pass testInfo.workerIndex so each
+  // worker's loopback traffic is counted in isolation.
+  readonly ns?: string | number;
 };
 
 export type ArtifactRuntime = {
@@ -52,20 +93,21 @@ export type ArtifactRuntime = {
  * AFTER each navigation (it re-installs the loopback transport over whatever
  * the page installed). GM value stores are left alone.
  */
-export async function installLoopbackTransport(page: Page): Promise<void> {
-  await page.evaluate(() => {
+export async function installLoopbackTransport(page: Page, ns: string | number = ''): Promise<void> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  await page.evaluate((nsQuery: string) => {
     const fixture = location.origin;
     const requests: string[] = window.__TAA_REQUESTS__ ?? [];
     window.__TAA_REQUESTS__ = requests;
     const chainedFetch = window.fetch.bind(window);
     window.GM_xmlhttpRequest = (options: { readonly method: string; readonly url: string; readonly data?: string; readonly onload?: (response: { readonly status: number; readonly responseText: string }) => void; readonly onerror?: (error: unknown) => void }) => {
-      const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook` : options.url;
+      const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook${nsQuery}` : options.url;
       requests.push(target);
       chainedFetch(target, { method: options.method, body: options.data, headers: { 'Content-Type': 'application/json' } })
         .then(async (response) => options.onload?.({ status: response.status, responseText: await response.text() }))
         .catch((error) => options.onerror?.(error));
     };
-  });
+  }, nsQuery);
 }
 
 const WEBHOOK = 'https://discord.com/api/webhooks/123456789/fake-fixture-token';
@@ -89,11 +131,13 @@ const WARMUP_RETRY_DELAY_MS = 250;
 export async function warmupLoopbackTransport(
   page: Page,
   serverRequestCount: (page: Page) => Promise<number>,
+  ns: string | number = '',
 ): Promise<void> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
   const deadline = Date.now() + WARMUP_RETRY_DEADLINE_MS;
   for (;;) {
     try {
-      await page.request.post('/discord-webhook', {
+      await page.request.post(`/discord-webhook${nsQuery}`, {
         data: { content: 'warmup', allowed_mentions: { users: [] } },
         headers: { 'Content-Type': 'application/json' },
       });
@@ -110,8 +154,14 @@ export async function warmupLoopbackTransport(
 export async function installArtifactRuntime(page: Page, scenario: RuntimeScenario = {}): Promise<ArtifactRuntime> {
   const fixtureOrigin = new URL(page.url() || 'http://127.0.0.1:8899').origin;
   const discordOrigin = fixtureOrigin;
-  await page.request.post('/e2e-log');
-  await page.addInitScript(({ leader, webhook, fixture, realLocks }) => {
+  // Parallel workers share one fixture server, so every loopback request this
+  // page makes carries a per-worker namespace. The server keeps a separate
+  // e2eState per namespace, which is what makes the exact discordRequests
+  // counts in the delivery specs immune to another worker's traffic.
+  const ns = String(scenario.ns ?? '');
+  const nsQuery = ns ? `?ns=${encodeURIComponent(ns)}` : '';
+  await page.request.post(`/e2e-log${nsQuery}`);
+  await page.addInitScript(({ leader, webhook, fixture, realLocks, nsQuery }) => {
     const gm = Object.create(null) as Record<string, unknown>;
     const requests: string[] = [];
     const events: Array<Record<string, unknown>> = [];
@@ -136,7 +186,7 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
       onSnapshot: (payload: Record<string, unknown>) => events.push({ kind: 'snapshot', status: payload.status, reason: payload.reason }),
     };
     window.GM_xmlhttpRequest = (options: { readonly method: string; readonly url: string; readonly data?: string; readonly onload?: (response: { readonly status: number; readonly responseText: string }) => void; readonly onerror?: (error: unknown) => void }) => {
-      const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook` : options.url;
+      const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook${nsQuery}` : options.url;
       requests.push(target);
       originalFetch(target, { method: options.method, body: options.data, headers: { 'Content-Type': 'application/json' } })
         .then(async response => options.onload?.({ status: response.status, responseText: await response.text() }))
@@ -161,7 +211,7 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
     };
     if (webhook) gm.travianAllianceWebhookUrl_v1 = 'https://discord.com/api/webhooks/123456789/fake-fixture-token';
     window.__TAA_E2E_SCENARIO__ = { leader, webhook, lateTable: false };
-  }, { leader: scenario.leader !== false, webhook: scenario.webhook === true, fixture: fixtureOrigin, realLocks: scenario.realLocks === true });
+  }, { leader: scenario.leader !== false, webhook: scenario.webhook === true, fixture: fixtureOrigin, realLocks: scenario.realLocks === true, nsQuery });
 
   await page.goto(scenario.path || '/alliance/profile/members', { waitUntil: 'domcontentloaded' });
   if (scenario.lateTable || scenario.continuousMutation) {
