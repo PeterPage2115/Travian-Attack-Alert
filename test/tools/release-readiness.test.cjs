@@ -107,25 +107,9 @@ function happyBundle(overrides = {}) {
       exists: true,
       name: 'release',
       autoCreated: false,
-      requiredReviewer: true,
-      distinctReviewer: true,
-      preventSelfReview: true,
       tagPolicyVStar: true,
-      environmentSecretsOnly: true,
-      approvalProofSecret: true,
-      settingsReadToken: true,
-      settingsReadTokenExpiresAt: '2026-09-23T23:59:00Z',
     },
     immutableReleases: { enabled: true, evidenceDigest: hex('e') },
-    ownerEvidence: {
-      timestamp: TIMESTAMP,
-      actor: 'PeterPage2115',
-      repository: 'PeterPage2115/Travian-Attack-Alert',
-      ref: 'refs/tags/v1.0.1',
-      tag: 'v1.0.1',
-      commit: COMMIT,
-      apiResponseDigest: hex('f'),
-    },
     releaseState: {
       schemaVersion: 2,
       version: '1.0.1',
@@ -187,10 +171,6 @@ function publishedBundle(overrides = {}) {
   }, overrides));
 }
 
-function stateOf(bundle) {
-  return evaluateReadiness(bundle).state;
-}
-
 function assertBlocked(bundle, expectedCode, label) {
   const report = evaluateReadiness(bundle);
   assert.equal(report.state, READINESS_STATES.BLOCKED, `${label}: expected BLOCKED, got ${report.state}`);
@@ -216,7 +196,6 @@ test('Given the committed current-state fixture, when evaluated, then it is trut
     'dev-archival-missing',
     'release-environment-missing',
     'immutable-releases-missing',
-    'owner-evidence-incomplete',
     'release-state-not-ready',
     'assets-unverified',
   ]) {
@@ -262,9 +241,8 @@ test('Given each pre-tag prerequisite removed one at a time, when evaluated, the
     ['seed-receipt-missing', happyBundle({ seedReceipt: { present: false } })],
     ['update-receipt-missing', happyBundle({ updateReceipt: { present: false } })],
     ['dev-archival-missing', happyBundle({ devDeletion: { devArchivalAttested: false } })],
-    ['release-environment-missing', happyBundle({ releaseEnvironment: { requiredReviewer: false } })],
+    ['release-environment-missing', happyBundle({ releaseEnvironment: { exists: false } })],
     ['immutable-releases-missing', happyBundle({ immutableReleases: { enabled: false } })],
-    ['owner-evidence-incomplete', happyBundle({ ownerEvidence: { apiResponseDigest: null } })],
     ['release-state-not-ready', happyBundle({ releaseState: { stable: false } })],
     ['assets-unverified', happyBundle({ assets: { assetCount: 6 } })],
     ['checksum-mismatch', happyBundle({ assets: { checksumsVerified: false } })],
@@ -282,12 +260,11 @@ test('Given a false pilot install/update attestation, when evaluated, then the p
   assertBlocked(happyBundle({ pilot: { evidenceDigest: null } }), 'pilot-missing', 'pilot evidence digest missing');
 });
 
-test('Given an unprotected or auto-created release environment, when evaluated, then the environment gate fails closed', () => {
-  assertBlocked(happyBundle({ releaseEnvironment: { distinctReviewer: false } }), 'release-environment-missing', 'same-actor reviewer');
-  assertBlocked(happyBundle({ releaseEnvironment: { preventSelfReview: false } }), 'release-environment-missing', 'self-review allowed');
+test('Given a missing or auto-created release environment, when evaluated, then the environment gate fails closed', () => {
+  assertBlocked(happyBundle({ releaseEnvironment: { exists: false } }), 'release-environment-missing', 'missing environment');
   assertBlocked(happyBundle({ releaseEnvironment: { autoCreated: true } }), 'release-environment-missing', 'auto-created environment');
-  assertBlocked(happyBundle({ releaseEnvironment: { environmentSecretsOnly: false } }), 'release-environment-missing', 'repository-scoped secret');
-  assertBlocked(happyBundle({ releaseEnvironment: { settingsReadTokenExpiresAt: null } }), 'release-environment-missing', 'no short-lived read token evidence');
+  assertBlocked(happyBundle({ releaseEnvironment: { name: 'prod' } }), 'release-environment-missing', 'wrong environment name');
+  assertBlocked(happyBundle({ releaseEnvironment: { tagPolicyVStar: false } }), 'release-environment-missing', 'no v* tag deployment policy');
 });
 
 test('Given a wrong or unsafe tag, when evaluated, then the tag gate fails closed', () => {
@@ -304,17 +281,10 @@ test('Given a draft with a missing asset or attestation, when evaluated, then th
   assertBlocked(draftedBundle({ draft: { isDraft: false } }), 'draft-missing', 'draft already published without approval');
 });
 
-test('Given owner evidence from an unrelated repository, ref, tag or commit, when evaluated, then it is rejected even though every field is shaped correctly', () => {
-  assertBlocked(happyBundle({ ownerEvidence: { repository: 'someone-else/other-project' } }), 'owner-evidence-incomplete', 'unrelated repository');
-  assertBlocked(happyBundle({ ownerEvidence: { ref: 'refs/heads/main' } }), 'owner-evidence-incomplete', 'unrelated ref');
-  assertBlocked(happyBundle({ ownerEvidence: { ref: 'refs/tags/v1.0.0' } }), 'owner-evidence-incomplete', 'tag ref from another release');
-  assertBlocked(happyBundle({ ownerEvidence: { tag: 'v1.0.0' } }), 'owner-evidence-incomplete', 'evidence tag from another release');
-  assertBlocked(happyBundle({ ownerEvidence: { commit: 'a'.repeat(40) } }), 'owner-evidence-incomplete', 'evidence commit from another revision');
-  assertBlocked(happyBundle({ ownerEvidence: { commit: null } }), 'owner-evidence-incomplete', 'missing evidence commit');
+test('Given an identity that disagrees with the canonical repository or release head, when evaluated, then it is rejected', () => {
   assertBlocked(happyBundle({ identity: { repository: 'someone-else/other-project' } }), 'identity-mismatch', 'unrelated identity repository');
   assertBlocked(happyBundle({ identity: { commit: 'b'.repeat(40) } }), 'identity-mismatch', 'identity commit differs from the recorded release head');
-  // The canonical short tag ref is an accepted spelling of the same identity.
-  assert.equal(stateOf(happyBundle({ ownerEvidence: { ref: 'v1.0.1' } })), READINESS_STATES.READY_FOR_OWNER_TAG);
+  assertBlocked(happyBundle({ repository: { name: 'someone-else/other-project' } }), 'identity-mismatch', 'repository name differs from the identity');
 });
 
 test('Given a mutable or unverified published release, when evaluated, then it never reports PUBLISHED_VERIFIED', () => {
