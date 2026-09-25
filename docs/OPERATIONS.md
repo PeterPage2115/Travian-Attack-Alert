@@ -4,16 +4,19 @@ Operator routine for `Travian Attack Alert` version `1.0.2` (release ID `taa-1.0
 
 This page covers daily use. Setup, install, and first-scan facts live in `README.md`; the alert payload contract is `docs/ALERT-FORMAT.md`; the Polish equivalent of this page is `docs/pl/OPERATIONS.md`. The English `README.md` stays primary.
 
+> **Panel layout.** The Overview described here is the simplified layout shipped with `1.0.2`: plain-language status and the next action first, detail behind small collapsed groups. A `1.0.1` install shows the same values in one flat list — nothing is hidden, only regrouped.
+
 ## Morning routine
 
 1. Open the exact query-free canonical route:
    ```text
    https://<your-world>.travian.com/alliance/profile/members
    ```
-2. Open the Overview tab (`taa-tab-overview`) and read the eight status lines: Runtime (`taa-operational-runtime-value`), Route (`taa-operational-route-value`), Session (`taa-operational-session-value`), Lease (`taa-operational-lease-value`), Scan (`taa-operational-scan-value`), Scan detail (`taa-operational-scan-detail-value`), Baseline (`taa-operational-baseline-value`), and Delivery (`taa-operational-delivery-value`).
-3. Confirm an accepted scan (Scan line) and an established baseline. The first accepted scan commits the baseline silently: `not established — the first accepted scan commits it silently (no historical flood)`.
-4. Check the queue zeros: the Alerts tab (`taa-tab-alerts`) shows failed and uncertain counts. Both should be zero before the day starts. If not, see [Queue check](#queue-check).
-5. If Delivery says `webhook missing — configuration required; queue preserved`, set the webhook through the Tampermonkey menu (`Set Discord webhook URL`) first. Detections stay queued, nothing is lost.
+2. Open the Overview tab (`taa-tab-overview`). It leads with plain-language status and the next action: the operational lines Runtime (`taa-operational-runtime-value`), Route (`taa-operational-route-value`), Lease (`taa-operational-lease-value`), Scan (`taa-operational-scan-value`), Baseline (`taa-operational-baseline-value`) and Delivery (`taa-operational-delivery-value`), followed by the status metrics Freshness, Scan result, Failed / uncertain, Storage health, Queue / in flight, Last authoritative observation, Next refresh and Last sent.
+3. The detail sits in collapsed groups next to what it explains, not in a longer list: `Scan reason and outcome` (`taa-operational-scan-detail-details`) beside the Scan line, `Raw counters` (`taa-overview-raw-details`) for Scan duration and Queue age, the former Session line folded into Storage health (`taa-storage-health-value`), and in Diagnostics the groups `Storage detail` (`taa-storage-provenance-details`), `Filters and recent traces` (`taa-trace-details`) and `Overflow and export bounds` (`taa-bounded-details`).
+4. Confirm an accepted scan (Scan line) and an established baseline. The first accepted scan commits the baseline silently: `not established — the first accepted scan commits it silently (no historical flood)`.
+5. Check the queue zeros: the Alerts tab (`taa-tab-alerts`) shows failed and uncertain counts. Both should be zero before the day starts. If not, see [Queue check](#queue-check) and [What the red states mean](#what-the-red-states-mean).
+6. If Delivery says `webhook missing — configuration required; queue preserved`, set the webhook through the Tampermonkey menu (`Set Discord webhook URL`) first. Detections stay queued, nothing is lost.
 
 If Travian shows a login page, log in first. The monitor never scans a login page and never changes state there.
 
@@ -57,16 +60,25 @@ Hand over in this order:
 
 Never run the old and the new sender at the same time, not even briefly. The Web-Lock lease fences tabs inside one browser profile only.
 
+## What the red states mean
+
+Three states look alarming and mean three different things. None of them settles itself, and none of them means monitoring keeps covering you while you are away:
+
+- **Uncertain delivery.** Discord answered HTTP 200 but the reply carried no usable message id (a malformed or non-JSON body), so the script cannot prove the message exists. It is never retried automatically — a human settles every one — and the queue holding it is bounded at 512 records, so nothing grows without limit. Settle it from the Tampermonkey menu, see [Queue check](#queue-check).
+- **Stale observation.** `Freshness` reads `Stale — observed <N>s ago` once the last authoritative observation is older than 120 seconds. Stale means "no current observation", not "no alert" and not "still covered": re-open the canonical route and read Overview again before trusting alerts.
+- **Rejected scan.** The document was refused, so no scan was applied. The Scan line shows `parser-rejected/<reason>` (also `readiness-timeout/rejected`, `lease-lost/rejected`, `reload-blocked/rejected`) and `Scan reason and outcome` shows `reason <code> · outcome rejected`. Nothing is written by a rejected scan: do not clear site data to "fix" it — re-enter only the values proved absent by the `Storage provenance` labels.
+
+Colour only reinforces these words; the panel never paints a failing fact green.
+
 ## Queue check
 
-The Alerts tab shows failed and uncertain counts. The recovery actions live in the Tampermonkey menu:
+The Alerts tab (`taa-tab-alerts`) shows the failed and uncertain counts next to the `Failed / uncertain delivery` banner, and every recovery action lives in the Tampermonkey menu — never in the panel:
 
-- Failed batches: `Retry failed Discord batches`, after checking the webhook configuration.
-- Uncertain batches: `Mark uncertain Discord batches delivered` or `Retry uncertain Discord batches`. A retry may duplicate.
+- Failed batches: `Retry failed Discord batches`, after checking the webhook configuration. Failed means a permanent rejection (ordinary 4xx) kept for manual recovery.
+- Uncertain batches: the acknowledgement was lost (a 200 with no usable message id), so the message cannot be proved to exist. Never retried automatically; a human settles every one from this menu — `Mark uncertain Discord batches delivered` (you found the message in Discord) or `Retry uncertain Discord batches` (you did not; a retry may duplicate). While you investigate, `Toggle debug details` turns on verbose debug output and `Load history and health` loads the recorded history.
 - Pending drain: `Flush pending Discord batches`.
-- Debug and history: `Toggle debug details`, `Load history and health`.
 
-Failed means a permanent rejection (ordinary 4xx) kept for manual recovery. Uncertain means the acknowledgement was lost (malformed or ID-less 200) and is never retried automatically. Both stay recoverable; neither is dropped silently.
+Neither state is dropped silently and neither settles itself; both stay recoverable by hand.
 
 ## Leave-moderator role configuration
 
@@ -109,7 +121,7 @@ Never clear site data to "fix" a rejected scan. Re-enter only the values proved 
 
 ## Troubleshooting (diagnostics first)
 
-Export the incident bundle FIRST, before touching anything: Diagnostics tab (`taa-tab-diagnostics`), `Export incident bundle` (`taa-incident-bundle-export`). The bundle is bounded (512 KiB) and redacted by construction: no webhook, token, raw DOM, player data, queue payloads, URLs, cookies, or response bodies.
+Export the incident bundle FIRST, before touching anything: Diagnostics tab (`taa-tab-diagnostics`), `Export incident bundle` (`taa-incident-bundle-export`). The bundle is bounded (512 KiB) and redacted by construction: no webhook, token, raw DOM, player data, queue payloads, URLs, cookies, or response bodies. The Diagnostics detail sits behind three collapsed groups: `Storage detail` (`taa-storage-provenance-details`, holding the `Storage provenance` labels), `Filters and recent traces` (`taa-trace-details`, holding the scan/stage/outcome filters, the trace count and the last 32 traces), and `Overflow and export bounds` (`taa-bounded-details`, holding the queue overflow count and the 512 KiB export bound).
 
 Then match your state:
 
@@ -136,7 +148,7 @@ Copy these fields into the issue. Attach the redacted incident bundle. NEVER inc
 
 ## Version note
 
-This page documents `1.0.2` (`taa-1.0.2`). Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
+This page documents `1.0.2` (`taa-1.0.2`). Earlier 6.2.1-era behavior (historical internal development) is not part of the current release's contract.
 
 ## Implementation map
 
