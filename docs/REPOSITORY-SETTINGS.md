@@ -18,12 +18,14 @@ description, homepage, and topics are set. Anonymous requests to authenticated
 endpoints (branch protection detail, immutable releases, Actions workflow
 permissions) answer 401, so §8 now records a separate authenticated read-only
 owner comparison (GET-only, no setting changed) instead of owner attestation.
-This is a point-in-time API observation, not owner attestation. The separate
-owner-manual record in `docs/release-state.json` still holds
+This is a point-in-time API observation, not owner attestation. At that time the
+separate owner-manual record in `docs/release-state.json` held
 `ownerManual.branchProtection: false`,
 `ownerManual.releaseEnvironment: false`,
-`ownerManual.immutableReleases: false`, and `stable: false` until the owner
-completes the pilot and records the evidence. This file is an owner checklist,
+`ownerManual.immutableReleases: false`, and `stable: false`; the owner has since
+populated every pre-publication gate and `stable: true`, and the annotated
+`v1.0.1` tag was published as an immutable GitHub Release (release id
+`396778787`) on 2026-09-25. This file is an owner checklist,
 not that owner-attestation record; checked items below are API-observed public
 state, and unchecked items are pending owner actions.
 
@@ -41,9 +43,10 @@ state, and unchecked items are pending owner actions.
   GitHub Settings and on a clean clone. No npm script, test, build step, or CI
   job applies these settings or flips any field in `docs/release-state.json`;
   the pilot evidence, tag/Release, and archival record it references are
-  owner-written. Until recorded, `docs/release-state.json` stays `stable:false`
-  and the README keeps its release-candidate warning even though the target
-  version is 1.0.1.
+  owner-written. Until they were recorded, `docs/release-state.json` stayed
+  `stable:false` and the README kept its release-candidate warning even though
+  the target version is 1.0.1; the owner has since recorded all gates together
+  with the published `v1.0.1` release, and the README states that state.
 
 ## 1. Branch and update-channel identity
 
@@ -177,7 +180,9 @@ the Task 34 evidence root):
 - Immutable releases: observed `enabled: false` (target = enabled).
 - Release environment: none exists (target = protected `release` environment).
 - Tag protection / ruleset: no ruleset installed (target = a `v*` tag ruleset);
-  zero remote tags and no GitHub Release exist.
+  at the 2026-09-23 observation zero remote tags and no GitHub Release existed,
+  whereas the annotated `v1.0.1` tag and an immutable GitHub Release were
+  published on 2026-09-25.
 
 - [ ] Required status checks: observed via the public API as protected with
       the four exact contexts `offline-node-18`, `offline-node-20`,

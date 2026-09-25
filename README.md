@@ -2,7 +2,7 @@
 
 Alliance attack, raid, and departure alerts from Travian to your own Discord server. One Tampermonkey userscript runs in your browser tab: no backend, no account, no runtime dependency.
 
-**Version 1.0.1, release ID `taa-1.0.1` — stable (owner-attested 2026-09-25).** The release-branch raw artifact is live and serves exactly this build (SHA-256 `0c187870…`), and a second person has completed the in-place manager update to this release. No `v1.0.1` tag and no GitHub Release exists yet; `publication.tagAndRelease` stays false until the owner publishes. The machine-readable gate is `docs/release-state.json` and the ordered procedure is `docs/RELEASE-RUNBOOK.md`.
+**Version 1.0.1, release ID `taa-1.0.1` — stable, published (owner-attested 2026-09-25).** The release-branch raw artifact is live and serves exactly this build (SHA-256 `0c187870…`), a second person has completed the in-place manager update to this release, and the annotated `v1.0.1` tag was published as an [immutable GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1) (release id `396778787`, seven attested assets) on 2026-09-25; `docs/release-state.json` records `publication.tagAndRelease`. The machine-readable gate is `docs/release-state.json` and the ordered procedure is `docs/RELEASE-RUNBOOK.md`.
 
 ![Synthetic screenshot of the Travian Attack Alert operations panel: the Alliance alert monitor dialog with the Overview, Players, Alerts, and Diagnostics tabs, leader status, accepted-scan status lines, and an established baseline.](docs/assets/panel-overview.png)
 
@@ -14,7 +14,7 @@ The script (`Travian Attack Alert`, namespace `travian-attack-alert-public`) per
 
 ## Install and update
 
-**Install from the release-branch raw URL — the verified working path.** The channel URL below returned HTTP 200 and served exactly the committed `1.0.1` artifact (SHA-256 `0c187870…`) when verified on 2026-09-23; no `v1.0.1` GitHub Release download exists yet, so install from this URL rather than waiting for one or trusting a mirror:
+**Install from the release-branch raw URL — the verified working path.** The channel URL below returned HTTP 200 and served exactly the committed `1.0.1` artifact (SHA-256 `0c187870…`) when verified on 2026-09-23; the immutable [`v1.0.1` GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1) with attested assets was published on 2026-09-25, and this release-branch URL remains the update channel that managers poll:
 
 ```text
 https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
@@ -114,7 +114,7 @@ Timestamp: 2026-08-23T09:46:01.000Z
 
 ## Status and limitations
 
-- **Stable, not yet published.** `docs/release-state.json` records `stable: true` with every pre-publication owner gate populated (owner-attested 2026-09-25), and there is no `v1.0.1` tag or GitHub Release yet. The owner's branch-protection attestation and the public GitHub API observation (four required checks) are separate records.
+- **Stable and published.** `docs/release-state.json` records `stable: true` with every pre-publication owner gate populated (owner-attested 2026-09-25), and the annotated `v1.0.1` tag was published as an [immutable GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1) (release id `396778787`, seven attested assets) on 2026-09-25. The owner's branch-protection attestation and the public GitHub API observation (four required checks) are separate records.
 - It has no backend. Everything runs in your browser tab.
 - It gives no 24/7 guarantee. Alerts are produced only while your browser, with an active installation, sits on the canonical page.
 - It is not exactly-once. Delivery is at-least-once, so a lost acknowledgement can deliver the same batch twice.

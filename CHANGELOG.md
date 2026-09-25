@@ -12,7 +12,7 @@ rewritten here; it is noted as lineage only.
   `tools/check-release-readiness.cjs` reports the machine-readable states
   `BLOCKED`, `READY_FOR_OWNER_TAG`, `DRAFT_READY_FOR_APPROVAL`, and
   `PUBLISHED_VERIFIED` from a self-contained bundle. The task performs no tag,
-  Release, or repository-settings change; `docs/release-state.json` stays
+  Release, or repository-settings change; `docs/release-state.json` then stayed
   `stable: false`.
 - The checked-in root monolith authority is removed: `src/runtime.js` is the
   sole editable runtime authority and `dist/travian-attack-alert.user.js` is
@@ -59,13 +59,15 @@ supersedes the `stable: false` candidate state recorded below.
   entry records owner evidence and flips the stable flag only.
 - Published as an immutable GitHub Release on 2026-09-25 (release id 396778787; assets attested).
 
-## 1.0.1 — update-channel verification candidate (unpublished)
+## 1.0.1 — update-channel verification candidate (superseded; was unpublished)
 
-No tag, no GitHub Release, and no download link exist for this entry yet.
-This candidate exists to prove the in-place `1.0.0 → 1.0.1` update through the
-managers' own update check. The live update has NOT been executed or verified
-yet; `docs/release-state.json` stays `stable: false` and every owner gate
-stays unfulfilled until the owner runs and records that verification.
+No tag, no GitHub Release, and no download link existed for `1.0.1` at the
+time; this candidate existed to prove the in-place `1.0.0 → 1.0.1` update
+through the managers' own update check. The live update had NOT been executed
+or verified then; `docs/release-state.json` stayed `stable: false` and every
+owner gate stayed unfulfilled until the owner ran and recorded that
+verification. It was later marked stable and published as the immutable
+`v1.0.1` GitHub Release (see the stable entry above).
 
 - Version identity moved to `1.0.1` / `taa-1.0.1` across `package.json`,
   `package-lock.json`, the runtime, the generated artifact, sidecar, metadata,

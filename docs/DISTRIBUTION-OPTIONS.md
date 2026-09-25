@@ -83,7 +83,7 @@ The game-platform policy question is **unresolved** and must not be asserted eit
 - Travian: Legends Game Rules §3: "Travian: Legends must be played using a conventional and unmodified browser. The use of scripts and/or bots to automate actions on the avatar or to resemble premium features is forbidden." The non-exhaustive list includes "Scanning the statistics of other players automatically" and "Any other automated actions performed by third-party software", and the rules reserve the right to penalize script/bot use **[S5]**.
 - Support article 122: "Any browser extension or add-on that alters the game's appearance or behavior is prohibited and should be removed completely … Even an extension or script that refreshes your page regularly should be deleted. Any third-party tool that interacts with the game is prohibited, including tools used only to view statistics, monitor alliance activity, or coordinate an alliance." **[S6]**
 
-Consequences recorded here: no shell in this matrix is declared compliant, authorized, or low-risk; **explicit written owner and platform confirmation is required before any distribution change**, and this record must not be used as evidence of permission. The existing userscript's release state (`docs/release-state.json`, `stable: false`) and the pilot gate remain in force.
+Consequences recorded here: no shell in this matrix is declared compliant, authorized, or low-risk; **explicit written owner and platform confirmation is required before any distribution change**, and this record must not be used as evidence of permission. The existing userscript's release state (`docs/release-state.json`, `stable: true`) and the pilot gate remain in force.
 
 ## 7. Recommendation and revisit conditions
 
@@ -107,6 +107,6 @@ A desktop companion is evaluated separately if ever pursued; a PWA remains a com
 
 - [`architecture.md`](architecture.md) — runtime and operations contract (§9) and module graph (§10).
 - [`RELEASE-RUNBOOK.md`](RELEASE-RUNBOOK.md) — the ordered, owner-gated release procedure.
-- [`release-state.json`](release-state.json) — machine-readable owner gates (`stable: false`).
+- [`release-state.json`](release-state.json) — machine-readable owner gates (`stable: true`).
 - [`../README.md`](../README.md) — the current install/update path and honest pilot status.
 - [`../CHANGELOG.md`](../CHANGELOG.md) — release history entries.
