@@ -43,11 +43,11 @@ rewritten here; it is noted as lineage only.
 
 Owner decision 2026-09-25: the `1.0.2` candidate is the stable target. All six
 schema-v2 pre-publication owner gates in `docs/release-state.json` are populated
-and `stable` is `true`; `publication.tagAndRelease` stays `false` because no
-`v1.0.2` tag or GitHub Release exists yet. No tag, no GitHub Release, and no
-channel publication exist for this entry; the bump is staged off the live
-channel so `release/public-1.0.0` keeps serving the published `1.0.1` release
-until the owner completes the `1.0.2` publication.
+and `stable` is `true`; `publication.tagAndRelease` stays `false` until the
+`v1.0.2` tag and GitHub Release are published. The `1.0.2` bytes are already
+live on the update channel — `release/public-1.0.0` has served `1.0.2`
+(sha256 `67b2a53e…`) since the PR #23 merge — and the tag and Release formalize
+the publication.
 
 - Version identity moved to `1.0.2` / `taa-1.0.2` across `package.json`,
   `package-lock.json`, the runtime, the generated artifact, sidecar, metadata,
@@ -61,7 +61,9 @@ until the owner completes the `1.0.2` publication.
   second-person pilot is the same channel that delivered `1.0.2`; the `1.0.2`
   panel is verified by the automated browser/e2e matrix (browser 5/5, e2e
   356/356, axe clean, red-state screenshots). Per-user installed
-  versions/hashes were not captured and are not invented here.
+  versions/hashes were not captured and are not invented here. The owner accepts
+  channel-continuity as the pilot evidence for this follow-up release (solo
+  project; owner directive 2026-09-25).
 - Publication is the solo pipeline: after this commit is merged, the
   orchestrator tags `v1.0.2` (ruleset suspend/restore) and the release workflow
   publishes the lean release — exactly two public assets, the userscript and its
