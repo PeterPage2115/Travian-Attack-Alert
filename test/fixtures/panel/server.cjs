@@ -9,7 +9,22 @@ const PORT = Number(process.env.PORT || 8899);
 const PANEL_HTML = path.join(__dirname, 'attack-panel.html');
 
 const sockets = new Set();
-const e2eState = { discordRequests: [], openRequests: 0, webhookAttempts: 0, deliveryHold: false };
+// Per-namespace fixture state. Playwright runs tests in parallel workers, and
+// every worker's pages carry a distinct `?ns=<workerIndex>` on their loopback
+// requests (see runtime-bootstrap.ts). Namespacing keeps each worker's
+// discordRequests/webhookAttempts/deliveryHold isolated, so the exact-count
+// assertions in clean-install/discord-delivery/dual-tab-lease/onboarding/
+// migration specs cannot observe another worker's traffic. The default `''`
+// namespace preserves the previous single-worker behavior.
+const e2eStates = new Map();
+function stateFor(ns) {
+  let state = e2eStates.get(ns);
+  if (!state) {
+    state = { discordRequests: [], openRequests: 0, webhookAttempts: 0, deliveryHold: false };
+    e2eStates.set(ns, state);
+  }
+  return state;
+}
 
 // Playwright's page.request APIRequestContext reuses idle keep-alive sockets.
 // Node's default keepAliveTimeout (5 s) closes them while a spec does other
@@ -143,6 +158,7 @@ function handleRequest(request, response) {
   if (pathname === '/discord-webhook' && request.method === 'POST') {
     const startedAt = Date.now();
     const chunks = [];
+    const e2eState = stateFor(parsed.searchParams.get('ns') || '');
     e2eState.openRequests += 1;
     request.on('data', chunk => chunks.push(chunk));
     request.on('end', () => {
@@ -178,6 +194,7 @@ function handleRequest(request, response) {
   }
 
   if (pathname === '/e2e-delivery-hold') {
+    const e2eState = stateFor(parsed.searchParams.get('ns') || '');
     if (request.method === 'POST') {
       const chunks = [];
       request.on('data', chunk => chunks.push(chunk));
@@ -197,6 +214,7 @@ function handleRequest(request, response) {
   }
 
   if (pathname === '/e2e-log') {
+    const e2eState = stateFor(parsed.searchParams.get('ns') || '');
     if (request.method === 'POST') {
       e2eState.discordRequests.length = 0;
       e2eState.webhookAttempts = 0;

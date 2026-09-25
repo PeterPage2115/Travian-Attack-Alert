@@ -27,7 +27,7 @@ import type { Browser, BrowserContext, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { installArtifactRuntime, installLoopbackTransport } from './runtime-bootstrap';
+import { installArtifactRuntime, installLoopbackTransport, writeEvidencePhase as writeEvidencePhaseShared } from './runtime-bootstrap';
 
 const DIST = '/dist/travian-attack-alert.user.js';
 const HTTPS_ORIGIN = 'https://127.0.0.1:8898';
@@ -70,10 +70,8 @@ function consoleErrors(page: Page): string[] {
   return (page as unknown as { __consoleErrors: string[] }).__consoleErrors ?? [];
 }
 
-function writeEvidencePhase(phase: string, value: Record<string, unknown>): void {
-  fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
-  const existing = fs.existsSync(EVIDENCE_PATH) ? JSON.parse(fs.readFileSync(EVIDENCE_PATH, 'utf8')) : {};
-  fs.writeFileSync(EVIDENCE_PATH, `${JSON.stringify({ ...existing, [phase]: value }, null, 2)}\n`);
+function writeEvidencePhase(phase: string, value: Record<string, unknown>, workerIndex: number): void {
+  writeEvidencePhaseShared(EVIDENCE_PATH, phase, value, workerIndex);
 }
 
 // Canonical member-table prep, staged via shared localStorage and consumed by a
@@ -148,15 +146,15 @@ async function reacquiredWithNewToken(page: Page, previousToken: string | undefi
 // (fresh pages are origin-less and deny localStorage); staging then happens on
 // the second navigation inside installArtifactRuntime, whose DCL hook consumes
 // it strictly before artifact boot.
-async function bootRealPage(page: Page, prep: PrepConfig, webhook = false): Promise<void> {
+async function bootRealPage(page: Page, prep: PrepConfig, webhook = false, ns: string | number = ''): Promise<void> {
   await page.goto(MEMBERS, { waitUntil: 'domcontentloaded' });
   await stagePrep(page, prep);
-  await installArtifactRuntime(page, { path: MEMBERS, artifactPath: DIST, realLocks: true, webhook });
-  await useLoopbackTransport(page);
+  await installArtifactRuntime(page, { path: MEMBERS, artifactPath: DIST, realLocks: true, webhook, ns });
+  await useLoopbackTransport(page, ns);
 }
 
-async function useLoopbackTransport(page: Page): Promise<void> {
-  await installLoopbackTransport(page);
+async function useLoopbackTransport(page: Page, ns: string | number = ''): Promise<void> {
+  await installLoopbackTransport(page, ns);
 }
 
 async function waitAuthoritativeSnapshot(page: Page, timeout = 15_000): Promise<void> {
@@ -200,12 +198,13 @@ async function monitorEnvelope(page: Page): Promise<Envelope> {
 }
 
 test.describe('dual-tab lease reacquisition — same-document resume around the first scan', () => {
-  test('pre-scan lease loss then same-document reacquisition performs exactly one accepted scan', async ({ browser }) => {
+  test('pre-scan lease loss then same-document reacquisition performs exactly one accepted scan', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(150_000);
     const { context, page } = await newHttpsContext(browser);
     try {
       await installPrepHook(page);
-      await bootRealPage(page, { rename101: true, hideTable: true });
+      await bootRealPage(page, { rename101: true, hideTable: true }, false, ns);
       await page.waitForTimeout(1500); // past boot jitter + readiness window
       expect(await leaseState(page)).toBe('leader');
       expect(await eventKinds(page, 'snapshot', 'authoritative')).toEqual([]);
@@ -246,18 +245,19 @@ test.describe('dual-tab lease reacquisition — same-document resume around the 
         acceptedScans: 1,
         extractions: 1,
         transportRequests: 0,
-      });
+      }, ns);
     } finally {
       await context.close();
     }
   });
 
-  test('reacquisition after an accepted scan performs no second scan and no duplicate event', async ({ browser }) => {
+  test('reacquisition after an accepted scan performs no second scan and no duplicate event', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(150_000);
     const { context, page } = await newHttpsContext(browser);
     try {
       await installPrepHook(page);
-      await bootRealPage(page, { rename101: true });
+      await bootRealPage(page, { rename101: true }, false, ns);
       await waitAuthoritativeSnapshot(page);
       expect(await eventKinds(page, 'extraction')).toHaveLength(1);
       const firstRecord = await leaseRecord(page);
@@ -280,7 +280,7 @@ test.describe('dual-tab lease reacquisition — same-document resume around the 
         acceptedScansAfterReacquire: 1,
         extractionsAfterReacquire: 1,
         duplicateEvents: 0,
-      });
+      }, ns);
     } finally {
       await context.close();
     }

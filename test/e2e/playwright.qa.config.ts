@@ -19,14 +19,34 @@ import { defineConfig, devices } from '@playwright/test';
 // dual-tab-lease.spec.ts, and the moved assertions are unchanged.
 const REACQUISITION_SPEC = '**/dual-tab-lease-reacquisition.spec.ts';
 
+// `tools/run-e2e.cjs` still launches ONE spec file per Playwright invocation,
+// sequentially; `workers` parallelizes tests WITHIN that spec across the six
+// projects. TAA_E2E_WORKERS overrides the count (1 = serial baseline); unset
+// means 4 on CI (4 vCPU runner) and 1 locally so a laptop is never
+// oversubscribed. Invalid values fail loudly rather than silently defaulting.
+function resolveWorkers(): number {
+  const raw = process.env.TAA_E2E_WORKERS;
+  if (raw !== undefined && raw !== '') {
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`TAA_E2E_WORKERS must be a positive integer, got ${raw}`);
+    }
+    return value;
+  }
+  return process.env.CI ? 4 : 1;
+}
+
 export default defineConfig({
   testDir: '.',
   timeout: 30_000,
   expect: { timeout: 5_000 },
-  fullyParallel: false,
+  // Safe because every test owns its context/page and localStorage, and the
+  // loopback fixture state is namespaced per worker (runtime-bootstrap.ts +
+  // test/fixtures/panel/server.cjs). No spec uses describe.serial.
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1,
+  workers: resolveWorkers(),
   outputDir: '../../test-results/qa-artifacts',
   reporter: [['list'], ['json', { outputFile: '../../test-results/qa-report.json' }], ['html', { outputFolder: '../../test-results/qa-playwright-report', open: 'never' }]],
   use: {

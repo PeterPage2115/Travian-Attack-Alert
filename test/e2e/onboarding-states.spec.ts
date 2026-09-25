@@ -177,8 +177,8 @@ async function closeHttpsPage(target: HttpsPage): Promise<void> {
   await target.context.close();
 }
 
-async function useLoopbackTransport(page: Page): Promise<void> {
-  await installLoopbackTransport(page);
+async function useLoopbackTransport(page: Page, ns: string | number = ''): Promise<void> {
+  await installLoopbackTransport(page, ns);
 }
 
 async function useMenuCapture(page: Page): Promise<void> {
@@ -214,10 +214,11 @@ async function baselineJson(page: Page): Promise<string> {
   return await page.evaluate((key: string) => JSON.stringify(JSON.parse((window.__TAA_GM_VALUES__?.[key] as string) || '{}').baselineByPlayerId ?? null), MONITOR_KEY);
 }
 
-async function bootLeader(page: Page): Promise<void> {
-  await page.request.post('/e2e-log');
+async function bootLeader(page: Page, ns: string | number = ''): Promise<void> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  await page.request.post(`/e2e-log${nsQuery}`);
   await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-  await useLoopbackTransport(page);
+  await useLoopbackTransport(page, ns);
   await useMenuCapture(page);
   await injectDist(page);
   await waitDiagSnapshot(page, 'ok');
@@ -254,20 +255,23 @@ async function snapshotGM(page: Page): Promise<string> {
   return await page.evaluate(() => JSON.stringify(window.__TAA_GM_VALUES__ ?? {}));
 }
 
-async function serverRequestCount(page: Page): Promise<number> {
-  return await page.evaluate(async () => (await (await fetch('/e2e-log')).json()).discordRequests?.length ?? 0);
+async function serverRequestCount(page: Page, ns: string | number = ''): Promise<number> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  return await page.evaluate(async (q: string) => (await (await fetch(`/e2e-log${q}`)).json()).discordRequests?.length ?? 0, nsQuery);
 }
 
-async function serverRequests(page: Page): Promise<Array<{ body: unknown }>> {
-  const log = await page.evaluate(async () => await (await fetch('/e2e-log')).json());
+async function serverRequests(page: Page, ns: string | number = ''): Promise<Array<{ body: unknown }>> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  const log = await page.evaluate(async (q: string) => await (await fetch(`/e2e-log${q}`)).json(), nsQuery);
   return (log.discordRequests ?? []) as Array<{ body: unknown }>;
 }
 
 // Burns the sink's first-attempt 429 (Node-side warm-up, flagged, never
 // counted as product traffic) so the measured window shows product traffic.
-async function warmupTransport(page: Page): Promise<void> {
-  await page.request.post('/discord-webhook', { data: { content: 'warmup', allowed_mentions: { users: [] } }, headers: { 'Content-Type': 'application/json' } });
-  await expect.poll(() => serverRequestCount(page), { timeout: 5_000 }).toBe(1);
+async function warmupTransport(page: Page, ns: string | number = ''): Promise<void> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  await page.request.post(`/discord-webhook${nsQuery}`, { data: { content: 'warmup', allowed_mentions: { users: [] } }, headers: { 'Content-Type': 'application/json' } });
+  await expect.poll(() => serverRequestCount(page, ns), { timeout: 5_000 }).toBe(1);
 }
 
 function envelopeBytes(page: Page): Promise<string> {
@@ -275,14 +279,15 @@ function envelopeBytes(page: Page): Promise<string> {
 }
 
 test.describe('onboarding — synthetic TEST states in leader context (TLS loopback)', () => {
-  test('missing webhook blocks the TEST with queue preserved; success never touches baseline', async ({ browser }) => {
+  test('missing webhook blocks the TEST with queue preserved; success never touches baseline', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(90_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
     try {
       // Clean baseline, no webhook anywhere.
-      await bootLeader(page);
-      expect(await serverRequestCount(page)).toBe(0);
+      await bootLeader(page, ns);
+      expect(await serverRequestCount(page, ns)).toBe(0);
 
       // Missing webhook: the TEST send is refused before any transport, the
       // pending queue is preserved (still empty here), and the baseline bytes
@@ -295,22 +300,22 @@ test.describe('onboarding — synthetic TEST states in leader context (TLS loopb
       await expect(page.locator('#taa-feedback')).toContainText('Discord TEST not sent — webhook is not configured.');
       await expect(page.locator('#taa-feedback')).toContainText('Pending queue preserved.');
       expect(await envelopeBytes(page)).toBe(before);
-      expect(await serverRequestCount(page)).toBe(0);
+      expect(await serverRequestCount(page, ns)).toBe(0);
 
       // Configure the webhook, burn the sink's first-attempt 429, then the
       // synthetic TEST must succeed with a TEST-marked delivered message and
       // byte-identical baseline/envelope.
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
-      await warmupTransport(page);
+      await warmupTransport(page, ns);
       const preSend = await envelopeBytes(page);
       await page.getByRole('button', { name: 'Send TEST alert to Discord' }).click({ force: true });
       await expect(page.locator('#taa-feedback')).toContainText('Discord TEST succeeded — transport works.');
       await expect(page.locator('#taa-feedback')).toContainText('This does not mean the monitor scan works.');
       expect(await envelopeBytes(page)).toBe(preSend);
-      await expect.poll(() => serverRequestCount(page), { timeout: 20_000 }).toBe(2);
+      await expect.poll(() => serverRequestCount(page, ns), { timeout: 20_000 }).toBe(2);
       // The product markdown-escapes the name, so the JSON shows \[TEST\];
       // Discord renders it as [TEST] Panel test. Assert the marker survives.
-      const productBody = JSON.stringify((await serverRequests(page)).slice(1)[0].body);
+      const productBody = JSON.stringify((await serverRequests(page, ns)).slice(1)[0].body);
       expect(productBody).toContain('TEST');
       expect(productBody).toContain('Panel test');
       expect(consoleErrors(page)).toEqual([]);
@@ -319,24 +324,25 @@ test.describe('onboarding — synthetic TEST states in leader context (TLS loopb
     }
   });
 
-  test('rejected scan and TEST success stay independent, never merged', async ({ browser }) => {
+  test('rejected scan and TEST success stay independent, never merged', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(120_000);
     const target = await newHttpsPage(browser);
     const { page } = target;
     try {
       // Cycle 1: canonical baseline with webhook configured.
       await installMalformedFlagHook(page);
-      await page.request.post('/e2e-log');
+      await page.request.post(`/e2e-log?ns=${ns}`);
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await useMenuCapture(page);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitDiagSnapshot(page, 'ok');
-      expect(await serverRequestCount(page)).toBe(0);
+      expect(await serverRequestCount(page, ns)).toBe(0);
       const baselineBefore = await baselineJson(page);
       expect(baselineBefore).not.toBe('null');
-      await warmupTransport(page);
+      await warmupTransport(page, ns);
       const gm = await snapshotGM(page);
 
       // Cycle 2: same world (GM restored, like persistent Tampermonkey GM;
@@ -345,7 +351,7 @@ test.describe('onboarding — synthetic TEST states in leader context (TLS loopb
       // parser-rejected. Baseline and queue survive untouched.
       await page.evaluate(() => localStorage.setItem('__taa_onboarding_malformed', '1'));
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-      await useLoopbackTransport(page);
+      await useLoopbackTransport(page, ns);
       await useMenuCapture(page);
       await restoreGM(page, gm);
       await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);

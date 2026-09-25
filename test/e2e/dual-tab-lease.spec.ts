@@ -52,7 +52,7 @@ import type { Browser, BrowserContext, Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { installArtifactRuntime, installLoopbackTransport, warmupLoopbackTransport } from './runtime-bootstrap';
+import { installArtifactRuntime, installLoopbackTransport, warmupLoopbackTransport, writeEvidencePhase as writeEvidencePhaseShared } from './runtime-bootstrap';
 
 const DIST = '/dist/travian-attack-alert.user.js';
 const HTTPS_ORIGIN = 'https://127.0.0.1:8898';
@@ -102,10 +102,8 @@ function consoleErrors(page: Page): string[] {
   return (page as unknown as { __consoleErrors: string[] }).__consoleErrors ?? [];
 }
 
-function writeEvidencePhase(phase: string, value: Record<string, unknown>): void {
-  fs.mkdirSync(path.dirname(EVIDENCE_PATH), { recursive: true });
-  const existing = fs.existsSync(EVIDENCE_PATH) ? JSON.parse(fs.readFileSync(EVIDENCE_PATH, 'utf8')) : {};
-  fs.writeFileSync(EVIDENCE_PATH, `${JSON.stringify({ ...existing, [phase]: value }, null, 2)}\n`);
+function writeEvidencePhase(phase: string, value: Record<string, unknown>, workerIndex: number): void {
+  writeEvidencePhaseShared(EVIDENCE_PATH, phase, value, workerIndex);
 }
 
 // Canonical member-table prep, staged via shared localStorage and consumed by a
@@ -180,11 +178,11 @@ async function reacquiredWithNewToken(page: Page, previousToken: string | undefi
 // (fresh pages are origin-less and deny localStorage); staging then happens on
 // the second navigation inside installArtifactRuntime, whose DCL hook consumes
 // it strictly before artifact boot.
-async function bootRealPage(page: Page, prep: PrepConfig, webhook = false): Promise<void> {
+async function bootRealPage(page: Page, prep: PrepConfig, webhook = false, ns: string | number = ''): Promise<void> {
   await page.goto(MEMBERS, { waitUntil: 'domcontentloaded' });
   await stagePrep(page, prep);
-  await installArtifactRuntime(page, { path: MEMBERS, artifactPath: DIST, realLocks: true, webhook });
-  await useLoopbackTransport(page);
+  await installArtifactRuntime(page, { path: MEMBERS, artifactPath: DIST, realLocks: true, webhook, ns });
+  await useLoopbackTransport(page, ns);
 }
 
 async function snapshotGM(page: Page): Promise<string> {
@@ -206,8 +204,8 @@ async function injectDist(page: Page): Promise<void> {
   await page.addScriptTag({ content: await page.evaluate(async (artifactPath: string) => await (await fetch(artifactPath)).text(), DIST) });
 }
 
-async function useLoopbackTransport(page: Page): Promise<void> {
-  await installLoopbackTransport(page);
+async function useLoopbackTransport(page: Page, ns: string | number = ''): Promise<void> {
+  await installLoopbackTransport(page, ns);
 }
 
 // The fixture page's inline script overwrites GM_registerMenuCommand with a
@@ -253,12 +251,14 @@ async function snapshotEvents(page: Page): Promise<SnapshotEvent[]> {
   return await page.evaluate(() => (window.__TAA_E2E_EVENTS__ ?? []) as SnapshotEvent[]);
 }
 
-async function serverRequestCount(page: Page): Promise<number> {
-  return await page.evaluate(async () => (await (await fetch('/e2e-log')).json()).discordRequests?.length ?? 0);
+async function serverRequestCount(page: Page, ns: string | number = ''): Promise<number> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  return await page.evaluate(async (q: string) => (await (await fetch(`/e2e-log${q}`)).json()).discordRequests?.length ?? 0, nsQuery);
 }
 
-async function serverRequestBodies(page: Page): Promise<string[]> {
-  const log = await page.evaluate(async () => await (await fetch('/e2e-log')).json()) as { discordRequests?: Array<{ body?: unknown }> };
+async function serverRequestBodies(page: Page, ns: string | number = ''): Promise<string[]> {
+  const nsQuery = ns === '' ? '' : `?ns=${encodeURIComponent(String(ns))}`;
+  const log = await page.evaluate(async (q: string) => await (await fetch(`/e2e-log${q}`)).json(), nsQuery) as { discordRequests?: Array<{ body?: unknown }> };
   return (log.discordRequests ?? []).map((entry) => JSON.stringify(entry.body ?? {}));
 }
 
@@ -288,10 +288,10 @@ async function openPanel(page: Page): Promise<void> {
 
 // Manual reload cycle with GM carry (Todo 9 pattern): the startup flush runs
 // before the scan, so a freshly queued delta is NOT sent in its own cycle.
-async function reloadCycle(page: Page, prep: PrepConfig, gm: string, webhook: boolean): Promise<void> {
+async function reloadCycle(page: Page, prep: PrepConfig, gm: string, webhook: boolean, ns: string | number = ''): Promise<void> {
   await stagePrep(page, prep);
   await page.goto(MEMBERS, { waitUntil: 'domcontentloaded' });
-  await useLoopbackTransport(page);
+  await useLoopbackTransport(page, ns);
   await restoreGM(page, gm);
   if (webhook) await setWebhook(page);
   await useMenuCapture(page);
@@ -300,7 +300,8 @@ async function reloadCycle(page: Page, prep: PrepConfig, gm: string, webhook: bo
 }
 
 test.describe('dual-tab lease — single-browser sender authority', () => {
-  test('exactly one real owner scans/sends; the standby is read-only with zero requests', async ({ browser }) => {
+  test('exactly one real owner scans/sends; the standby is read-only with zero requests', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(120_000);
     const { context, page: owner } = await newHttpsContext(browser);
     const standby = await context.newPage();
@@ -311,17 +312,17 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
 
       // Owner boots first on the empty lease: commits the baseline, sends nothing.
       // No second page exists yet, so the owner keeps winning its own reloads.
-      await bootRealPage(owner, { rename101: true });
+      await bootRealPage(owner, { rename101: true }, false, ns);
       await waitAuthoritativeSnapshot(owner);
-      expect(await serverRequestCount(owner)).toBe(0);
+      expect(await serverRequestCount(owner, ns)).toBe(0);
 
       // Burn the sink's first-attempt 429 (flagged, never product traffic),
       // then queue a synthetic +1 attack on the owner WITHOUT delivering it
       // (the startup flush already ran pre-scan).
       const seedGM = await snapshotGM(owner);
-      await reloadCycle(owner, { rename101: true, attackIcon101: true }, seedGM, true);
+      await reloadCycle(owner, { rename101: true, attackIcon101: true }, seedGM, true, ns);
       await expect.poll(async () => (await monitorEnvelope(owner)).pending.length, { timeout: 10_000 }).toBe(1);
-      expect(await serverRequestCount(owner)).toBe(0); // queued, not sent
+      expect(await serverRequestCount(owner, ns)).toBe(0); // queued, not sent
 
       // Standby boots while the owner HOLDS the exclusive lock: its lock
       // callback queues behind the owner and cannot run yet. The owner is
@@ -330,9 +331,9 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       // NOTE: this boot resets the sink log AND re-arms its first-attempt
       // 429, so the warmup below must run AFTER it (well before the 30 s
       // flush below fires) for the measured delivery to be a single attempt.
-      await bootRealPage(standby, { rename101: true });
+      await bootRealPage(standby, { rename101: true }, false, ns);
       await setWebhook(standby); // standby CAN send (config present) — only fencing stops it
-      await warmupLoopbackTransport(owner, serverRequestCount);
+      await warmupLoopbackTransport(owner, (p) => serverRequestCount(p, ns), ns);
       await standby.waitForTimeout(3000); // past boot jitter: still queued, still silent
 
       // Exactly one owner, named by ownerId/generation, visible from BOTH pages
@@ -356,13 +357,13 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       expect(await snapshotEvents(standby)).toEqual([]);
       expect(await transportTargets(standby)).toEqual([]);
       expect(await transportTargets(owner)).toEqual([]);
-      expect(await serverRequestCount(owner)).toBe(1); // warmup only
+      expect(await serverRequestCount(owner, ns)).toBe(1); // warmup only
 
       // Delivery on the product's own 30 s batch-flush cadence: no navigation,
       // so the lock never drops while the standby is queued. The owner sends
       // exactly once; the live, webhook-configured standby sends nothing.
-      await expect.poll(() => serverRequestCount(owner), { timeout: 75_000 }).toBe(2);
-      const bodies = await serverRequestBodies(owner);
+      await expect.poll(() => serverRequestCount(owner, ns), { timeout: 75_000 }).toBe(2);
+      const bodies = await serverRequestBodies(owner, ns);
       expect(bodies.slice(1)).toHaveLength(1);
       expect(bodies[1]).toContain('/profile/101');
       expect(await transportTargets(owner)).toHaveLength(1);
@@ -403,7 +404,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       // way, so it cannot discriminate.
       expect(await snapshotEvents(standby)).toEqual([]);
       expect(await transportTargets(standby)).toEqual([]);
-      expect(await serverRequestCount(standby)).toBe(2); // warmup + owner delivery only
+      expect(await serverRequestCount(standby, ns)).toBe(2); // warmup + owner delivery only
 
       writeEvidencePhase('t1-exclusivity', {
         artifact: 'dist/travian-attack-alert.user.js',
@@ -420,13 +421,14 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
         visibleStandbyAfterForeignLease: true,
         standbyReadOnly: true,
         operatorRule: OPERATOR_RULE,
-      });
+      }, ns);
     } finally {
       await context.close();
     }
   });
 
-  test('closing the owner transfers leadership with the queue preserved and no duplicate of acked work', async ({ browser }) => {
+  test('closing the owner transfers leadership with the queue preserved and no duplicate of acked work', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(150_000);
     const { context, page: owner } = await newHttpsContext(browser);
     const standby = await context.newPage();
@@ -441,21 +443,21 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       // (the raid icon is a genuine delta, never a reappearance), ending with
       // one ACKED record (101 attack, delivered) plus one PENDING record
       // (102 raid, queued but not yet flushed).
-      await bootRealPage(owner, { rename101: true, rename102: true });
+      await bootRealPage(owner, { rename101: true, rename102: true }, false, ns);
       await waitAuthoritativeSnapshot(owner);
 
       let gm = await snapshotGM(owner);
-      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true }, gm, true);
+      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true }, gm, true, ns);
       await expect.poll(async () => (await monitorEnvelope(owner)).pending.length, { timeout: 10_000 }).toBe(1);
       gm = await snapshotGM(owner);
-      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true }, gm, true);
-      await expect.poll(() => serverRequestCount(owner), { timeout: 20_000 }).toBe(2);
+      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true }, gm, true, ns);
+      await expect.poll(() => serverRequestCount(owner, ns), { timeout: 20_000 }).toBe(2);
       await expect.poll(async () => (await monitorEnvelope(owner)).terminal.filter((t) => t.terminalStatus === 'acknowledged' && t.playerId === '101').length, { timeout: 10_000 }).toBe(1);
 
       gm = await snapshotGM(owner);
-      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true, raidIcon102: true }, gm, true);
+      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true, raidIcon102: true }, gm, true, ns);
       await expect.poll(async () => (await monitorEnvelope(owner)).pending.length, { timeout: 10_000 }).toBe(1);
-      expect(await serverRequestCount(owner)).toBe(2); // 102 queued, not sent
+      expect(await serverRequestCount(owner, ns)).toBe(2); // 102 queued, not sent
       const queued = await monitorEnvelope(owner);
       expect(queued.pending[0]?.playerId).toBe('102');
       const firstOwnerId = await ownerId(owner);
@@ -464,7 +466,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       // staged — inert while queued, exactly matching the carried baseline at
       // takeover, so its first scan finds no new delta and queues no leave.
       // The owner is never navigated again from here on.
-      await bootRealPage(standby, { rename101: true, attackIcon101: true, rename102: true, raidIcon102: true });
+      await bootRealPage(standby, { rename101: true, attackIcon101: true, rename102: true, raidIcon102: true }, false, ns);
       await setWebhook(standby); // standby CAN send (config present) — fencing is what stops it
       await standby.waitForTimeout(3000); // past boot jitter: still queued, still silent
       expect(await leaseState(owner)).toBe('leader');
@@ -473,7 +475,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       // Warmup AFTER the standby boot (which resets the sink log and re-arms
       // its first-attempt 429), so the takeover delivery below meets a 200
       // first try and the post-takeover window holds exactly one product post.
-      await warmupLoopbackTransport(standby, serverRequestCount);
+      await warmupLoopbackTransport(standby, (p) => serverRequestCount(p, ns), ns);
 
       // Shared-GM emulation (production Tampermonkey shares GM across tabs):
       // carry the owner's full store — acked 101 + pending 102 — onto the
@@ -488,13 +490,13 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       // probe: the lease survives it), while a real tab close runs them.
       await owner.close({ runBeforeUnload: true });
       await expect.poll(() => leaseState(standby), { timeout: 30_000 }).toBe('leader');
-      await expect.poll(() => serverRequestCount(standby), { timeout: 20_000 }).toBe(2);
+      await expect.poll(() => serverRequestCount(standby, ns), { timeout: 20_000 }).toBe(2);
       await waitAuthoritativeSnapshot(standby);
 
       // EXACTLY ONCE across the takeover window (warmup + one product post):
       // the carried 102 is delivered, and the acknowledged 101 is NOT re-sent
       // (zero /profile/101 posts after the standby boot reset the sink log).
-      const bodies = await serverRequestBodies(standby);
+      const bodies = await serverRequestBodies(standby, ns);
       const product = bodies.slice(1);
       expect(product).toHaveLength(1);
       expect(product[0]).toContain('/profile/102');
@@ -523,35 +525,36 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
         acknowledged101: 1,
         acknowledged102: 1,
         queueLineagePreserved: true,
-      });
+      }, ns);
     } finally {
       await context.close();
     }
   });
 
-  test('fence loss between wire response and settle leaves the record recoverable, never acked or dropped', async ({ browser }) => {
+  test('fence loss between wire response and settle leaves the record recoverable, never acked or dropped', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(120_000);
     const { context, page } = await newHttpsContext(browser);
     page.on('dialog', (dialog) => { void dialog.dismiss(); });
     try {
       await installPrepHook(page);
-      await bootRealPage(page, { rename101: true }, true);
+      await bootRealPage(page, { rename101: true }, true, ns);
       await waitAuthoritativeSnapshot(page);
-      await warmupLoopbackTransport(page, serverRequestCount);
+      await warmupLoopbackTransport(page, (p) => serverRequestCount(p, ns), ns);
 
       // Queue one synthetic record (startup flush already ran pre-scan).
       const gm = await snapshotGM(page);
-      await reloadCycle(page, { rename101: true, attackIcon101: true }, gm, true);
+      await reloadCycle(page, { rename101: true, attackIcon101: true }, gm, true, ns);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);
-      expect(await serverRequestCount(page)).toBe(1);
+      expect(await serverRequestCount(page, ns)).toBe(1);
 
       // Hold the loopback response, start the flush, wait until the request is
       // on the wire (logged), THEN revoke the lease mid-flight.
-      await page.request.post('/e2e-delivery-hold', { data: { hold: true } });
+      await page.request.post(`/e2e-delivery-hold?ns=${ns}`, { data: { hold: true } });
       await page.evaluate(() => (window.__TAA_MENU__ as unknown as Record<string, () => void>)['Flush pending Discord batches']());
-      await expect.poll(() => serverRequestCount(page), { timeout: 15_000 }).toBe(2);
+      await expect.poll(() => serverRequestCount(page, ns), { timeout: 15_000 }).toBe(2);
       await page.evaluate(() => localStorage.removeItem('travianAllianceTabLease_v1'));
-      await page.request.post('/e2e-delivery-hold', { data: { hold: false } });
+      await page.request.post(`/e2e-delivery-hold?ns=${ns}`, { data: { hold: false } });
 
       // Settle saw genuine lease loss: the 200+ID response must NOT become an
       // acknowledgement. The record stays recoverable (inFlight), retryable by
@@ -564,7 +567,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       expect(settled.terminal.filter((t) => t.terminalStatus === 'acknowledged')).toEqual([]);
       expect(settled.failed).toEqual([]);
       expect(settled.uncertain).toEqual([]);
-      expect(await serverRequestCount(page)).toBe(2);
+      expect(await serverRequestCount(page, ns)).toBe(2);
       expect(consoleErrors(page)).toEqual([]);
 
       writeEvidencePhase('t3-fence-loss', {
@@ -575,22 +578,23 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
         failedRecords: 0,
         uncertainRecords: 0,
         silentlyDropped: false,
-      });
+      }, ns);
     } finally {
       await context.close();
     }
   });
 
-  test('two browser contexts do NOT share locks — each elects its own owner', async ({ browser }) => {
+  test('two browser contexts do NOT share locks — each elects its own owner', async ({ browser }, testInfo) => {
+    const ns = testInfo.workerIndex;
     test.setTimeout(90_000);
     const first = await newHttpsContext(browser);
     const second = await newHttpsContext(browser);
     try {
       await installPrepHook(first.page);
       await installPrepHook(second.page);
-      await bootRealPage(first.page, { rename101: true });
+      await bootRealPage(first.page, { rename101: true }, false, ns);
       await waitAuthoritativeSnapshot(first.page);
-      await bootRealPage(second.page, { rename101: true });
+      await bootRealPage(second.page, { rename101: true }, false, ns);
       await waitAuthoritativeSnapshot(second.page);
 
       // Separate storage partitions => separate leases => TWO coexisting
@@ -606,7 +610,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       expect(secondOwner).not.toBe(firstOwner);
       expect((await leaseRecord(first.page))?.ownerId).toBe(firstOwner);
       expect((await leaseRecord(second.page))?.ownerId).toBe(secondOwner);
-      expect(await serverRequestCount(first.page)).toBe(0);
+      expect(await serverRequestCount(first.page, ns)).toBe(0);
 
       writeEvidencePhase('t4-contexts-isolation', {
         realLocks: true,
@@ -615,7 +619,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
         bothLeader: true,
         locksSharedAcrossContexts: false,
         operatorRule: OPERATOR_RULE,
-      });
+      }, ns);
     } finally {
       await first.context.close();
       await second.context.close();
