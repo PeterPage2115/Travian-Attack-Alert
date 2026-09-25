@@ -2,6 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
+  // CI reports must never embed the branch diff: it can carry forbidden
+  // private-path context (and inflates the sealed evidence ~13x). Keep commit
+  // identity metadata; drop the diff.
+  captureGitInfo: { commit: true, diff: false },
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: false,
