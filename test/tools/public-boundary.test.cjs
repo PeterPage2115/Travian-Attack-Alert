@@ -39,6 +39,7 @@ const REVIEWED_FILES = [
   'CONTRIBUTING.md',
   'LICENSE',
   'README.md',
+  'README.pl.md',
   'SECURITY.md',
   'metadata.json',
   'module-manifest.json',

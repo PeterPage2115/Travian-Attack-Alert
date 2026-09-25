@@ -1,68 +1,90 @@
 # Travian Attack Alert
 
-Alliance attack, raid, and departure alerts from Travian to your own Discord server. One Tampermonkey userscript runs in your browser tab: no backend, no account, no runtime dependency.
+Alliance attack, raid, and departure alerts from Travian to your own Discord server. One Tampermonkey userscript, running quietly in your browser tab. No backend, no account, no runtime dependency.
 
-**Version 1.0.2, release ID `taa-1.0.2` — staged release candidate (`stable: false`).** This bump is staged off the release branch, so the live `release/public-1.0.0` channel keeps serving the published `1.0.1` stable release (tag `v1.0.1`, [immutable GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1), release id `396778787`, seven attested assets, SHA-256 `0c187870…`, 2026-09-25); its historical record is archived at `docs/release-history/1.0.1/release-state.json`. Stable `1.0.2` publication requires owner pilot evidence; the machine-readable gate is `docs/release-state.json` (the 1.0.2 candidate) and the ordered publication procedure is `docs/RELEASE-RUNBOOK.md`.
+**English** | [Polski](README.pl.md)
+
+> **Release:** `1.0.2` (stable) · **License:** MIT · **[Install ↓](#install)** · **[Documentation](docs/README.md)**
 
 ![Synthetic screenshot of the Travian Attack Alert operations panel: the Alliance alert monitor dialog with the Overview, Players, Alerts, and Diagnostics tabs, leader status, accepted-scan status lines, and an established baseline.](docs/assets/panel-overview.png)
 
-*The panel above is rendered from this repository's own synthetic Playwright fixture — fixture player IDs and a loopback host only. No real alliance, player, host, account, or webhook data appears in it.*
+*The panel above is rendered from this repository's own synthetic Playwright fixture. No real alliance, player, host, account, or webhook data appears in it.*
 
 ## What it does
 
-The script (`Travian Attack Alert`, namespace `travian-attack-alert-public`) periodically reads the alliance members table on the canonical page and sends Discord alerts when attacks, raids, or departures appear. No bundler, framework, or runtime dependency is required in the browser. The installable file is `dist/travian-attack-alert.user.js`, generated from `src/` via `npm run build`.
+The script watches the alliance members table on your Travian world and pings your Discord when new attacks, raids, or departures appear. It keeps a delta baseline, so the first accepted scan is silent and only what changed since the previous scan produces alerts. Everything runs locally in your browser tab: the Travian session never leaves your machine, and the Discord webhook lives only in your userscript manager. Current build: `1.0.2` (`taa-1.0.2`).
 
-## Install and update
+## Install
 
-**Install from the release-branch raw URL — the verified working path.** The channel URL below returned HTTP 200 and served exactly the committed `1.0.1` artifact (SHA-256 `0c187870…`) when verified on 2026-09-23 — the historical stable build, still served today; the immutable [`v1.0.1` GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1) with attested assets was published on 2026-09-25, and this release-branch URL remains the update channel that managers poll. The `1.0.2` identity of this tree is staged off the release branch and is not published yet — no `v1.0.2` GitHub Release download exists:
+1. Install a userscript manager: [Tampermonkey for Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo) or [Tampermonkey for Firefox](https://addons.mozilla.org/firefox/addon/tampermonkey/).
+2. Open the installer from the [latest GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest) and confirm the Tampermonkey prompt. The one-click asset is [`travian-attack-alert.user.js`](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest/download/travian-attack-alert.user.js).
+3. On Chrome 138+ with Tampermonkey 5.3+, turn on **Allow User Scripts** (or Developer Mode). Without it the browser runs no userscript at all: no panel, no menu, no scan, no alert. This is Tampermonkey FAQ Q209.
+4. Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version `1.0.2`.
 
-```text
-https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/public-1.0.0/dist/travian-attack-alert.user.js
-```
+Updates arrive automatically through the script's `@updateURL` channel on the `release/public-1.0.0` branch, so a manager that honors it pulls the current file without manual work. Reinstalling from the latest release applies a new version too. Never enable two senders at once during an update.
 
-Open that URL with Tampermonkey enabled and confirm the install prompt, or paste it into the manager's install-from-URL flow. Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and the channel build's version — the staged `1.0.2` candidate in this tree supersedes it once the owner publishes it.
+Building from source is for contributors, not for installing the script. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-On Chrome 138 and newer, Tampermonkey 5.3+ additionally needs the browser's `Allow User Scripts` toggle (or Developer Mode) enabled; this is Tampermonkey FAQ Q209. With that permission off, the browser runs no userscript at all: there is no panel, no Tampermonkey menu entry, no scan, and no alert, and the script cannot diagnose or report the condition because it never executes. To recover, enable `Allow User Scripts` (or Developer Mode), reload the page, then reinstall the script.
+## Quick start
 
-Updates are delivered through the `@updateURL` channel pointing at the default release branch `release/public-1.0.0` (`main` does not exist on the remote), so managers that honor it update automatically from the same raw dist file. A new version can also be applied by repeating the install steps above and confirming the version shown by the manager. Never enable two senders at once during an update.
+1. Open the canonical route: `https://<your-world>.travian.com/alliance/profile/members`. It must be query-free; any other matched route stays inert and never scans.
+2. Set the Discord webhook in the **Tampermonkey menu** with `Set Discord webhook URL`. `Show Discord webhook status` tells you whether one is configured.
+3. Click **Send TEST alert to Discord** on the Alerts tab (`taa-tab-alerts`). A TEST proves transport only. It never proves the detector and never touches the baseline.
+4. Confirm an accepted scan and an established baseline on the Overview tab (`taa-tab-overview`).
 
-Historical `1.0.0` copies that embedded the old broken `/main/` URL cannot self-heal at the same version: a same-version install never triggers an update, and the stale embedded URL never resolves. Reinstall from the corrected URL or file above (or re-run the install-from-file steps), keep all site data untouched, and confirm the version shown by the manager.
+If Travian shows a login page, log in first; the monitor never scans or mutates state there. The first accepted scan commits the baseline silently, so old attacks do not flood the channel. Detections made before a webhook is set stay queued instead of being dropped.
 
-Contributors building from source: `src/` is the editable authority — `dist/` is generated, never hand-edited. Run `npm run build`, then install `dist/travian-attack-alert.user.js` in Tampermonkey (Dashboard → Utilities → Install from file, or drag the `.user.js` file into the browser window), and confirm the same name, namespace, and version `1.0.2`.
+## Features
 
-Anyone migrating from the internal 6.2.1 line (historical internal development) should read [`docs/MIGRATION-6X.md`](docs/MIGRATION-6X.md): export settings first, disable the old sender, keep site data, then install 1.0.2.
+**Detection**
+- Watches the alliance members table on the canonical page for new attacks, raids, and departures.
+- Delta-based: the first accepted scan sets the baseline silently, then only new events alert.
+- Per-player thresholds, mutes, and Normal / High / Critical priority bands.
+- Leaving a player never removes Discord access automatically; a moderator must revoke it by hand.
 
-## Setup order
+**Discord alerts**
+- Sends to your own Discord webhook: no bot, no OAuth app, no backend.
+- Delta-first messages with linked player names and one mention pass per batch.
+- Delivery is at-least-once, so a lost acknowledgement can duplicate a batch.
 
-The Alerts tab shows a `Setup order` banner. Follow it in this order:
+**Panel**
+- Overview (`taa-tab-overview`) is read-only status; Players (`taa-tab-players`) holds roster, mappings, and mutes.
+- Alerts (`taa-tab-alerts`) holds thresholds, roles, and test send; Diagnostics (`taa-tab-diagnostics`) holds traces and exports.
 
-1. Open the canonical members route: `https://<your-world>.travian.com/alliance/profile/members` (query-free; any other matched route shows inert guidance and never scans).
-2. Set the Discord webhook via the Tampermonkey menu (`Set Discord webhook URL`). `Show Discord webhook status` tells you whether one is configured; `Clear Discord webhook URL` removes it after a typed confirmation.
-3. Send the TEST alert with the `Send TEST alert to Discord` button. A TEST proves that transport works. It never proves that the detector works, and it never touches the attack baseline.
-4. Confirm an accepted scan in the Overview tab (`taa-tab-overview`).
+**Safety**
+- The webhook lives only in userscript storage (`GM_setValue`) and is never written into code or logs.
+- A standby tab without the lease stays read-only, and losing the lease disables mutations immediately.
 
-If Travian shows a login page, log in first. The monitor never scans a login page and never changes state there.
+Deeper reading: [alert format](docs/ALERT-FORMAT.md), [operations](docs/OPERATIONS.md), [architecture](docs/architecture.md).
 
-The panel (`Monitor views` tablist) has exactly four tabs: Overview (`taa-tab-overview`, read-only status and counts), Players (`taa-tab-players`, roster, mappings, mutes), Alerts (`taa-tab-alerts`, thresholds, attack and leave roles, test send), and Diagnostics (`taa-tab-diagnostics`, trace filters and exports).
+## Configuration
 
-The first accepted scan commits the baseline silently (no historical flood), so old attacks do not flood your channel. Detections made before a webhook is configured stay queued instead of being dropped.
+Daily work lives in the panel. Setup and recovery live in the Tampermonkey menu.
 
-Recovery lives in the Tampermonkey menu: `Retry failed Discord batches`, `Retry uncertain Discord batches`, `Mark uncertain Discord batches delivered`, `Flush pending Discord batches`, plus `Toggle debug details` and `Load history and health`. Retry, flush, debug, and webhook work all belong to the Tampermonkey menu, never to the panel.
+| Where | What |
+| --- | --- |
+| Panel, Overview (`taa-tab-overview`) | Read-only status: runtime, route, session, lease, scan, baseline, delivery. |
+| Panel, Players (`taa-tab-players`) | Alliance roster, per-player mappings, and mutes. |
+| Panel, Alerts (`taa-tab-alerts`) | Attack and raid thresholds, priority bands, attack and leave-moderator roles, test send. |
+| Panel, Diagnostics (`taa-tab-diagnostics`) | Trace filters and the incident bundle export. |
+| Tampermonkey menu | Set, show, or clear the webhook; retry or flush queued batches; toggle debug details; load history and health; import or export settings. |
 
-Export the incident bundle FIRST, before touching anything: Diagnostics tab, `Export incident bundle` (`taa-incident-bundle-export`). The incident bundle is bounded (512 KiB) and redacted by construction: no webhook, token, raw DOM, player data, queue payloads, URLs, cookies, or response bodies. The settings backup (`Export settings` / `Import settings`, collapsed under `taa-settings-details`) is the full-settings restore path: it restores mappings, settings, mutes, names, roster, and roles, and carries the webhook secret only with your explicit opt-in checkbox. Do not clear site data: the last accepted roster, mappings, and role configuration live in storage, and clearing destroys the only recoverable copies.
+Common settings and their defaults:
 
-## What alerts look like
+| Setting | Default | Effect |
+| --- | --- | --- |
+| Attack threshold | 1 | Minimum new attacks on one player before an attack alert. |
+| Raid threshold | 1 | Minimum new raids on one player before a raid alert. |
+| Normal max | 2 | Peak new count at or below this stays `Priority: Normal`. |
+| High max | 5 | Peak at or below this is `Priority: High`; above it is `Priority: Critical`. |
 
-Alerts are short and delta-first:
+Full operator documentation: [docs/OPERATIONS.md](docs/OPERATIONS.md) (English) and [docs/pl/OPERATIONS.md](docs/pl/OPERATIONS.md) (Polish; the English text governs disagreements).
 
-- `🚨 Alliance attack`, `🛡️ Alliance raid`, or `🔄 Alliance changes`, with a linked title and singular/plural player count.
-- The first embed carries the `New`, `Active now`, and `Priority` summary fields; continuation embeds carry only the player descriptions.
-- The footer is `<hostname> · <observation-text>`; multi-request output adds `part X/Y`.
-- Mentions occur once only, live only in top-level `content`, and never inside embed text.
+## How alerts look
 
-The full payload contract — field-by-field anatomy, mention policy, per-request limits, multi-part splitting, and delivery outcomes — is in [`docs/ALERT-FORMAT.md`](docs/ALERT-FORMAT.md).
+Alerts are short and delta-first. The title names the event, the first embed carries the `New`, `Active now`, and `Priority` summary, and the footer is `<hostname> · <observation-text>`.
 
-The following bytes are generated from the live canonical raid builder:
+The full payload contract (field anatomy, mention policy, per-request limits, multi-part splitting, delivery outcomes) is in [`docs/ALERT-FORMAT.md`](docs/ALERT-FORMAT.md). The example below is generated from the live canonical raid builder.
 
 <!-- discord-alert-example:start -->
 ```text
@@ -81,96 +103,60 @@ Timestamp: 2026-08-23T09:46:01.000Z
 ```
 <!-- discord-alert-example:end -->
 
-The attack and mixed-alert grammar is also captured from the live canonical attack fixture:
+## Privacy & security
 
-<!-- discord-attack-example:start -->
-```text
-🚨 Alliance attack · 6 players
-**Players**
-[Player 900003](https://world.example.invalid/profile/900003) — **+2 attacks**
-Now: 17 attacks / 5 raids
-
-[Player 900004](https://world.example.invalid/profile/900004) — **+2 attacks**
-Now: 7 attacks / 7 raids
-
-[Player 900005](https://world.example.invalid/profile/900005) — **+1 attack** · **+1 raid**
-Now: 8 attacks / 1 raid
-
-[Player 900006](https://world.example.invalid/profile/900006) — **+1 attack** · **+1 raid**
-Now: 6 attacks / 2 raids
-
-[Player 900007](https://world.example.invalid/profile/900007) — **+1 attack** · **+1 raid**
-Now: 7 attacks / 1 raid
-
-[Player 900008](https://world.example.invalid/profile/900008) — **+1 attack**
-Now: 7 attacks / 1 raid
-New: **+8 attacks** · **+3 raids**
-Active now: 52 attacks / 17 raids
-Priority: Normal
-world.example.invalid · Observed <1s before dispatch
-Timestamp: 2026-08-23T09:46:01.000Z
-```
-<!-- discord-attack-example:end -->
-
-## Status and limitations
-
-- **Pilot, not stable.** `docs/release-state.json` records `stable: false` for the staged `1.0.2` candidate with every owner gate unrecorded (including `ownerManual.branchProtection: false`), and there is no `v1.0.2` tag or GitHub Release. The published `1.0.1` (`stable: true`, tag `v1.0.1`, [immutable GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.1), release id `396778787`, seven attested assets, 2026-09-25) remains the live stable channel; its historical record is archived at `docs/release-history/1.0.1/release-state.json`. The public GitHub API observes branch protection with four required checks, but that observation is separate from the owner attestation.
-- It has no backend. Everything runs in your browser tab.
-- It gives no 24/7 guarantee. Alerts are produced only while your browser, with an active installation, sits on the canonical page.
-- It is not exactly-once. Delivery is at-least-once, so a lost acknowledgement can deliver the same batch twice.
-- It can miss short-lived events by design: events that appear and disappear between two reads cannot be inferred.
-- It never removes Discord access automatically. When a player leaves, a moderator must revoke that player's Discord permissions by hand.
-- One active monitoring installation per alliance and world. A second computer or browser profile is a second sender and WILL double-send; the local lock cannot prevent it.
-- Desktop Chrome with Tampermonkey is the tested combination. Firefox with Tampermonkey, and Violentmonkey, are candidate-only until proven. Mobile browser monitoring is unsupported; receiving alerts in the mobile Discord app works as usual.
-
-Partial, repeated, malformed, or ambiguous input does not change authoritative state; acquisition is rejected without partial state and authoritative state remains unchanged.
-
-Daily routine, handover order, queue recovery, and diagnostics live in [`docs/OPERATIONS.md`](docs/OPERATIONS.md) (English) and [`docs/pl/OPERATIONS.md`](docs/pl/OPERATIONS.md) (Polish; the English text governs disagreements). This page stays an overview.
+- Your Travian session stays in your browser. Credentials are not persisted and cookies are not read.
+- The Discord webhook lives only in your userscript manager storage. It is validated as an HTTPS Discord webhook URL, stored without a query string, and never logged or displayed in full.
+- Export incident bundle first when something looks wrong: Diagnostics tab, **Export incident bundle** (`taa-incident-bundle-export`). The incident bundle is bounded (512 KiB) and redacted by construction.
+- The settings backup (**Export settings** / **Import settings**, collapsed under `taa-settings-details`) is the full-settings restore path: it restores mappings, settings, mutes, names, roster, and roles, and carries the webhook secret only with your explicit opt-in.
+- Do not clear site data: the last accepted roster, mappings, and role configuration live in storage, and clearing destroys the only recoverable copies.
+- Malformed or partial input never changes state: acquisition is rejected without partial state and the last accepted state remains unchanged.
+- All player names, hosts, and tokens in the docs and alert examples are synthetic fixtures. No real player data, hosts, or secrets appear in this repository.
 
 ## Troubleshooting
 
-1. Export the incident bundle FIRST (Setup order above): Diagnostics tab, `Export incident bundle` — bounded (512 KiB) and redacted by construction.
-2. Match your state against the diagnostics-first checklist in [`docs/OPERATIONS.md`](docs/OPERATIONS.md): no script running (Chrome `Allow User Scripts`), webhook missing, wrong page, login page, parser rejection, failed or uncertain batches, TEST versus scan confusion, and still-stuck escalation.
-3. Re-enter only the values proved absent by the `Storage provenance` labels. Do not clear site data to "fix" a rejected scan.
-
-## Support
-
-Include the script version (`1.0.2`), your browser and userscript manager versions, steps to reproduce, what you expected, and what happened instead. Attach the redacted incident bundle. NEVER include a webhook URL or token, cookies, passwords, raw page HTML, or player data beyond what the bundle already contains in redacted form.
-
-To file a report, use the issue templates: [bug report](.github/ISSUE_TEMPLATE/bug_report.yml) or [feature request](.github/ISSUE_TEMPLATE/feature_request.yml). Please follow [CONTRIBUTING.md](CONTRIBUTING.md) and the [security policy](SECURITY.md) (synthetic/redacted data only, no secrets).
-
-Support for this project is entirely voluntary and optional. It has no influence on features, priorities, or fix timelines. There is no paid tier and nothing is locked behind support. The destination for voluntary support will be added by the maintainer.
-
-This page documents the Tampermonkey **1.0.2** userscript, identified by release ID `taa-1.0.2`. Earlier 6.2.1-era behavior (historical internal development) is not part of this candidate's contract.
-
-## Privacy
-
-- Your Travian session stays in your browser. Credentials are not persisted and cookies are not read.
-- Your webhook URL lives only in your userscript manager storage. It is validated as an HTTPS Discord webhook URL, stored without a query string, and never logged or displayed in full.
-- The incident bundle is bounded (512 KiB) and redacted by construction.
-- The settings backup omits the webhook secret by default; the file carries it only with your explicit opt-in checkbox.
-- All player names, hosts, and tokens shown in docs and alert examples are synthetic fixtures only. No real player data, hosts, or secrets appear in this repository's documentation.
+1. Nothing happens at all. On Chrome 138+ enable **Allow User Scripts** (or Developer Mode), reload the page, then reinstall the script.
+2. Nothing reaches Discord. Check the Overview Delivery line. If the webhook is missing, set it through the Tampermonkey menu; detections stay queued, nothing is lost.
+3. The scan looks wrong. Confirm the exact query-free `/alliance/profile/members` route and that you are logged in. A parser rejection shows `Live roster unavailable` with a reason code.
+4. Two installs double-send. Keep exactly one active monitoring installation per alliance and world; a second computer or browser profile is a second sender.
+5. Still stuck. Export the redacted incident bundle and follow the diagnostics-first checklist in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Documentation
 
-- Docs index: [`docs/README.md`](docs/README.md) — every current document, with archived release-history marked historical.
-- Daily operations (English): [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
-- Daily operations (Polish): [`docs/pl/OPERATIONS.md`](docs/pl/OPERATIONS.md).
-- Alert payload format: [`docs/ALERT-FORMAT.md`](docs/ALERT-FORMAT.md).
-- Migration from the 6.x line: [`docs/MIGRATION-6X.md`](docs/MIGRATION-6X.md).
-- Architecture and design tokens: [`docs/architecture.md`](docs/architecture.md) (module graph §10).
-- Distribution options (sourced decision record, no migration): [`docs/DISTRIBUTION-OPTIONS.md`](docs/DISTRIBUTION-OPTIONS.md) — four shells compared with cited constraints; the current userscript channel is retained.
-- Detector behavior audit (historical `1.0.0` record): [`docs/AUDIT.md`](docs/AUDIT.md).
-- Code-review verification rules: [`docs/CODE-REVIEW.md`](docs/CODE-REVIEW.md).
-- Development environment (WSL/DrvFS): [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — Node/npm selection, test tiers, evidence roots, line endings, protected canonical checkout.
-- Repository settings owner checklist: [`docs/REPOSITORY-SETTINGS.md`](docs/REPOSITORY-SETTINGS.md).
-- Owner release runbook: [`docs/RELEASE-RUNBOOK.md`](docs/RELEASE-RUNBOOK.md).
-- Release history (historical archived `1.0.0-rc` candidate records): [`docs/release-history/1.0.0-rc/`](docs/release-history/1.0.0-rc/). The owner-verified 1.0.1 release-state is archived byte-identically at [`docs/release-history/1.0.1/release-state.json`](docs/release-history/1.0.1/release-state.json).
-- Changelog: [`CHANGELOG.md`](CHANGELOG.md).
-- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md) (workflow, tests, backup, PR checklist).
-- Pull request template: [`.github/pull_request_template.md`](.github/pull_request_template.md).
-- Security policy: [`SECURITY.md`](SECURITY.md). License: [`LICENSE`](LICENSE).
+- [Docs index](docs/README.md): every current document, with the release-history archive marked historical.
+- [Daily operations (English)](docs/OPERATIONS.md) and [Polish](docs/pl/OPERATIONS.md): morning routine, queue recovery, handover, troubleshooting.
+- [Alert payload format](docs/ALERT-FORMAT.md): request anatomy, mention policy, per-request limits, splitting, delivery outcomes.
+- [Architecture](docs/architecture.md): module graph and design tokens.
+- [Owner release runbook](docs/RELEASE-RUNBOOK.md): the ordered, owner-gated publication procedure.
+- [Changelog](CHANGELOG.md), [Contributing](CONTRIBUTING.md), [Security policy](SECURITY.md).
+- Moving from the internal 6.2.1 line (historical)? Export a settings backup from the old sender, disable it, keep site data, then install 1.0.2. See [docs/MIGRATION-6X.md](docs/MIGRATION-6X.md).
 
-## Source layout
+## Support
 
-`src/` is the editable authority; `dist/travian-attack-alert.user.js` is generated (`npm run build`) and never hand-edited. The 13-domain module graph, the aggregator seam, the lifecycle owner, and the adapter factories are documented in [`docs/architecture.md`](docs/architecture.md) §10, enforced by `test/tools/module-architecture.test.cjs`.
+When reporting a problem, include the script version (`1.0.2`), your browser and userscript manager versions, numbered steps to reproduce, what you expected, and what happened instead. Attach the redacted incident bundle. NEVER include a webhook URL or token, cookies, passwords, raw page HTML, or player data beyond what the bundle already contains in redacted form.
+
+- [Bug report](.github/ISSUE_TEMPLATE/bug_report.yml)
+- [Feature request](.github/ISSUE_TEMPLATE/feature_request.yml)
+- [Security policy](SECURITY.md): report vulnerabilities privately, never in a public issue.
+
+Support is voluntary and has no influence on features, priorities, or fix timelines. There is no paid tier.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, tests, backup, and PR checklist. Building from source is for contributors; the release asset above is the supported install path.
+
+## Changelog
+
+[CHANGELOG.md](CHANGELOG.md) tracks the public release line. Published builds live on [GitHub Releases](https://github.com/PeterPage2115/Travian-Attack-Alert/releases).
+
+## License
+
+[MIT](LICENSE).
+
+## Disclaimer
+
+Travian Attack Alert is an unofficial fan tool. It is not affiliated with, endorsed by, or sponsored by Travian Games GmbH. Travian and all related marks belong to their respective owners.
+
+---
+
+This page documents the Tampermonkey **1.0.2** userscript, identified by release ID `taa-1.0.2`. The current published release is [v1.0.2](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest).
