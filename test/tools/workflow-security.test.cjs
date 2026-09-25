@@ -351,7 +351,7 @@ test('workflow triggers target only the release branch and never pull_request_ta
   for (const workflow of workflowSources()) {
     assert.doesNotMatch(workflow.source, /^\s*pull_request_target\s*:/mu, `${workflow.relative} must not use pull_request_target`);
     if (workflow.name === RELEASE_WORKFLOW_NAME) {
-      // release.yml is the owner-gated tag-only pipeline. Its full trigger
+      // release.yml is the solo-owner tag-only pipeline. Its full trigger
       // contract is owned by test/tools/release-workflow.test.cjs; this test only
       // pins that it can never gain a branch or PR trigger.
       assert.doesNotMatch(workflow.source, /^\s{2}(pull_request|workflow_dispatch|schedule|workflow_run|repository_dispatch):/mu, `${workflow.relative} must stay tag-only`);
@@ -391,13 +391,12 @@ test('workflow keeps workflow-level read-only permissions and grants no write sc
 test('no workflow can receive repository secrets', () => {
   for (const workflow of workflowSources()) {
     if (workflow.name === RELEASE_WORKFLOW_NAME) {
-      // release.yml may reference ONLY the two environment-scoped release
-      // secrets (available only after the protected environment approves).
-      const names = [...workflow.source.matchAll(/\bsecrets\.([A-Za-z0-9_]+)/gu)].map((match) => match[1]);
-      assert.deepEqual(
-        [...new Set(names)].sort(),
-        ['TAA_RELEASE_APPROVAL_PROOF', 'TAA_RELEASE_SETTINGS_READ_TOKEN'],
-        `${workflow.relative} may only reference the two release environment secrets`,
+      // release.yml is solo-owner: a pushed tag publishes on the automatic
+      // github.token alone, so it references no repository or environment secret.
+      assert.doesNotMatch(
+        workflow.source,
+        /\bsecrets\./u,
+        `${workflow.relative} must not reference any repository or environment secret`,
       );
       continue;
     }
@@ -517,9 +516,11 @@ test('Task 18 characterization receipts remain blocking in both offline jobs', (
 test('no workflow can publish or release', () => {
   for (const workflow of workflowSources()) {
     if (workflow.name === RELEASE_WORKFLOW_NAME) {
-      // release.yml publishes ONLY through the environment-gated publish job; the
-      // full mutation/idempotency contract is owned by release-workflow.test.cjs.
-      assert.match(workflow.source, /^\s{4}environment:\s*release\s*$/mu, `${workflow.relative} publication must be environment-gated`);
+      // release.yml publishes ONLY through its single draft=false mutation on the
+      // automatic token; the full mutation/idempotency contract is owned by
+      // release-workflow.test.cjs.
+      assert.doesNotMatch(workflow.source, /^\s{4}environment:\s*\S+/mu, `${workflow.relative} must not attach an environment`);
+      assert.match(workflow.source, /draft=false/u, `${workflow.relative} must declare its single publish mutation`);
       continue;
     }
     for (const signature of PUBLISH_SIGNATURES) {

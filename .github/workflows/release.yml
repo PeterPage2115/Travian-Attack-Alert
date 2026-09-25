@@ -1,6 +1,6 @@
 name: Release
 
-# Owner-gated release pipeline (Task 29).
+# Solo-owner release pipeline.
 #
 # Triggered ONLY by a pushed annotated `v*` tag. A pull request or an ordinary
 # branch push can never reach any job here, so no write or OIDC job is reachable
@@ -10,27 +10,29 @@ name: Release
 #   release-build    contents: read
 #   release-attest   contents: read + id-token: write + attestations: write
 #   release-draft    contents: write
-#   release-publish  contents: write + environment: release (approval required)
+#   release-publish  contents: write
 # `id-token`/`attestations` are NEVER co-located with `contents: write`, and the
 # release-write jobs never request OIDC. The top-level `permissions: {}` denies
 # every scope by default.
 #
-# No third-party release action is used: the draft and the publish mutation go
-# through the pinned GitHub CLI, and the only credential beyond the automatic
-# token is the short-lived, environment-scoped settings-read token, which is
-# used for GET requests only and is unset immediately after the preflight.
+# This repository has a single maintainer, so a pushed `v*` tag publishes the
+# GitHub Release with no second GitHub account, no environment reviewer, and no
+# fine-grained settings-read token. The pipeline references NO repository or
+# environment secret: every API call runs on the workflow's automatic
+# `${{ github.token }}` (contents: read) and the publish mutation on the same
+# automatic token with contents: write. The `release` environment is not
+# attached to the publish job.
 #
-# Publication is impossible unless all of the following hold at the tagged
-# commit: docs/release-state.json is schema v2 with `stable: true` and every
+# No third-party release action is used: the draft and the publish mutation go
+# through the pinned GitHub CLI using the workflow's automatic token.
+#
+# Publication is impossible unless the following hold at the tagged commit:
+# docs/release-state.json is schema v2 with `stable: true` and every
 # pre-publication owner gate populated while `publication.tagAndRelease` is
-# still false; the `release` environment has a distinct required reviewer with
-# prevent-self-review and a `v*` deployment tag policy; both environment secrets
-# exist and no same-named repository secret or variable exists; immutable
-# releases are enabled; an active tag ruleset with no bypass actors restricts
-# creation, update and deletion of the exact `refs/tags/v*` ref, so no release
-# actor can retarget the tag; and docs/release-owner-evidence.json binds the
-# live token grants/expiry, the approval proof digest, and organization-level
-# name absence to this exact tag/commit.
+# still false. The GitHub-side protections (immutable releases enabled and an
+# active no-bypass tag ruleset for `refs/tags/v*`) remain in force; publication
+# never weakens them, and the post-publish verification still refuses to report
+# success on a mutable release or a retargeted tag.
 #
 # The publish job proves the complete draft asset set is exactly the seven
 # declared names (both as downloaded and as reported by the API), re-fetches the
@@ -52,9 +54,7 @@ concurrency:
 
 env:
   RELEASE_BRANCH: release/public-1.0.0
-  OWNER_EVIDENCE_PATH: docs/release-owner-evidence.json
-  APPROVAL_PROOF_SECRET: TAA_RELEASE_APPROVAL_PROOF
-  SETTINGS_READ_SECRET: TAA_RELEASE_SETTINGS_READ_TOKEN
+  GH_REPO: ${{ github.repository }}
 
 jobs:
   release-build:
@@ -255,170 +255,22 @@ jobs:
     needs: [release-build, release-attest, release-draft]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: release
     permissions:
       contents: write
     steps:
-      - name: Checkout the tagged commit for owner evidence
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ github.ref }}
-          fetch-depth: 1
-
-      - name: Live environment protection and owner-evidence preflight
+      - name: Verify the tag still targets the exact release commit
         id: preflight
         env:
-          TAA_RELEASE_APPROVAL_PROOF: ${{ secrets.TAA_RELEASE_APPROVAL_PROOF }}
-          TAA_RELEASE_SETTINGS_READ_TOKEN: ${{ secrets.TAA_RELEASE_SETTINGS_READ_TOKEN }}
-          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ needs.release-build.outputs.source-tag }}
           SOURCE_SHA: ${{ needs.release-build.outputs.source-sha }}
-          SOURCE_TREE: ${{ needs.release-build.outputs.source-tree }}
-          OWNER_EVIDENCE_PATH: ${{ env.OWNER_EVIDENCE_PATH }}
-          APPROVAL_PROOF_SECRET: ${{ env.APPROVAL_PROOF_SECRET }}
-          SETTINGS_READ_SECRET: ${{ env.SETTINGS_READ_SECRET }}
         run: |
-          node --input-type=commonjs - <<'NODE'
-            'use strict';
-            const fs = require('node:fs');
-            const crypto = require('node:crypto');
-            const token = process.env.TAA_RELEASE_SETTINGS_READ_TOKEN || '';
-            const approvalProof = process.env.TAA_RELEASE_APPROVAL_PROOF || '';
-            const actor = process.env.ACTOR;
-            const repo = process.env.REPO;
-            const tag = process.env.TAG;
-            const sourceSha = process.env.SOURCE_SHA;
-            const sourceTree = process.env.SOURCE_TREE;
-            const evidencePath = process.env.OWNER_EVIDENCE_PATH;
-            const approvalSecretName = process.env.APPROVAL_PROOF_SECRET;
-            const settingsSecretName = process.env.SETTINGS_READ_SECRET;
-            function fail(code, message) {
-              console.error(`RELEASE PREFLIGHT FAIL: ${code}: ${message}`);
-              process.exit(1);
-            }
-            const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
-            if (!approvalProof) fail('missing-environment-secret', `${approvalSecretName} is unavailable after environment approval`);
-            if (!token) fail('missing-environment-secret', `${settingsSecretName} is unavailable after environment approval`);
-            async function api(pathname) {
-              const response = await fetch(`https://api.github.com${pathname}`, {
-                headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'taa-release-preflight' },
-              });
-              if (!response.ok) fail('settings-api-denied', `GET ${pathname} -> ${response.status}`);
-              return response.json();
-            }
-            (async () => {
-              const environment = await api(`/repos/${repo}/environments/release`);
-              const rules = environment.protection_rules || [];
-              const reviewerRules = rules.filter((rule) => rule.type === 'required_reviewers');
-              if (reviewerRules.length === 0) fail('missing-live-protection-check', 'release environment has no required reviewers');
-              const reviewerLogins = [];
-              for (const rule of reviewerRules) {
-                if (rule.prevent_self_review !== true) fail('missing-live-protection-check', 'release environment must enable prevent_self_review');
-                const logins = (rule.reviewers || []).map((entry) => (entry.reviewer ? entry.reviewer.login : entry.login)).filter(Boolean);
-                if (logins.length === 0) fail('missing-live-protection-check', 'release environment reviewer list is empty');
-                if (logins.includes(actor)) fail('same-actor-reviewer', `required reviewer ${actor} is the triggering actor`);
-                reviewerLogins.push(...logins);
-              }
-              const policies = await api(`/repos/${repo}/environments/release/deployment-branch-policies`);
-              const tagPolicies = (policies.branch_policies || []).filter((policy) => policy.type === 'tag' && policy.name === 'v*');
-              if (tagPolicies.length !== 1) fail('missing-live-protection-check', 'release environment must allow the v* tag deployment policy');
-              const environmentSecrets = await api(`/repos/${repo}/environments/release/secrets`);
-              const environmentSecretNames = (environmentSecrets.secrets || []).map((secret) => secret.name);
-              for (const name of [approvalSecretName, settingsSecretName]) {
-                if (!environmentSecretNames.includes(name)) fail('missing-environment-secret', `release environment secret ${name} is missing`);
-              }
-              const repositorySecrets = await api(`/repos/${repo}/actions/secrets`);
-              for (const name of [approvalSecretName, settingsSecretName]) {
-                if ((repositorySecrets.secrets || []).some((secret) => secret.name === name)) fail('missing-live-protection-check', `repository secret ${name} must not exist`);
-              }
-              const repositoryVariables = await api(`/repos/${repo}/actions/variables`);
-              for (const name of [approvalSecretName, settingsSecretName]) {
-                if ((repositoryVariables.variables || []).some((variable) => variable.name === name)) fail('missing-live-protection-check', `repository variable ${name} must not exist`);
-              }
-              const immutable = await api(`/repos/${repo}/immutable-releases`);
-              if (immutable.enabled !== true) fail('immutable-releases-disabled', 'repository immutable releases are not enabled');
-              const rulesets = await api(`/repos/${repo}/rulesets`);
-              if (!Array.isArray(rulesets)) fail('tag-protection-missing', 'repository rulesets response is not an array');
-              const matchesRef = (pattern, ref) => {
-                if (pattern === '~ALL') return true;
-                if (pattern === '~DEFAULT_BRANCH') return false;
-                const escaped = pattern.replace(/[.+?^${}()|[\]\\]/gu, '\\$&').replace(/\*/gu, '.*');
-                return new RegExp(`^${escaped}$`, 'u').test(ref);
-              };
-              const releaseTagRef = `refs/tags/${tag}`;
-              let tagProtectionRulesetId = null;
-              for (const candidate of rulesets) {
-                if (candidate.target !== 'tag' || candidate.enforcement !== 'active') continue;
-                const ruleset = await api(`/repos/${repo}/rulesets/${candidate.id}`);
-                const refName = (ruleset.conditions && ruleset.conditions.ref_name) || {};
-                const includes = Array.isArray(refName.include) ? refName.include : [];
-                const excludes = Array.isArray(refName.exclude) ? refName.exclude : [];
-                if (!includes.some((pattern) => matchesRef(pattern, releaseTagRef))) continue;
-                if (excludes.some((pattern) => matchesRef(pattern, releaseTagRef))) continue;
-                const ruleTypes = (ruleset.rules || []).map((rule) => rule.type);
-                for (const required of ['creation', 'update', 'deletion']) {
-                  if (!ruleTypes.includes(required)) fail('tag-protection-missing', `active tag ruleset ${ruleset.id} does not restrict ${required} for ${releaseTagRef}`);
-                }
-                if (!Array.isArray(ruleset.bypass_actors) || ruleset.bypass_actors.length !== 0) fail('tag-protection-bypass', `active tag ruleset ${ruleset.id} grants bypass actors that could retarget ${releaseTagRef}`);
-                tagProtectionRulesetId = ruleset.id;
-                break;
-              }
-              if (tagProtectionRulesetId === null) fail('tag-protection-missing', `no active tag ruleset restricts creation/update/deletion of ${releaseTagRef}`);
-              const tagRef = await api(`/repos/${repo}/git/ref/tags/${tag}`);
-              let target = tagRef.object.sha;
-              if (tagRef.object.type === 'tag') {
-                const tagObject = await api(`/repos/${repo}/git/tags/${target}`);
-                target = tagObject.object.sha;
-              }
-              if (target !== sourceSha) fail('tag-target-mismatch', `tag ${tag} points at ${target}, expected ${sourceSha}`);
-              if (!fs.existsSync(evidencePath)) fail('missing-owner-evidence', `owner evidence ${evidencePath} is missing at ${sourceSha}`);
-              const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
-              if (evidence.schemaVersion !== 1) fail('missing-owner-evidence', 'owner evidence schemaVersion must be 1');
-              if (evidence.tag !== tag || evidence.commit !== sourceSha) fail('missing-owner-evidence', 'owner evidence is not bound to this tag/commit');
-              const tokenEvidence = evidence.token || {};
-              if (tokenEvidence.name !== settingsSecretName) fail('missing-owner-evidence', 'owner evidence does not describe the settings-read token');
-              if (tokenEvidence.digest !== sha256(token)) fail('missing-owner-evidence', 'owner evidence token digest does not match the live token');
-              const issuedAt = Date.parse(tokenEvidence.issuedAt || '');
-              const expiresAt = Date.parse(tokenEvidence.expiresAt || '');
-              if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) fail('missing-owner-evidence', 'owner evidence token timestamps are invalid');
-              if (expiresAt <= Date.now()) fail('expired-owner-evidence', 'settings-read token evidence is expired');
-              if (expiresAt - issuedAt > 24 * 60 * 60 * 1000) fail('expired-owner-evidence', 'settings-read token must expire within 24 hours');
-              const grants = Array.isArray(tokenEvidence.grants) ? tokenEvidence.grants : [];
-              for (const grant of ['Administration:read', 'Environments:read', 'Secrets:read-metadata', 'Actions-variables:read', 'Actions:read']) {
-                if (!grants.includes(grant)) fail('missing-owner-evidence', `owner evidence is missing grant ${grant}`);
-              }
-              if (grants.some((grant) => /write/iu.test(grant))) fail('missing-owner-evidence', 'settings-read token must not carry any write grant');
-              const organizationAbsence = evidence.organizationAbsence || {};
-              for (const name of [approvalSecretName, settingsSecretName]) {
-                if (!(organizationAbsence.secrets || []).includes(name)) fail('missing-owner-evidence', `owner evidence must attest organization secret absence for ${name}`);
-                if (!(organizationAbsence.variables || []).includes(name)) fail('missing-owner-evidence', `owner evidence must attest organization variable absence for ${name}`);
-              }
-              const approvalEvidence = evidence.approvalProof || {};
-              if (approvalEvidence.name !== approvalSecretName) fail('missing-owner-evidence', 'owner evidence does not describe the approval proof');
-              if (approvalEvidence.digest !== sha256(approvalProof)) fail('missing-owner-evidence', 'owner evidence approval-proof digest does not match the live secret');
-              const record = {
-                schemaVersion: 1,
-                tag,
-                commit: sourceSha,
-                tree: sourceTree,
-                actor,
-                reviewerLogins,
-                environmentSecretNames,
-                immutableReleasesEnabled: immutable.enabled,
-                tagProtectionRulesetId,
-                ownerEvidenceDigest: sha256(JSON.stringify(evidence)),
-                ownerEvidenceTokenExpiresAt: tokenEvidence.expiresAt,
-              };
-              fs.writeFileSync('preflight-live.json', `${JSON.stringify(record, null, 2)}\n`);
-              console.log('RELEASE PREFLIGHT PASS: live environment protections and owner evidence verified');
-            })().catch((error) => fail('preflight-error', error.message));
-          NODE
-
-      - name: Unset the settings-read token immediately after preflight
-        run: |
-          unset TAA_RELEASE_SETTINGS_READ_TOKEN
-          echo "TAA_RELEASE_SETTINGS_READ_TOKEN=" >> "$GITHUB_ENV"
+          set -euo pipefail
+          tag_object=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha')
+          tag_commit=$(gh api "repos/$REPO/git/tags/$tag_object" --jq '.object.sha')
+          test "$tag_commit" = "$SOURCE_SHA" || { echo "RELEASE PREFLIGHT FAIL: tag-target-mismatch: $TAG now points at $tag_commit, expected $SOURCE_SHA"; exit 1; }
+          echo "RELEASE PREFLIGHT PASS: $TAG targets $SOURCE_SHA"
 
       - name: Download the captured workflow artifact into a fresh directory
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0

@@ -3,7 +3,7 @@
 // Task 29 release-workflow contract.
 //
 // `.github/workflows/release.yml` is the ONLY workflow allowed to write to the
-// repository. It must therefore be provably least-privilege and owner-gated:
+// repository. It must therefore be provably least-privilege and solo-owner:
 //
 //   * tag-only `v*` trigger (no pull_request / branch / dispatch trigger), so
 //     an untrusted event can never reach a write or OIDC job;
@@ -18,20 +18,20 @@
 //   * the attestation job is OIDC-only and attests `SHA256SUMS`;
 //   * the draft job is idempotent, uses `--draft --verify-tag --generate-notes`,
 //     and rejects an existing published or mismatched draft;
-//   * the publish job depends on build/attest/draft, declares
-//     `environment: release`, checks both environment secrets only after
-//     approval, proves the live protection rules with a GET-only settings token
-//     (including an active tag ruleset with no bypass actors that forbids
-//     creation/update/deletion of the exact tag ref), unset immediately after
-//     preflight, validates the complete downloaded AND API-reported draft asset
-//     set against the exact seven-name allowlist (extras, omissions and
-//     duplicates fail closed), reverifies the workflow artifact against every
-//     remote draft asset, verifies build attestations, records immutable
-//     evidence, re-fetches the draft immediately before performing exactly one
-//     publish mutation and rejects any changed release id/tag/draft state or
-//     asset id/name/size/digest, then verifies the published immutable release,
-//     exact asset digests, and that the tag still points at the source commit
-//     (a retargeted tag is an incident, never success).
+//   * the publish job depends on build/attest/draft, attaches no environment and
+//     references no secret: it runs entirely on the automatic `github.token`
+//     (contents: write) so a solo maintainer can publish without a second
+//     account, an environment reviewer or a settings-read token; it verifies
+//     the tag still targets the source commit, validates the complete
+//     downloaded AND API-reported draft asset set against the exact seven-name
+//     allowlist (extras, omissions and duplicates fail closed), reverifies the
+//     workflow artifact against every remote draft asset, verifies build
+//     attestations, records immutable evidence, re-fetches the draft immediately
+//     before performing exactly one publish mutation and rejects any changed
+//     release id/tag/draft state or asset id/name/size/digest, then verifies
+//     the published immutable release, exact asset digests, and that the tag
+//     still points at the source commit (a retargeted tag is an incident, never
+//     success).
 //
 // `analyzeReleaseWorkflow()` is a pure, offline analyzer over the workflow
 // source. The suite runs it against the real file (zero violations) and against
@@ -50,7 +50,6 @@ const MAX_JOB_TIMEOUT_MINUTES = 120;
 const ALLOWED_ACTION_OWNERS = ['actions'];
 const EXPECTED_JOBS = ['release-attest', 'release-build', 'release-draft', 'release-publish'];
 const PRE_PUBLICATION_GATES = ['pilotInstallBySecondPerson', 'evidenceRecord', 'branchProtection', 'devArchival', 'releaseEnvironment', 'immutableReleases'];
-const ENVIRONMENT_SECRETS = ['TAA_RELEASE_APPROVAL_PROOF', 'TAA_RELEASE_SETTINGS_READ_TOKEN'];
 
 function readReleaseWorkflow() {
   assert.ok(fs.existsSync(RELEASE_WORKFLOW), '.github/workflows/release.yml must exist');
@@ -245,24 +244,12 @@ function analyzeReleaseWorkflow(source) {
   if (!/gh\s+release\s+view/u.test(draft) || !/isDraft/u.test(draft)) add('missing-idempotency', 'draft job must be idempotent for the same tag');
 
   const publish = jobs['release-publish'] || '';
-  if (!/^\s{2}environment:\s*release\s*$/mu.test(publish)) add('publish-not-environment-gated', 'publish job must declare environment: release');
   for (const dependency of ['release-build', 'release-attest', 'release-draft']) {
     if (!jobNeeds(publish).includes(dependency)) add('publish-needs', `publish job must depend on ${dependency}`);
   }
-  for (const secretName of ENVIRONMENT_SECRETS) {
-    if (!publish.includes(secretName)) add('missing-environment-secret-check', `publish job must reference the ${secretName} environment secret`);
-  }
-  if (!/missing-environment-secret/u.test(publish)) add('missing-environment-secret-check', 'publish job must fail closed on a missing environment secret');
-  if (!/prevent_self_review/u.test(publish)) add('missing-live-protection-check', 'publish job must require prevent_self_review');
-  if (!/deployment-branch-policies/u.test(publish)) add('missing-live-protection-check', 'publish job must verify the deployment tag policy');
-  if (!/actions\/secrets/u.test(publish)) add('missing-live-protection-check', 'publish job must check repository secret names');
-  if (!/actions\/variables/u.test(publish)) add('missing-live-protection-check', 'publish job must check repository variable names');
-  if (!/immutable-releases/u.test(publish)) add('missing-live-protection-check', 'publish job must verify immutable releases');
-  if (!/type === 'tag'/u.test(publish) || !/name === 'v\*'/u.test(publish)) add('missing-live-protection-check', 'publish job must require a v* tag deployment policy');
-  if (!/same-actor-reviewer/u.test(publish) || !/github\.actor/u.test(publish)) add('same-actor-reviewer', 'publish job must reject a sole reviewer equal to github.actor');
+  if (/^\s{2}environment:\s*\S+/mu.test(publish)) add('publish-environment-gate', 'solo mode: publish job must not attach an environment');
+  if (/secrets\./u.test(publish)) add('publish-uses-secret', 'solo mode: publish job must run on the automatic github.token only');
   if (!/git\/ref\/tags/u.test(publish) || !/git\/tags/u.test(publish)) add('missing-tag-target-check', 'publish job must resolve and compare the exact tag target');
-  if (!/release-owner-evidence|OWNER_EVIDENCE_PATH/u.test(publish)) add('missing-owner-evidence', 'publish job must verify digest-bound owner evidence from the tagged commit');
-  if (!/unset TAA_RELEASE_SETTINGS_READ_TOKEN/u.test(publish)) add('token-not-unset', 'publish job must unset the settings-read token immediately after preflight');
   if (!/cmp -s/u.test(publish)) add('asset-artifact-attestation-mismatch', 'publish job must byte-compare the workflow artifact and the draft assets');
   if (!/sha256sum -c/u.test(publish)) add('asset-artifact-attestation-mismatch', 'publish job must recheck SHA256SUMS');
   if (!/gh attestation verify/u.test(publish)) add('asset-artifact-attestation-mismatch', 'publish job must verify each build attestation');
@@ -293,16 +280,9 @@ function analyzeReleaseWorkflow(source) {
   if (!/recheck\.tag_name !== record\.tag/u.test(publish)) add('missing-draft-recheck', 'publish job must reject a changed draft tag before the publish mutation');
   if (!/fingerprint\(recheck\.assets\) !== fingerprint\(record\.assetIds\)/u.test(publish)) add('missing-draft-recheck', 'publish job must reject changed asset ids, names, sizes or digests before the publish mutation');
 
-  // The tag must be proven immutable (active tag ruleset, matching ref, no
-  // bypass actors) before publication, and the tag target must be re-resolved
-  // after publication; any mismatch is a publication failure, never success.
-  if (!/rulesets/u.test(publish)) add('missing-tag-protection-check', 'publish job must verify repository tag rulesets');
-  if (!/tag-protection-missing/u.test(publish)) add('missing-tag-protection-check', 'publish job must fail closed when the tag ruleset is missing');
-  if (!/tag-protection-bypass/u.test(publish)) add('missing-tag-protection-check', 'publish job must fail closed when the tag ruleset grants bypass actors');
-  if (!/bypass_actors\.length !== 0/u.test(publish)) add('missing-tag-protection-check', 'publish job must reject a tag ruleset with bypass actors');
-  if (!/ref_name/u.test(publish)) add('missing-tag-protection-check', 'publish job must match the ruleset against the exact tag ref');
-  if (!/includes\.some\(\(pattern\) => matchesRef\(pattern, releaseTagRef\)\)/u.test(publish)) add('missing-tag-protection-check', 'publish job must prove the ruleset include conditions cover the exact tag ref');
-  if (!/for \(const required of \['creation', 'update', 'deletion'\]\)/u.test(publish)) add('missing-tag-protection-check', 'publish job must require creation/update/deletion restrictions');
+  // The tag target must be re-resolved after publication; any mismatch is a
+  // publication failure, never success. The GitHub-side no-bypass tag ruleset
+  // and immutable-releases setting stay in force outside the workflow.
   if (!/tag-target-changed-after-publish/u.test(publish)) add('missing-post-publish-tag-check', 'publish job must treat a retargeted tag after publication as a failure');
   if (!/test "\$tag_commit_after" = "\$SOURCE_SHA"/u.test(publish)) add('missing-post-publish-tag-check', 'publish job must compare the post-publication tag target against the source commit');
 
@@ -311,17 +291,7 @@ function analyzeReleaseWorkflow(source) {
     if (/gh\s+release\s+edit|--method\s+(?:PATCH|POST|PUT|DELETE)|draft=false/u.test(jobText)) add('direct-auto-publish', `${name} must not mutate a release`);
   }
 
-  const secretNames = [...source.matchAll(/secrets\.([A-Za-z0-9_]+)/gu)].map((match) => match[1]);
-  for (const secretName of secretNames) {
-    if (!ENVIRONMENT_SECRETS.includes(secretName)) add('unexpected-secret', `unexpected secret reference ${secretName}`);
-  }
-  for (const [name, jobText] of Object.entries(jobs)) {
-    if (name !== 'release-publish' && /secrets\./u.test(jobText)) add('secret-outside-publish', `${name} must not reference secrets`);
-  }
-  for (const line of source.split(/\r?\n/u)) {
-    if (!line.includes('TAA_RELEASE_SETTINGS_READ_TOKEN')) continue;
-    if (/--method\s+(?:PATCH|POST|PUT|DELETE)|-X\s+(?:PATCH|POST|PUT|DELETE)|draft=false/u.test(line)) add('settings-token-mutation', 'the settings-read token must never be used for a mutation');
-  }
+  if (/\bsecrets\./u.test(source)) add('unexpected-secret', 'solo mode: the release workflow must reference no repository or environment secret');
 
   return { errors };
 }
@@ -387,7 +357,7 @@ test('Given the release workflow, when jobs are inspected, then permissions are 
   assert.deepEqual(jobPermissions(jobs['release-publish']), { contents: 'write' });
   assert.equal(jobPermissions(jobs['release-publish']).contents, 'write');
   assert.notEqual(jobPermissions(jobs['release-attest']).contents, 'write');
-  assert.match(jobs['release-publish'], /^\s{2}environment:\s*release\s*$/mu);
+  assert.doesNotMatch(jobs['release-publish'], /^\s{2}environment:\s*\S+/mu);
   for (const job of Object.values(jobs)) {
     const permissions = jobPermissions(job);
     assert.ok(!(permissions.contents === 'write' && (permissions['id-token'] === 'write' || permissions.attestations === 'write')));
@@ -442,18 +412,14 @@ test('Given the release workflow, when the draft job is inspected, then it is id
   assert.doesNotMatch(draft, /draft=false/u);
 });
 
-test('Given the release workflow, when the publish job is inspected, then it is environment-gated and proves live protections', () => {
+test('Given the release workflow, when the publish job is inspected, then it is solo-owner and references no environment or secret', () => {
   const publish = sliceJobs(readReleaseWorkflow())['release-publish'];
   assert.deepEqual(jobNeeds(publish).sort(), ['release-attest', 'release-build', 'release-draft']);
-  assert.match(publish, /environment:\s*release/u);
-  for (const secretName of ENVIRONMENT_SECRETS) assert.ok(publish.includes(secretName));
-  assert.match(publish, /prevent_self_review/u);
-  assert.match(publish, /deployment-branch-policies/u);
-  assert.match(publish, /actions\/secrets/u);
-  assert.match(publish, /actions\/variables/u);
-  assert.match(publish, /immutable-releases/u);
-  assert.match(publish, /same-actor-reviewer/u);
-  assert.match(publish, /unset TAA_RELEASE_SETTINGS_READ_TOKEN/u);
+  assert.deepEqual(jobPermissions(publish), { contents: 'write' });
+  assert.doesNotMatch(publish, /^\s{2}environment:\s*\S+/mu);
+  assert.doesNotMatch(publish, /\bsecrets\./u);
+  assert.match(publish, /github\.token/u);
+  assert.match(publish, /git\/ref\/tags/u);
   assert.match(publish, /gh attestation verify/u);
   assert.match(publish, /draft=false/u);
   assert.match(publish, /gh release verify/u);
@@ -494,16 +460,12 @@ test('Given a draft bypass, when analyzed, then the workflow is rejected', () =>
   expectRejected(mutate('gh release create "$TAG" --draft --verify-tag', 'gh release create "$TAG" --verify-tag'), 'draft-bypass');
 });
 
-test('Given absent environment-secret checks, when analyzed, then the workflow is rejected', () => {
-  expectRejected(mutateAll("fail('missing-environment-secret'", "fail('secret-ok'"), 'missing-environment-secret-check');
+test('Given an unexpected secret reference, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('GH_TOKEN: ${{ github.token }}', 'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}'), 'unexpected-secret');
 });
 
-test('Given absent live-protection checks, when analyzed, then the workflow is rejected', () => {
-  expectRejected(mutateAll('prevent_self_review', 'preventXself_review'), 'missing-live-protection-check');
-});
-
-test('Given a same-actor reviewer, when analyzed, then the workflow is rejected', () => {
-  expectRejected(mutate("fail('same-actor-reviewer'", "fail('reviewer-ok'"), 'same-actor-reviewer');
+test('Given an attached environment, when analyzed, then the workflow is rejected', () => {
+  expectRejected(mutate('\n  release-publish:\n    needs:', '\n  release-publish:\n    environment: release\n    needs:'), 'publish-environment-gate');
 });
 
 test('Given an asset/artifact/attestation mismatch path, when analyzed, then the workflow is rejected', () => {
@@ -515,14 +477,6 @@ test('Given a direct auto-publish, when analyzed, then the workflow is rejected'
     '\n  release-publish:\n',
     '\n      - name: bypass\n        run: gh release edit "$TAG" --draft=false\n\n  release-publish:\n',
   ), 'direct-auto-publish');
-});
-
-test('Given an unverified tag ruleset, when analyzed, then the workflow is rejected', () => {
-  expectRejected(mutateAll('tag-protection-missing', 'tag-protection-ok'), 'missing-tag-protection-check');
-});
-
-test('Given a tag ruleset that grants bypass actors, when analyzed, then the workflow is rejected', () => {
-  expectRejected(mutate('ruleset.bypass_actors.length !== 0', 'false'), 'missing-tag-protection-check');
 });
 
 test('Given an undeclared extra draft asset, when analyzed, then the workflow is rejected', () => {
@@ -563,14 +517,6 @@ test('Given weakened pre-publish recheck fields, when analyzed, then the workflo
     ['recheck.id !== record.draftReleaseId', 'false'],
     ['recheck.tag_name !== record.tag', 'false'],
   ), 'missing-draft-recheck');
-});
-
-test('Given a tag ruleset that does not cover the exact tag ref, when analyzed, then the workflow is rejected', () => {
-  expectRejected(mutate('includes.some((pattern) => matchesRef(pattern, releaseTagRef))', 'true'), 'missing-tag-protection-check');
-});
-
-test('Given a tag ruleset without creation/update/deletion restrictions, when analyzed, then the workflow is rejected', () => {
-  expectRejected(mutate("['creation', 'update', 'deletion']", "['update']"), 'missing-tag-protection-check');
 });
 
 test('Given downloaded bytes that do not match the API digest, when analyzed, then the workflow is rejected', () => {
