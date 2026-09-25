@@ -86,6 +86,14 @@ function cloneRepo(t) {
   if (refExists(repo, 'refs/heads/release/public-1.0.0')) {
     execFileSync('git', ['update-ref', '-d', 'refs/heads/release/public-1.0.0'], { cwd: repo });
   }
+  // Context-independence: a tag checkout (release workflow) carries the real
+  // annotated release tag; `git clone` copies tags, so the fixture would fail
+  // to create its own tag. Drop every inherited tag — the fixture creates its own.
+  const inheritedTags = git(repo, ['for-each-ref', '--format=%(refname)', 'refs/tags'])
+    .split('\n').map((line) => line.trim()).filter(Boolean);
+  for (const ref of inheritedTags) {
+    execFileSync('git', ['update-ref', '-d', ref], { cwd: repo });
+  }
   execFileSync('git', ['config', 'user.email', 'fixture@example.invalid'], { cwd: repo });
   execFileSync('git', ['config', 'user.name', 'TAA Release Fixture'], { cwd: repo });
   return { base, repo };
