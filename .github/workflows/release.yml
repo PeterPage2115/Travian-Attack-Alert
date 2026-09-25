@@ -184,7 +184,7 @@ jobs:
       bundle-path: ${{ steps.attest.outputs.bundle-path }}
     steps:
       - name: Download the immutable release artifact by captured id
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           artifact-ids: ${{ needs.release-build.outputs.artifact-id }}
           run-id: ${{ needs.release-build.outputs.run-id }}
@@ -214,7 +214,7 @@ jobs:
       release-id: ${{ steps.draft.outputs.release-id }}
     steps:
       - name: Download the exact release artifact by captured id
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           artifact-ids: ${{ needs.release-build.outputs.artifact-id }}
           run-id: ${{ needs.release-build.outputs.run-id }}
@@ -275,7 +275,7 @@ jobs:
           echo "RELEASE PREFLIGHT PASS: $TAG targets $SOURCE_SHA"
 
       - name: Download the captured workflow artifact into a fresh directory
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           artifact-ids: ${{ needs.release-build.outputs.artifact-id }}
           run-id: ${{ needs.release-build.outputs.run-id }}
