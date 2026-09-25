@@ -7,11 +7,12 @@
 // pre-publication gates alone gate `stable`, while PUBLISHED_VERIFIED
 // additionally requires publication.tagAndRelease.
 //
-// Automated steps cannot flip owner fields: this test pins stable:false while
-// any pre-publication owner field is unpopulated, and the flip rule it
-// enforces requires owner-written evidence for stable:true. Advancing the gate
-// therefore requires an owner edit of BOTH docs/release-state.json AND this
-// test — no npm script, build step, or CI job does it.
+// Automated steps cannot flip owner fields: this test pins the live state after
+// the owner's 2026-09-25 attestation — stable:true only because every
+// pre-publication owner field is populated with owner-written evidence. The
+// flip rule it enforces still requires an owner edit of BOTH
+// docs/release-state.json AND this test — no npm script, build step, or CI job
+// does it.
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
@@ -122,16 +123,24 @@ describe('release gate (stable-1.0, schema v2)', () => {
     }
   });
 
-  it('reports stable:false while any pre-publication owner field is unpopulated', () => {
+  it('records stable:true with every pre-publication owner field populated and an evidence reference', () => {
+    assert.equal(state.stable, true, 'the owner attested 1.0.1 stable on 2026-09-25');
     const pending = PRE_PUBLICATION_FIELDS.filter((key) => !isPopulated(state.ownerManual[key]));
-    assert.ok(
-      pending.length > 0,
-      'pilot not yet executed: at least one pre-publication owner field must stay unpopulated',
+    assert.deepEqual(
+      pending,
+      [],
+      `stable:true requires every pre-publication owner field populated (pending: ${pending.join(', ')})`,
     );
-    assert.equal(
-      state.stable,
-      false,
-      `stable must stay false until the owner records every pre-publication field (pending: ${pending.join(', ')})`,
+    for (const key of PRE_PUBLICATION_FIELDS) {
+      const value = state.ownerManual[key];
+      assert.ok(
+        typeof value !== 'string' || value.trim().length > 0,
+        `owner field ${key} must never be populated with a blank string`,
+      );
+    }
+    assert.ok(
+      typeof state.ownerManual.evidenceRecord === 'string' && state.ownerManual.evidenceRecord.trim().length > 0,
+      'stable:true requires a non-empty owner evidence reference',
     );
   });
 

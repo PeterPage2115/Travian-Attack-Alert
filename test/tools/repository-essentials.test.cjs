@@ -479,13 +479,17 @@ test('issue chooser routes security privately and support to a labelled issue, n
   assert.ok(support, `support contact link must be ${SUPPORT_URL}`);
 });
 
-test('security policy documents the private path, the release-candidate support state, and no invented contact or SLA', () => {
+test('security policy documents the private path, the stable support state, and no invented contact or SLA', () => {
   const security = read('SECURITY.md');
   assert.ok(security.includes(SECURITY_REPORT_URL), 'SECURITY.md must link GitHub Private Vulnerability Reporting');
   assert.match(security, /security advisories/iu, 'SECURITY.md must name Security Advisories');
   assert.match(security, /\|\s*Version\s*\|/u, 'SECURITY.md must carry a supported-versions table');
-  assert.match(security, /stable:\s*false/u, 'the supported-versions table must match the machine state stable:false');
-  assert.match(security, /release candidate/iu, 'supported versions must not claim stable support prematurely');
+  assert.match(security, /stable:\s*true/u, 'the supported-versions table must match the machine state stable:true');
+  assert.doesNotMatch(
+    security,
+    /release candidate/iu,
+    'supported versions must reflect the recorded stable release, not a stale release-candidate state',
+  );
   assert.match(
     security,
     /never\s+(?:open|post|file)[^.]{0,80}public\s+issue/iu,

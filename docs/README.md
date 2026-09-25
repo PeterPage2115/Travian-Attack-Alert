@@ -18,7 +18,7 @@ Start with the English [`README.md`](../README.md) (primary): what the script do
 - Code-review verification (standing rules): [`CODE-REVIEW.md`](CODE-REVIEW.md) — the 11 verified items and their existing gates.
 - Development environment (WSL/DrvFS and Linux): [`DEVELOPMENT.md`](DEVELOPMENT.md) — Node/npm selection, `npm ci`, Playwright test tiers, evidence roots, frozen provenance, line endings, protected canonical checkout.
 - Repository settings owner checklist: [`REPOSITORY-SETTINGS.md`](REPOSITORY-SETTINGS.md) — observed public state, required targets, and owner attestations.
-- Machine-readable release state (owner gates): [`release-state.json`](release-state.json) — `stable: false` until the owner records the pre-publication evidence.
+- Machine-readable release state (owner gates): [`release-state.json`](release-state.json) — `stable: true` (owner-attested 2026-09-25); `publication.tagAndRelease` stays false until the tag and Release exist.
 - Changelog: [`../CHANGELOG.md`](../CHANGELOG.md).
 
 ## Release history (historical archive, not current proof)

@@ -2,18 +2,18 @@
 
 ## Supported versions
 
-`docs/release-state.json` currently records `stable: false`: the published
-`1.0.1` is a release candidate, not a stable release. Security fixes are
-best-effort, and no response-time promise is made.
+`docs/release-state.json` records `stable: true`: the published `1.0.1` is the
+stable release, owner-attested on 2026-09-25. Security fixes are best-effort,
+and no response-time promise is made.
 
 | Version | Supported |
 | --- | --- |
-| 1.0.1 (release candidate; `docs/release-state.json` `stable: false`) | Best-effort security fixes |
+| 1.0.1 (stable; `docs/release-state.json` `stable: true`) | Best-effort security fixes |
 | Older than 1.0.1 | No |
 
-Nothing here claims stable or long-term support. `stable` may become `true`
-only through the owner-only process documented in `docs/release-state.json`
-and `docs/REPOSITORY-SETTINGS.md`.
+Nothing here claims long-term support or a maintenance timeline. `stable` was
+set to `true` only through the owner-only process documented in
+`docs/release-state.json` and `docs/REPOSITORY-SETTINGS.md`.
 
 ## Reporting a vulnerability
 
@@ -68,10 +68,10 @@ https://raw.githubusercontent.com/PeterPage2115/Travian-Attack-Alert/release/pub
 ```
 
 Branch-protection and release-state truth is recorded in
-`docs/release-state.json`, not asserted here. That file currently records
-the owner attestation as unrecorded (`ownerManual.branchProtection: false`)
-and `stable: false`; any public API observation of branch protection
-belongs to that release-state record, not to this policy.
+`docs/release-state.json`, not asserted here. That file records the
+branch-protection owner attestation and `stable: true`; any public API
+observation of branch protection belongs to that release-state record, not to
+this policy.
 
 Out of scope: Travian game servers, Discord infrastructure, browsers, and
 userscript managers themselves.
