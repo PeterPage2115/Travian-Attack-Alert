@@ -420,8 +420,9 @@ jobs:
           SOURCE_SHA: ${{ needs.release-build.outputs.source-sha }}
         run: |
           set -euo pipefail
-          gh release verify "$TAG" || { echo "RELEASE PUBLISH FAIL: release attestation verification failed"; exit 1; }
-          gh release verify-asset "$TAG" preflight/workflow-artifact/travian-attack-alert.user.js || { echo "RELEASE PUBLISH FAIL: userscript release attestation failed"; exit 1; }
+          for name in travian-attack-alert.user.js travian-attack-alert.user.js.sha256 metadata.json module-manifest.json sbom.spdx.json release-manifest.json SHA256SUMS; do
+            gh attestation verify "preflight/workflow-artifact/$name" -R "$REPO" >/dev/null || { echo "RELEASE PUBLISH FAIL: post-publish attestation verification failed for $name"; exit 1; }
+          done
           gh release view "$TAG" --json isImmutable --jq '.isImmutable' | grep -qx true || { echo "RELEASE PUBLISH FAIL: published release is not immutable"; exit 1; }
           tag_object_after=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha')
           tag_commit_after=$(gh api "repos/$REPO/git/tags/$tag_object_after" --jq '.object.sha')
