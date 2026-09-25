@@ -1,17 +1,20 @@
-# Owner Release Runbook — 1.0.1
+# Solo-owner Release Runbook — 1.0.1
 
-Active, ordered, owner-gated publication procedure for the `1.0.1` release
-(`taa-1.0.1`) of Travian Attack Alert. This is the live operational guide. The
-frozen 1.0.0 release-candidate records under `docs/release-history/1.0.0-rc/`
-are historical archive, not current proof, and are never edited by this
-procedure.
+Active, ordered publication procedure for the `1.0.1` release (`taa-1.0.1`) of
+Travian Attack Alert, run by a single maintainer. This is the live operational
+guide. The frozen 1.0.0 release-candidate records under
+`docs/release-history/1.0.0-rc/` are historical archive, not current proof, and
+are never edited by this procedure.
 
-No automation may perform any owner step below. No npm script, test, build step,
-or CI job sets `stable:true`, creates a tag or Release, or changes a GitHub
-setting. Every owner-only evidence item must record its **timestamp**, **actor**,
-**repository/ref**, and a **read-only API response digest**. Never embed tokens,
-private paths of any kind, player data, or environment secret values in any
-record.
+No automation may perform any owner step below: no npm script, test, build step,
+or CI job sets `stable:true`, creates the tag, or changes a GitHub setting. A
+pushed annotated `v1.0.1` tag is the sole trigger; from there the release
+workflow builds, drafts and publishes the GitHub Release automatically, on the
+workflow's automatic token, with no second GitHub account, no environment
+reviewer and no settings-read token. Every owner-only evidence item must record
+its **timestamp**, **actor**, **repository/ref**, and a **read-only API response
+digest**. Never embed tokens, private paths of any kind, player data, or secret
+values in any record.
 
 ## 0. Readiness verifier
 
@@ -135,26 +138,17 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
    enable **restrict creations**, **restrict updates**, and **restrict
    deletions**, and grant **no bypass actors**. With no bypass actors, no
    release actor — not the owner, not a repository administrator — can retarget,
-   delete, or recreate the tag while a publication is running. The
-   `release-publish` preflight proves this exact ruleset through read-only API
-   calls and fails closed (`tag-protection-missing` / `tag-protection-bypass`)
-   if the ruleset is absent, inactive, does not cover the exact tag ref, lacks
-   any of the three restrictions, or lists any bypass actor.
-4. Create a protected `release` environment with a required reviewer distinct
-   from the release actor, prevent self-review, and a `v*` deployment tag policy.
-5. Store **environment-only** secrets: `TAA_RELEASE_APPROVAL_PROOF` (random) and
-   a short-lived `TAA_RELEASE_SETTINGS_READ_TOKEN` (expires within 24 hours,
-   read-only grants only). Ensure no same-named repository secret or variable
-   exists and no organization-level name collides.
-6. Complete every item in `docs/REPOSITORY-SETTINGS.md`.
+   delete, or recreate the tag while a publication is running. This is a
+   GitHub-side setting and remains in force independent of the workflow.
+4. Confirm the `release` environment exists with a `v*` deployment tag policy.
+   Solo mode requires **no** required reviewer and no environment secrets.
+5. Complete every item in `docs/REPOSITORY-SETTINGS.md`.
 
 - **Evidence:** authenticated settings export digests, tag ruleset response
   digest (id, target, enforcement, ref conditions, rules, empty bypass list),
-  environment protection response digest, secret-name absence digests,
-  timestamp, actor, repository/ref.
-- **Stop:** an unprotected or auto-created environment, a missing environment
-  secret, a same-actor reviewer, a disabled immutable-release setting, or a
-  missing, inactive, uncovered, or bypassable tag ruleset stops the run.
+  environment tag-policy response digest, timestamp, actor, repository/ref.
+- **Stop:** an auto-created environment, a disabled immutable-release setting, or
+  a missing, inactive, uncovered, or bypassable tag ruleset stops the run.
 - **Rollback:** correct the setting and re-verify; the release stays `BLOCKED`.
 
 ## Stage 6 — Populate pre-publication owner gates and set `stable:true`
@@ -203,22 +197,19 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
 - **Rollback:** delete the draft release and the tag, fix the cause, and re-tag;
   never publish a mismatched draft.
 
-## Stage 9 — Distinct reviewer approves the protected environment
+## Stage 9 — Automatic publication (solo mode)
 
-1. The `release-publish` job waits on the protected `release` environment. A
-   reviewer **distinct** from the triggering actor approves the deployment.
-2. The job performs its GET-only preflight with the short-lived
-   `TAA_RELEASE_SETTINGS_READ_TOKEN`, proves the live environment protections,
-   both environment secrets, immutable releases, the active no-bypass tag
-   ruleset covering the exact tag ref, the exact tag target, and the
-   digest-bound owner evidence, then unsets the token immediately.
+1. No approval step exists: the `release-publish` job attaches no environment and
+   no reviewer. On the automatic `${{ github.token }}` it verifies the tag still
+   targets the release commit, then proceeds to publish the verified draft.
+2. The job no longer queries live environment protections, secrets or rulesets;
+   those GitHub-side protections were applied in Stage 5 and stay in force
+   independently of the workflow.
 
-- **Evidence:** environment approval record, reviewer identity, preflight record,
-  token grant/expiry evidence digest, timestamp.
-- **Stop:** an absent/expired token, a denied API call, a same-actor reviewer, or
-  any settings mismatch leaves the draft unpublished.
-- **Rollback:** deny or withdraw the approval; the draft remains unpublished and
-  can be deleted.
+- **Evidence:** workflow run id, tag target check, publish job outcome.
+- **Stop:** a tag that no longer targets the release commit leaves the draft
+  unpublished.
+- **Rollback:** the draft remains unpublished and can be deleted.
 
 ## Stage 10 — Verify the published immutable release
 
@@ -226,7 +217,8 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
    draft and requires the same release id, tag, draft state, and asset
    id/name/size/digest set it verified. Any drift
    (`draft-drift-before-publish`) stops publication with the draft untouched.
-   After approval, the single publish mutation flips the draft to published.
+   Once the tag-push run reaches the publish job, the single publish mutation
+   flips the draft to published.
 2. Immediately after the mutation the workflow re-resolves the tag object and
    requires it to still point at the exact release commit it verified before
    publication. A retargeted tag (`tag-target-changed-after-publish`) is a
@@ -254,12 +246,11 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
 1. Only after Stage 10 verifies, populate `publication.tagAndRelease` in
    `docs/release-state.json` in a follow-up owner-reviewed commit. The readiness
    verifier may now report `PUBLISHED_VERIFIED`.
-2. Remove or rotate `TAA_RELEASE_SETTINGS_READ_TOKEN` immediately and record the
-   removal.
+2. The former settings-read-token rotation step is gone: solo mode creates no
+   such token, so there is nothing to remove.
 
-- **Evidence:** follow-up commit, `publication.tagAndRelease` value, token
-  removal record, timestamp, actor, repository/ref.
+- **Evidence:** follow-up commit, `publication.tagAndRelease` value, timestamp,
+  actor, repository/ref.
 - **Stop:** if publication was not verified, `publication.tagAndRelease` stays
   false and the state stays `DRAFT_READY_FOR_APPROVAL` or `BLOCKED`.
-- **Rollback:** revert the follow-up commit to retract the record; rotate the
-  token again if any doubt remains.
+- **Rollback:** revert the follow-up commit to retract the record.
