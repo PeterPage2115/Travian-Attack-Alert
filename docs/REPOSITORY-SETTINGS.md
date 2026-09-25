@@ -22,10 +22,12 @@ This is a point-in-time API observation, not owner attestation. At that time the
 separate owner-manual record in `docs/release-state.json` held
 `ownerManual.branchProtection: false`,
 `ownerManual.releaseEnvironment: false`,
-`ownerManual.immutableReleases: false`, and `stable: false`; the owner has since
-populated every pre-publication gate and `stable: true`, and the annotated
+`ownerManual.immutableReleases: false`, and `stable: false`. The owner has since
+populated every pre-publication gate and set `stable: true`; the annotated
 `v1.0.1` tag was published as an immutable GitHub Release (release id
-`396778787`) on 2026-09-25. This file is an owner checklist,
+`396778787`) on 2026-09-25, and the follow-up `v1.0.2` release superseded it as
+the published stable channel (immutable GitHub Release id `396904420`, exactly
+two public assets) on the same day. This file is an owner checklist,
 not that owner-attestation record; checked items below are API-observed public
 state, and unchecked items are pending owner actions.
 
@@ -46,9 +48,11 @@ state, and unchecked items are pending owner actions.
   owner-written. Until they were recorded, `docs/release-state.json` stayed
   `stable:false` and the README kept its release-candidate warning even though
   the target version was 1.0.1; the owner has since recorded all gates together
-  with the published `v1.0.1` release. This tree now stages the `1.0.2`
-  candidate, so `docs/release-state.json` is `stable:false` again and the README
-  carries the release-candidate warning for 1.0.2.
+  with the published `v1.0.1` release. The tree then staged the `1.0.2`
+  candidate, and the owner again recorded every gate and published `v1.0.2`
+  (immutable Release id `396904420`, two public assets) on 2026-09-25.
+  `docs/release-state.json` is now `stable: true` with
+  `publication.tagAndRelease: true`.
 
 ## 1. Branch and update-channel identity
 
@@ -85,8 +89,10 @@ state, and unchecked items are pending owner actions.
 - [ ] Repository Actions default workflow permissions are read-only.
       Owner-verify: the public API does not expose workflow permissions (401
       anonymously); target state = read-only (Settings → Actions → General →
-      Workflow permissions), and `docs/release-state.json`
-      `ownerManual.branchProtection` stays `false` until it is attested.
+      Workflow permissions). `docs/release-state.json` now records
+      `ownerManual.branchProtection` as owner-attested (2026-09-25: strict
+      protection on `release/public-1.0.0` with the four required checks,
+      pull request required, force-push and deletion blocked).
 - [x] Workflow permissions are read-only (`contents: read`); no
       `permissions: write`, no release/publish step — CI uploads
       fixed 14-day `determinism-node-18`, `determinism-node-20`,
@@ -147,11 +153,12 @@ how its attestation is completed.
       blanket "delete the directory including backups" instruction anywhere
       in this repository; the ordered procedure is `docs/RELEASE-RUNBOOK.md`
       Stage 4.
-- [ ] Record the retirement (timestamp, actor, record digest) and attest
-      `devArchival` in the owner-written fields of `docs/release-state.json`;
-      until then `stable` stays `false`.
+- [x] Record the retirement (timestamp, actor, record digest) and attest
+      `devArchival` in the owner-written fields of `docs/release-state.json`.
+      The owner recorded that attestation on 2026-09-25; `stable` is now `true`
+      and `publication.tagAndRelease` records the published `v1.0.2` release.
 
-## 8. Authenticated settings reconciliation (owner-only, all unchecked)
+## 8. Authenticated settings reconciliation (owner-only)
 
 The public API exposes only part of the protection story. Each item below
 separates the observed public API state (2026-09-23), the required target
@@ -181,16 +188,18 @@ the Task 34 evidence root):
   enabled).
 - Immutable releases: observed `enabled: false` (target = enabled).
 - Release environment: none exists (target = protected `release` environment).
-- Tag protection / ruleset: no ruleset installed (target = a `v*` tag ruleset);
-  at the 2026-09-23 observation zero remote tags and no GitHub Release existed,
-  whereas the annotated `v1.0.1` tag and an immutable GitHub Release were
-  published on 2026-09-25.
+- Tag protection / ruleset: no ruleset was installed at the 2026-09-23
+  observation (target = a `v*` tag ruleset); the `release-tag-immutability-v`
+  ruleset now locks `v*` tags, and the annotated `v1.0.1` and `v1.0.2` tags were
+  published as immutable GitHub Releases on 2026-09-25 — `v1.0.2` (release id
+  `396904420`) supersedes `v1.0.1` as the current stable channel.
 
-- [ ] Required status checks: observed via the public API as protected with
+- [x] Required status checks: observed via the public API as protected with
       the four exact contexts `offline-node-18`, `offline-node-20`,
       `browser-node-20`, and `cross-node-determinism`, and confirmed by the
       authenticated read; target state = exactly those four checks required on
-      `release/public-1.0.0`. Owner attestation pending.
+      `release/public-1.0.0`. Owner attestation recorded 2026-09-25 in
+      `docs/release-state.json` (`ownerManual.branchProtection`).
 - [ ] Required approving reviews (approval count): observed as 0 with stale
       approvals dismissed; target state = at least 1 approving review. Owner
       attestation pending.
@@ -198,18 +207,22 @@ the Task 34 evidence root):
       2026-09-23; target state = enabled, so the private
       link in `SECURITY.md` and `.github/ISSUE_TEMPLATE/config.yml` works
       (Settings → Code security). Owner attestation pending.
-- [ ] Protected `release` environment: no environment exists on 2026-09-23
-      (`GET /environments` reports `total_count: 0`); target state = an
-      environment named `release` with a deployment tag rule `v*`. A required
-      reviewer and prevent self-review are **NOT REQUIRED in solo mode**. Owner
-      attestation pending.
-- [ ] Immutable releases: observed as `enabled: false` on 2026-09-23; target
-      state = immutable releases enabled, so a published
-      asset or tag cannot be silently replaced. Owner attestation pending.
-- [ ] Tag protection / ruleset: no repository ruleset is installed
-      (`GET /rulesets` returns `[]`); target state = a ruleset (or tag
-      protection) restricting creation, update, and deletion of `v*` tags to
-      the owner. Owner attestation pending.
+- [x] Protected `release` environment: no environment existed on 2026-09-23
+      (`GET /environments` reported `total_count: 0`); target state = an
+      environment named `release` with a deployment tag rule `v*`. Owner
+      attestation recorded 2026-09-25 in `docs/release-state.json`
+      (`ownerManual.releaseEnvironment`; a required reviewer and prevent
+      self-review are **NOT REQUIRED in solo mode**).
+- [x] Immutable releases: observed as `enabled: false` on 2026-09-23; target
+      state = immutable releases enabled, so a published asset or tag cannot be
+      silently replaced. Owner attestation recorded 2026-09-25 in
+      `docs/release-state.json` (`ownerManual.immutableReleases`); the published
+      `v1.0.1` and `v1.0.2` Releases are immutable.
+- [x] Tag protection / ruleset: no ruleset was installed at the 2026-09-23
+      observation (`GET /rulesets` returned `[]`); target state = a ruleset (or
+      tag protection) restricting creation, update, and deletion of `v*` tags
+      to the owner. The `release-tag-immutability-v` ruleset now locks `v*`
+      tags.
 
 ## 9. Release-environment secrets and evidence (owner-only)
 
