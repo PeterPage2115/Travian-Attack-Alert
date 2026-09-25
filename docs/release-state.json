@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "version": "1.0.1",
   "releaseId": "taa-1.0.1",
-  "stable": false,
+  "stable": true,
   "gateDocs": [
     "docs/release-history/1.0.0-rc/PILOT.md",
     "docs/release-history/1.0.0-rc/RELEASE-CHECKLIST.md",
@@ -17,12 +17,12 @@
     "docs": true
   },
   "ownerManual": {
-    "pilotInstallBySecondPerson": false,
-    "evidenceRecord": null,
-    "branchProtection": false,
-    "devArchival": false,
-    "releaseEnvironment": false,
-    "immutableReleases": false
+    "pilotInstallBySecondPerson": "2026-09-25 owner-attested: a second person completed the in-place 1.0.0→1.0.1 manager update and the latest version works for all users; manager/browser versions and header hashes were not captured",
+    "evidenceRecord": "owner-attested 2026-09-25; evidence: .omo/evidence/release-1.0.1/ (STAGE-A-SETTINGS-EVIDENCE.md, OWNER-ACTIONS-REMAINING.md); owner receipts manager-evidence-notes.md sha256 a846ffb25837d39949f7a54365f620905e59a4a2552d7e66935aad3ddd1bfefd, owner-actions.md sha256 5d772e7ca4261d1a7f740921f1684e51f234bd531bec47ca7ed4632a4686d51b",
+    "branchProtection": "2026-09-25 verified: strict branch protection on release/public-1.0.0, four required checks (offline-node-18, offline-node-20, browser-node-20, cross-node-determinism), pull request required, force-push and deletion blocked, enforce_admins on; API digest 3e0da94d74470cde67d556e2fcdeb46797d44cc770a6bc4739caa1baa0e5e6f2",
+    "devArchival": "owner DEV-directory deletion 2026-09-23 recorded in docs/RELEASE-RUNBOOK.md Stage 4; no archive kept",
+    "releaseEnvironment": "environment `release` exists with a v* tag policy; required reviewers intentionally omitted in solo mode (PR #24)",
+    "immutableReleases": "immutable releases enabled 2026-09-25; API digest f4b2b8919d556de186d7b4afe009126b30c99e3edefb005e4e56ab17069b52dd"
   },
   "publication": {
     "tagAndRelease": false
