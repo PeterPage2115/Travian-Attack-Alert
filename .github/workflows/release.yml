@@ -250,7 +250,7 @@ jobs:
           else
             gh release create "$TAG" --draft --verify-tag --title "$TITLE" --generate-notes "${ASSETS[@]}"
           fi
-          gh release view "$TAG" --json id,tagName,isDraft,assets,updatedAt > draft-release.json
+          gh release view "$TAG" --json id,tagName,isDraft,assets > draft-release.json
           echo "release-id=$(node -e "console.log(require('./draft-release.json').id)")" >> "$GITHUB_OUTPUT"
 
   release-publish:
