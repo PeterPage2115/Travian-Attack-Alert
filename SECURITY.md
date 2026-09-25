@@ -2,16 +2,17 @@
 
 ## Supported versions
 
-`docs/release-state.json` currently records `stable: false`: the staged
-`1.0.2` is a release candidate, not a stable release. The published `1.0.1`
-(`stable: true`, tag `v1.0.1`, immutable GitHub Release) remains the live
-stable channel and is the release we support. Security fixes are best-effort,
-and no response-time promise is made.
+`docs/release-state.json` records `stable: true`: the published `1.0.2` is
+the live stable channel, published as an immutable GitHub Release (tag
+`v1.0.2`) with two public assets, and is the release we support. The previous
+published release is `1.0.1` (`stable: true`, tag `v1.0.1`, immutable GitHub
+Release), kept as history. Security fixes are best-effort, and no
+response-time promise is made.
 
 | Version | Supported |
 | --- | --- |
-| 1.0.2 (staged release candidate; `docs/release-state.json` `stable: false`) | Best-effort security fixes |
-| 1.0.1 (published stable; `docs/release-state.json` `stable: true`) | Best-effort security fixes |
+| 1.0.2 (published stable; `docs/release-state.json` `stable: true`) | Best-effort security fixes |
+| 1.0.1 (previous published stable; `docs/release-state.json` `stable: true`) | Best-effort security fixes |
 | Older than 1.0.1 | No |
 
 Nothing here claims long-term support or a maintenance timeline. `stable` was
