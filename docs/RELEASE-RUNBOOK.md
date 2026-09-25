@@ -189,11 +189,16 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
 ## Stage 8 — Inspect the draft assets and build attestations
 
 1. The release workflow builds from the tag, prepares and verifies the exact
-   seven assets, attests `SHA256SUMS`, and creates one **draft** release.
-2. Inspect the draft: exactly the seven declared assets, byte-identical to the
-   workflow artifact, `SHA256SUMS` verified, and every build attestation
-   verified. A source archive auto-download must never be substituted for the
-   userscript asset.
+   seven-file internal release directory, attests `SHA256SUMS`, and creates one
+   **draft** release carrying only the two user-installable public assets: the
+   userscript and its `.sha256` sidecar. The other five files
+   (`metadata.json`, `module-manifest.json`, `sbom.spdx.json`,
+   `release-manifest.json`, `SHA256SUMS`) remain internal verification files
+   inside the workflow artifact and are never published as Release assets.
+2. Inspect the draft: exactly the two published assets, byte-identical to the
+   workflow artifact (whose internal seven-file integrity is checked with
+   `sha256sum -c SHA256SUMS`), and every build attestation verified. A source
+   archive auto-download must never be substituted for the userscript asset.
 
 - **Evidence:** workflow run/artifact ids, draft release id, asset ids/digests,
   attestation ids, immutable-release response digest.

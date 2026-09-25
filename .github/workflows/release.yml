@@ -34,8 +34,8 @@ name: Release
 # never weakens them, and the post-publish verification still refuses to report
 # success on a mutable release or a retargeted tag.
 #
-# The publish job proves the complete draft asset set is exactly the seven
-# declared names (both as downloaded and as reported by the API), re-fetches the
+# The publish job proves the complete public draft asset set is exactly the two
+# user-installable names (both as downloaded and as reported by the API), re-fetches the
 # draft immediately before the single mutation and rejects any changed release
 # id, tag, draft state or asset id/name/size/digest, then re-resolves the tag
 # target after publication. A retargeted tag is a publication incident and is
@@ -236,12 +236,12 @@ jobs:
         run: |
           set -euo pipefail
           TITLE="Travian Attack Alert ${TAG}"
-          ASSETS=(release/travian-attack-alert.user.js release/travian-attack-alert.user.js.sha256 release/metadata.json release/module-manifest.json release/sbom.spdx.json release/release-manifest.json release/SHA256SUMS)
+          ASSETS=(release/travian-attack-alert.user.js release/travian-attack-alert.user.js.sha256)
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release view "$TAG" --json isDraft,tagName,assets > existing-release.json
             node -e "
               const release = require('./existing-release.json');
-              const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256','metadata.json','module-manifest.json','sbom.spdx.json','release-manifest.json','SHA256SUMS'];
+              const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256'];
               if (release.isDraft !== true) { console.error('RELEASE DRAFT FAIL: existing release is already published'); process.exit(1); }
               const names = release.assets.map((asset) => asset.name).sort();
               if (JSON.stringify(names) !== JSON.stringify([...expected].sort())) { console.error('RELEASE DRAFT FAIL: existing draft asset set is mismatched'); process.exit(1); }
@@ -298,16 +298,16 @@ jobs:
           done < preflight/asset-ids.tsv
           node -e "
             const fs = require('fs');
-            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256','metadata.json','module-manifest.json','sbom.spdx.json','release-manifest.json','SHA256SUMS'].sort();
+            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256'].sort();
             const release = JSON.parse(fs.readFileSync('preflight/release-listed.json', 'utf8'));
             function fail(message) { console.error('RELEASE PUBLISH FAIL: draft-asset-set-mismatch: ' + message); process.exit(1); }
             if (release.draft !== true) fail('target release is not a draft');
             const apiNames = release.assets.map((asset) => asset.name);
             if (new Set(apiNames).size !== apiNames.length) fail('the API-reported draft contains duplicate asset names');
-            if (JSON.stringify([...apiNames].sort()) !== JSON.stringify(expected)) fail('the API-reported draft asset set is not exactly the seven declared assets');
+            if (JSON.stringify([...apiNames].sort()) !== JSON.stringify(expected)) fail('the API-reported draft asset set is not exactly the two declared assets');
             const downloaded = fs.readdirSync('preflight/draft-assets').sort();
             if (new Set(downloaded).size !== downloaded.length) fail('the downloaded asset directory contains duplicate names');
-            if (JSON.stringify(downloaded) !== JSON.stringify(expected)) fail('the downloaded asset set is not exactly the seven declared assets');
+            if (JSON.stringify(downloaded) !== JSON.stringify(expected)) fail('the downloaded asset set is not exactly the two declared assets');
             const crypto = require('crypto');
             for (const asset of release.assets) {
               const bytes = fs.readFileSync('preflight/draft-assets/' + asset.name);
@@ -315,7 +315,7 @@ jobs:
               if (asset.digest !== digest) fail('downloaded bytes do not match the API digest for ' + asset.name);
               if (asset.size !== bytes.length) fail('downloaded size does not match the API size for ' + asset.name);
             }
-            console.log('RELEASE PUBLISH DRAFT SET OK: exactly seven declared assets');
+            console.log('RELEASE PUBLISH DRAFT SET OK: exactly two declared assets');
           "
 
       - name: Reverify byte identity, checksums, tag target and attestations
@@ -328,15 +328,15 @@ jobs:
           SOURCE_TREE: ${{ needs.release-build.outputs.source-tree }}
         run: |
           set -euo pipefail
-          for name in travian-attack-alert.user.js travian-attack-alert.user.js.sha256 metadata.json module-manifest.json sbom.spdx.json release-manifest.json SHA256SUMS; do
+          for name in travian-attack-alert.user.js travian-attack-alert.user.js.sha256; do
             cmp -s "preflight/workflow-artifact/$name" "preflight/draft-assets/$name" || { echo "RELEASE PUBLISH FAIL: asset-artifact mismatch for $name"; exit 1; }
           done
-          ( cd preflight/draft-assets && sha256sum -c SHA256SUMS )
-          node -e "const m=require('./preflight/draft-assets/release-manifest.json'); if(m.source.commit!==process.env.SOURCE_SHA||m.source.tree!==process.env.SOURCE_TREE) process.exit(1);"
+          ( cd preflight/workflow-artifact && sha256sum -c SHA256SUMS )
+          node -e "const m=require('./preflight/workflow-artifact/release-manifest.json'); if(m.source.commit!==process.env.SOURCE_SHA||m.source.tree!==process.env.SOURCE_TREE) process.exit(1);"
           tag_object=$(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '.object.sha')
           tag_commit=$(gh api "repos/$REPO/git/tags/$tag_object" --jq '.object.sha')
           test "$tag_commit" = "$SOURCE_SHA"
-          for name in travian-attack-alert.user.js travian-attack-alert.user.js.sha256 metadata.json module-manifest.json sbom.spdx.json release-manifest.json; do
+          for name in travian-attack-alert.user.js travian-attack-alert.user.js.sha256; do
             gh attestation verify "preflight/workflow-artifact/$name" -R "$REPO" >/dev/null || { echo "RELEASE PUBLISH FAIL: attestation verification failed for $name"; exit 1; }
           done
 
@@ -359,10 +359,10 @@ jobs:
             const release = JSON.parse(fs.readFileSync('preflight/release-before.json', 'utf8'));
             const listed = JSON.parse(fs.readFileSync('preflight/release-listed.json', 'utf8'));
             if (release.draft !== true) { console.error('RELEASE PUBLISH FAIL: target release is not a draft'); process.exit(1); }
-            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256','metadata.json','module-manifest.json','sbom.spdx.json','release-manifest.json','SHA256SUMS'].sort();
+            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256'].sort();
             const names = release.assets.map((asset) => asset.name);
             if (new Set(names).size !== names.length) { console.error('RELEASE PUBLISH FAIL: draft-asset-set-mismatch: duplicate asset names'); process.exit(1); }
-            if (JSON.stringify([...names].sort()) !== JSON.stringify(expected)) { console.error('RELEASE PUBLISH FAIL: draft-asset-set-mismatch: asset set is not exactly the seven declared assets'); process.exit(1); }
+            if (JSON.stringify([...names].sort()) !== JSON.stringify(expected)) { console.error('RELEASE PUBLISH FAIL: draft-asset-set-mismatch: asset set is not exactly the two declared assets'); process.exit(1); }
             for (const asset of release.assets) {
               if (!Number.isInteger(asset.id) || !Number.isInteger(asset.size) || typeof asset.digest !== 'string' || asset.digest === '') { console.error('RELEASE PUBLISH FAIL: draft-asset-metadata-invalid: ' + asset.name); process.exit(1); }
             }
@@ -397,14 +397,14 @@ jobs:
             const fs = require('fs');
             const record = JSON.parse(fs.readFileSync('preflight/publish-record.json', 'utf8'));
             const recheck = JSON.parse(fs.readFileSync('preflight/release-recheck.json', 'utf8'));
-            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256','metadata.json','module-manifest.json','sbom.spdx.json','release-manifest.json','SHA256SUMS'].sort();
+            const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256'].sort();
             function fail(message) { console.error('RELEASE PUBLISH FAIL: draft-drift-before-publish: ' + message); process.exit(1); }
             if (recheck.draft !== true) fail('the draft is no longer a draft');
             if (recheck.id !== record.draftReleaseId) fail('the draft release id changed');
             if (recheck.tag_name !== record.tag) fail('the draft tag changed');
             const names = recheck.assets.map((asset) => asset.name);
             if (new Set(names).size !== names.length) fail('duplicate asset names appeared in the draft');
-            if (JSON.stringify([...names].sort()) !== JSON.stringify(expected)) fail('the draft asset set is not exactly the seven declared assets');
+            if (JSON.stringify([...names].sort()) !== JSON.stringify(expected)) fail('the draft asset set is not exactly the two declared assets');
             const fingerprint = (assets) => JSON.stringify(assets.map((asset) => ({ id: asset.id, name: asset.name, size: asset.size, digest: asset.digest })).sort((a, b) => a.name.localeCompare(b.name)));
             if (fingerprint(recheck.assets) !== fingerprint(record.assetIds)) fail('asset ids, names, sizes or digests changed');
             console.log('RELEASE PUBLISH DRAFT STABLE: no drift between verification and mutation');
@@ -420,7 +420,7 @@ jobs:
           SOURCE_SHA: ${{ needs.release-build.outputs.source-sha }}
         run: |
           set -euo pipefail
-          for name in travian-attack-alert.user.js travian-attack-alert.user.js.sha256 metadata.json module-manifest.json sbom.spdx.json release-manifest.json SHA256SUMS; do
+          for name in travian-attack-alert.user.js travian-attack-alert.user.js.sha256; do
             gh attestation verify "preflight/workflow-artifact/$name" -R "$REPO" >/dev/null || { echo "RELEASE PUBLISH FAIL: post-publish attestation verification failed for $name"; exit 1; }
           done
           gh release view "$TAG" --json isImmutable --jq '.isImmutable' | grep -qx true || { echo "RELEASE PUBLISH FAIL: published release is not immutable"; exit 1; }
