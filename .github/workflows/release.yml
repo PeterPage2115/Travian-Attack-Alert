@@ -189,6 +189,7 @@ jobs:
           artifact-ids: ${{ needs.release-build.outputs.artifact-id }}
           run-id: ${{ needs.release-build.outputs.run-id }}
           path: release
+          merge-multiple: true
 
       - name: Recompute the release digests from the downloaded artifact
         run: |
@@ -218,6 +219,7 @@ jobs:
           artifact-ids: ${{ needs.release-build.outputs.artifact-id }}
           run-id: ${{ needs.release-build.outputs.run-id }}
           path: release
+          merge-multiple: true
 
       - name: Recheck artifact digest, manifest source and checksums
         run: |
@@ -278,6 +280,7 @@ jobs:
           artifact-ids: ${{ needs.release-build.outputs.artifact-id }}
           run-id: ${{ needs.release-build.outputs.run-id }}
           path: preflight/workflow-artifact
+          merge-multiple: true
 
       - name: Download every remote draft asset into a separate fresh directory
         env:
