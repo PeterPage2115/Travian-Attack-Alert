@@ -57,6 +57,12 @@ until the owner completes the `1.0.2` publication.
 - Content: the Overview panel moves to progressive disclosure with clearer
   red states (presentation only; model semantics, four tabs, and the
   alert contract are unchanged).
+- Public releases now ship exactly two user-installable assets — the userscript
+  and its `.sha256` checksum sidecar. The other five verification files
+  (`metadata.json`, `module-manifest.json`, `sbom.spdx.json`,
+  `release-manifest.json`, `SHA256SUMS`) stay internal to the workflow artifact
+  (still built, checksummed, SBOM'd and attested) and are no longer published
+  as Release assets.
 
 ## 1.0.1 — stable (owner-attested, published)
 

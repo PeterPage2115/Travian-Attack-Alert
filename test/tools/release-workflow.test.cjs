@@ -23,8 +23,10 @@
 //     (contents: write) so a solo maintainer can publish without a second
 //     account, an environment reviewer or a settings-read token; it verifies
 //     the tag still targets the source commit, validates the complete
-//     downloaded AND API-reported draft asset set against the exact seven-name
-//     allowlist (extras, omissions and duplicates fail closed), reverifies the
+//     downloaded AND API-reported draft asset set against the exact two-name
+//     public allowlist (userscript + checksum sidecar; the other five evidence
+//     files stay internal to the workflow artifact) with extras, omissions and
+//     duplicates failing closed, reverifies the
 //     workflow artifact against every remote draft asset, verifies build
 //     attestations, records immutable evidence, re-fetches the draft immediately
 //     before performing exactly one publish mutation and rejects any changed
@@ -259,10 +261,10 @@ function analyzeReleaseWorkflow(source) {
   if (!/post-publish attestation verification failed/u.test(publish)) add('missing-post-publish-verify', 'publish job must verify every published per-asset attestation after publication');
   if (!/asset digests changed after publish/u.test(publish)) add('missing-post-publish-verify', 'publish job must reject changed asset digests after publish');
 
-  // The complete draft asset set must be exactly the seven declared names, both
-  // as downloaded and as reported by the API: extras, omissions and duplicates
-  // all fail closed before any byte comparison.
-  if (!/draft-asset-set-mismatch/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must reject a draft asset set that is not exactly the seven declared assets');
+  // The complete public draft asset set must be exactly the two declared
+  // user-installable names, both as downloaded and as reported by the API:
+  // extras, omissions and duplicates all fail closed before any byte comparison.
+  if (!/draft-asset-set-mismatch/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must reject a draft asset set that is not exactly the two declared assets');
   if (!/new Set\(apiNames\)\.size !== apiNames\.length/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must reject duplicate API-reported draft asset names');
   if (!/JSON\.stringify\(\[\.\.\.apiNames\]\.sort\(\)\) !== JSON\.stringify\(expected\)/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must compare the API-reported draft asset set against the exact allowlist');
   if (!/readdirSync\(/u.test(publish)) add('missing-draft-asset-set-check', 'publish job must validate the complete downloaded asset set');
@@ -423,6 +425,19 @@ test('Given the release workflow, when the publish job is inspected, then it is 
   assert.match(publish, /gh attestation verify/u);
   assert.match(publish, /draft=false/u);
   assert.match(publish, /post-publish attestation verification failed/u);
+});
+
+test('Given the release workflow, when the draft/publish asset allowlists are inspected, then the public set is exactly the userscript and its checksum sidecar', () => {
+  const source = readReleaseWorkflow();
+  const publicAssets = ['travian-attack-alert.user.js', 'travian-attack-alert.user.js.sha256'];
+  const expectedArrays = [...source.matchAll(/const expected = \[([^\]]*)\]/gu)]
+    .map((match) => match[1].split(',').map((entry) => entry.trim().replace(/^['"]|['"]$/gu, '')).filter(Boolean).sort());
+  assert.ok(expectedArrays.length >= 4, 'draft and publish allowlists must all be present');
+  for (const names of expectedArrays) assert.deepEqual(names, [...publicAssets].sort());
+  const assetsLine = /ASSETS=\(([^)]*)\)/u.exec(source);
+  assert.ok(assetsLine, 'draft job must upload an ASSETS array');
+  const assets = assetsLine[1].trim().split(/\s+/u).map((entry) => path.basename(entry)).sort();
+  assert.deepEqual(assets, [...publicAssets].sort());
 });
 
 test('Given a mutable action reference, when analyzed, then the workflow is rejected', () => {
