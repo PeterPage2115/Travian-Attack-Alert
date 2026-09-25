@@ -39,11 +39,14 @@ rewritten here; it is noted as lineage only.
   `release/public-1.0.0`, and the generated header carries both directives.
   The stale `/main/` channel URL is gone; `main` does not exist on the remote.
 
-## 1.0.2 — staged candidate (unpublished, off the release branch)
+## 1.0.2 — stable target (owner-attested, pre-publication)
 
-No tag, no GitHub Release, and no channel publication exist for this entry.
-The bump is staged on `work/post-pr17-1.0.2-staging` so the live
-`release/public-1.0.0` channel keeps serving the published `1.0.1` release
+Owner decision 2026-09-25: the `1.0.2` candidate is the stable target. All six
+schema-v2 pre-publication owner gates in `docs/release-state.json` are populated
+and `stable` is `true`; `publication.tagAndRelease` stays `false` because no
+`v1.0.2` tag or GitHub Release exists yet. No tag, no GitHub Release, and no
+channel publication exist for this entry; the bump is staged off the live
+channel so `release/public-1.0.0` keeps serving the published `1.0.1` release
 until the owner completes the `1.0.2` publication.
 
 - Version identity moved to `1.0.2` / `taa-1.0.2` across `package.json`,
@@ -52,8 +55,17 @@ until the owner completes the `1.0.2` publication.
   the README/docs identity claims, and the current-version test assertions.
 - The complete published `1.0.1` release-state is archived at
   `docs/release-history/1.0.1/release-state.json`; the live
-  `docs/release-state.json` tracks the `1.0.2` candidate with `stable: false`
-  and every owner gate still unrecorded — no gate is fabricated or flipped.
+  `docs/release-state.json` records the `1.0.2` stable target (`stable: true`
+  with every owner gate populated by owner attestation, nothing fabricated).
+- Owner gate evidence: the manager in-place update channel proven by the `1.0.1`
+  second-person pilot is the same channel that delivered `1.0.2`; the `1.0.2`
+  panel is verified by the automated browser/e2e matrix (browser 5/5, e2e
+  356/356, axe clean, red-state screenshots). Per-user installed
+  versions/hashes were not captured and are not invented here.
+- Publication is the solo pipeline: after this commit is merged, the
+  orchestrator tags `v1.0.2` (ruleset suspend/restore) and the release workflow
+  publishes the lean release — exactly two public assets, the userscript and its
+  `.sha256` checksum sidecar.
 - Content: the Overview panel moves to progressive disclosure with clearer
   red states (presentation only; model semantics, four tabs, and the
   alert contract are unchanged).
