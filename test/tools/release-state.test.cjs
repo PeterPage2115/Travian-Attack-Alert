@@ -7,10 +7,11 @@
 // pre-publication gates alone gate `stable`, while PUBLISHED_VERIFIED
 // additionally requires publication.tagAndRelease.
 //
-// Automated steps cannot flip owner fields: the live state tracks the 1.0.2
-// stable target (stable:true only because every pre-publication owner field is
-// populated with owner-written evidence; publication.tagAndRelease is still
-// false), while the completed, published 1.0.1 record is archived at
+// Automated steps cannot flip owner fields: the live state tracks the published
+// 1.0.2 stable release (stable:true because every pre-publication owner field is
+// populated with owner-written evidence; publication.tagAndRelease is now true
+// because the immutable v1.0.2 GitHub Release exists), while the completed,
+// published 1.0.1 record is archived at
 // docs/release-history/1.0.1/release-state.json. The flip rule this test
 // enforces still requires an owner edit of BOTH docs/release-state.json AND
 // this test — no npm script, build step, or CI job does it.
@@ -203,8 +204,8 @@ describe('release gate (stable-1.0, schema v2)', () => {
   });
 
   it('separates post-publication evidence: PUBLISHED_VERIFIED additionally requires publication.tagAndRelease', () => {
-    assert.equal(publishedVerified(state), false, 'the live 1.0.2 stable target must not claim a published, verified release');
-    assert.equal(state.publication.tagAndRelease, false, 'no 1.0.2 tag or Release may be recorded before the owner publishes one');
+    assert.equal(publishedVerified(state), true, 'the live 1.0.2 stable release records the published, verified release');
+    assert.equal(state.publication.tagAndRelease, true, 'the live 1.0.2 records the published v1.0.2 GitHub Release');
     assert.equal(publishedVerified(archive), true, 'the archived 1.0.1 records the published, verified immutable Release');
     assert.equal(archive.publication.tagAndRelease, true, 'the archived 1.0.1 recorded the published v1.0.1 GitHub Release');
     const tagged = syntheticPrePublicationState({ publication: { tagAndRelease: 'v1.0.0 + GitHub Release' } });

@@ -22,6 +22,10 @@ values in any record.
 > Stage 11 recorded `publication.tagAndRelease` in `docs/release-state.json`.
 > The stages below are retained as the ordered procedure.
 
+> **Run status: v1.0.2 published 2026-09-25** (solo pipeline, run
+> `36185458733`); Stage 11 recorded `publication.tagAndRelease` in
+> `docs/release-state.json`.
+
 ## 0. Readiness verifier
 
 The verifier is offline and read-only; it never mutates GitHub.
