@@ -39,13 +39,13 @@ rewritten here; it is noted as lineage only.
   `release/public-1.0.0`, and the generated header carries both directives.
   The stale `/main/` channel URL is gone; `main` does not exist on the remote.
 
-## 1.0.1 — stable (owner-attested, unpublished)
+## 1.0.1 — stable (owner-attested, published)
 
 Owner decision 2026-09-25: `1.0.1` is marked stable. All six schema-v2
 pre-publication owner gates in `docs/release-state.json` are populated and
-`stable` is `true`; `publication.tagAndRelease` stays `false` because no tag or
-GitHub Release exists yet. This supersedes the `stable: false` candidate state
-recorded below.
+`stable` is `true`; `publication.tagAndRelease` is recorded because the
+annotated `v1.0.1` tag and the immutable GitHub Release now exist. This
+supersedes the `stable: false` candidate state recorded below.
 
 - Second-person pilot: the owner reports (2026-09-25) that a second person
   completed the in-place `1.0.0 → 1.0.1` manager update and the latest version
@@ -56,8 +56,8 @@ recorded below.
   `docs/release-state.json`; `SECURITY.md` and the README now state the stable
   support state, and `test/tools/release-state.test.cjs` pins it.
 - No artifact change: the built bytes are unchanged from the candidate; this
-  entry records owner evidence and flips the stable flag only. The next step is
-  the annotated `v1.0.1` tag that triggers the solo-mode publication workflow.
+  entry records owner evidence and flips the stable flag only.
+- Published as an immutable GitHub Release on 2026-09-25 (release id 396778787; assets attested).
 
 ## 1.0.1 — update-channel verification candidate (unpublished)
 

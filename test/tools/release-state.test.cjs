@@ -177,8 +177,8 @@ describe('release gate (stable-1.0, schema v2)', () => {
   });
 
   it('separates post-publication evidence: PUBLISHED_VERIFIED additionally requires publication.tagAndRelease', () => {
-    assert.equal(publishedVerified(state), false, 'the live state must not claim a published, verified release');
-    assert.equal(state.publication.tagAndRelease, false, 'no tag or Release may be recorded before the owner publishes one');
+    assert.equal(publishedVerified(state), true, 'the live state records the published, verified immutable Release');
+    assert.equal(state.publication.tagAndRelease, true, 'the owner recorded the published v1.0.1 GitHub Release');
     const tagged = syntheticPrePublicationState({ publication: { tagAndRelease: 'v1.0.0 + GitHub Release' } });
     assert.equal(publishedVerified(tagged), true, 'a recorded tag/Release must complete PUBLISHED_VERIFIED');
     const untaggedStable = syntheticPrePublicationState();

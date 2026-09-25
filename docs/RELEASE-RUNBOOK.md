@@ -16,6 +16,12 @@ its **timestamp**, **actor**, **repository/ref**, and a **read-only API response
 digest**. Never embed tokens, private paths of any kind, player data, or secret
 values in any record.
 
+> **Run status: COMPLETE (2026-09-25).** The solo `1.0.1` pipeline finished: the
+> annotated `v1.0.1` tag was published as an immutable GitHub Release (release
+> id `396778787`, tag target `034dedfa`) with all seven assets attested, and
+> Stage 11 recorded `publication.tagAndRelease` in `docs/release-state.json`.
+> The stages below are retained as the ordered procedure.
+
 ## 0. Readiness verifier
 
 The verifier is offline and read-only; it never mutates GitHub.
