@@ -479,17 +479,25 @@ test('issue chooser routes security privately and support to a labelled issue, n
   assert.ok(support, `support contact link must be ${SUPPORT_URL}`);
 });
 
-test('security policy documents the private path, the staged-candidate support state, and no invented contact or SLA', () => {
+test('security policy documents the private path, the published stable support state, and no invented contact or SLA', () => {
   const security = read('SECURITY.md');
   assert.ok(security.includes(SECURITY_REPORT_URL), 'SECURITY.md must link GitHub Private Vulnerability Reporting');
   assert.match(security, /security advisories/iu, 'SECURITY.md must name Security Advisories');
   assert.match(security, /\|\s*Version\s*\|/u, 'SECURITY.md must carry a supported-versions table');
-  assert.match(security, /stable:\s*false/u, 'the supported-versions table must match the live 1.0.2 candidate state stable:false');
-  assert.match(security, /stable:\s*true/u, 'the supported-versions table must also reflect the archived published 1.0.1 stable record');
+  assert.match(security, /stable:\s*true/u, 'the supported-versions table must match the live 1.0.2 state stable:true');
   assert.match(
     security,
-    /release candidate/iu,
-    'the staged 1.0.2 line must be described as a release candidate, not as stable',
+    /\|\s*1\.0\.2\s*\(published stable/u,
+    'the 1.0.2 line must be described as the published stable release',
+  );
+  assert.match(
+    security,
+    /\|\s*1\.0\.1\s*\(previous published stable/u,
+    'the 1.0.1 line must be described as the previous published release',
+  );
+  assert.ok(
+    !/release candidate/iu.test(security),
+    'no line may still describe 1.0.2 as a release candidate',
   );
   assert.match(
     security,

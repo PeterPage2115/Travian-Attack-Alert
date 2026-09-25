@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with Travian Attack Alert 1.0.0 (release candidate)
+description: Report a problem with Travian Attack Alert 1.0.2 (stable release)
 body:
   - type: markdown
     attributes:
@@ -11,7 +11,7 @@ body:
     attributes:
       label: Script version and release ID
       description: From the installed script header or Overview tab
-      placeholder: "1.0.0 / taa-1.0.0"
+      placeholder: "1.0.2 / taa-1.0.2"
     validations:
       required: true
   - type: input

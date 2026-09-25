@@ -6,16 +6,19 @@ Procedura operatorska dla `Travian Attack Alert` w wersji `1.0.2` (ID wydania `t
 
 Ta strona opisuje codzienną pracę. Konfiguracja, instalacja i fakty o pierwszym skanie znajdują się w angielskim `README.md` (indeks dokumentów: `docs/README.md`); kontrakt formatu alarmów to `docs/ALERT-FORMAT.md`.
 
+> **Układ panelu.** Opisany tutaj Overview to uproszczony układ dostarczony z `1.0.2`: najpierw prosty status i następny krok, szczegóły w małych zwiniętych grupach. Instalacja `1.0.1` pokazuje te same wartości na jednej płaskiej liście — nic nie jest ukryte, tylko przegrupowane.
+
 ## Poranna procedura
 
 1. Otwórz dokładną trasę kanoniczną bez zapytania:
    ```text
    https://<twoj-swiat>.travian.com/alliance/profile/members
    ```
-2. Otwórz kartę Overview (`taa-tab-overview`) i odczytaj osiem linii statusu: Runtime (`taa-operational-runtime-value`), Route (`taa-operational-route-value`), Session (`taa-operational-session-value`), Lease (`taa-operational-lease-value`), Scan (`taa-operational-scan-value`), Scan detail (`taa-operational-scan-detail-value`), Baseline (`taa-operational-baseline-value`) i Delivery (`taa-operational-delivery-value`).
-3. Potwierdź zaakceptowany skan (linia Scan) i ustaloną linię bazową. Pierwszy zaakceptowany skan zatwierdza linię bazową po cichu: `not established — the first accepted scan commits it silently (no historical flood)`.
-4. Sprawdź zera kolejki: karta Alerts (`taa-tab-alerts`) pokazuje liczniki nieudanych i niepewnych partii. Oba powinny być zerowe na start dnia. Jeśli nie, patrz [Sprawdzanie kolejki](#sprawdzanie-kolejki).
-5. Jeśli Delivery mówi `webhook missing — configuration required; queue preserved`, najpierw ustaw webhook przez menu Tampermonkey (`Set Discord webhook URL`). Wykrycia czekają w kolejce, nic nie ginie.
+2. Otwórz kartę Overview (`taa-tab-overview`). Zaczyna się od prostego statusu i następnego kroku: linie operacyjne Runtime (`taa-operational-runtime-value`), Route (`taa-operational-route-value`), Lease (`taa-operational-lease-value`), Scan (`taa-operational-scan-value`), Baseline (`taa-operational-baseline-value`) i Delivery (`taa-operational-delivery-value`), a dalej metryki statusu: Freshness, Scan result, Failed / uncertain, Storage health, Queue / in flight, Last authoritative observation, Next refresh i Last sent.
+3. Szczegóły leżą w zwiniętych grupach obok tego, co opisują, a nie na dłuższej liście: `Scan reason and outcome` (`taa-operational-scan-detail-details`) przy linii Scan, `Raw counters` (`taa-overview-raw-details`) dla Scan duration i Queue age, dawna linia Session wtopiona w Storage health (`taa-storage-health-value`), a w Diagnostics grupy `Storage detail` (`taa-storage-provenance-details`), `Filters and recent traces` (`taa-trace-details`) i `Overflow and export bounds` (`taa-bounded-details`).
+4. Potwierdź zaakceptowany skan (linia Scan) i ustaloną linię bazową. Pierwszy zaakceptowany skan zatwierdza linię bazową po cichu: `not established — the first accepted scan commits it silently (no historical flood)`.
+5. Sprawdź zera kolejki: karta Alerts (`taa-tab-alerts`) pokazuje liczniki nieudanych i niepewnych partii. Oba powinny być zerowe na start dnia. Jeśli nie, patrz [Sprawdzanie kolejki](#sprawdzanie-kolejki) i [Czerwone stany](#czerwone-stany).
+6. Jeśli Delivery mówi `webhook missing — configuration required; queue preserved`, najpierw ustaw webhook przez menu Tampermonkey (`Set Discord webhook URL`). Wykrycia czekają w kolejce, nic nie ginie.
 
 Jeśli Travian pokazuje stronę logowania, zaloguj się najpierw. Monitor nigdy nie skanuje strony logowania i nigdy nie zmienia tam stanu.
 
@@ -59,16 +62,25 @@ Przekazuj w tej kolejności:
 
 Nigdy nie uruchamiaj starego i nowego nadawcy jednocześnie, nawet na chwilę. Dzierżawa Web-Lock odgradza karty tylko wewnątrz jednego profilu przeglądarki.
 
+## Czerwone stany
+
+Trzy stany wyglądają groźno i znaczą trzy różne rzeczy. Żaden nie rozstrzyga się sam i żaden nie oznacza, że monitorowanie nadal Cię pokrywa:
+
+- **Niepewne dostarczenie (uncertain).** Discord odpowiedział HTTP 200, ale w odpowiedzi nie było używalnego id wiadomości (zniekształcone ciało odpowiedzi albo nie-JSON), więc skrypt nie może udowodnić, że wiadomość istnieje. Nigdy nie jest ponawiane automatycznie — rozstrzyga je wyłącznie człowiek — a kolejka, która je trzyma, jest ograniczona do 512 rekordów, więc nic nie rośnie bez końca. Rozstrzygnij je z menu Tampermonkey, patrz [Sprawdzanie kolejki](#sprawdzanie-kolejki).
+- **Nieaktualna obserwacja (stale).** `Freshness` pokazuje `Stale — observed <N>s ago`, gdy ostatnia autorytatywna obserwacja ma ponad 120 sekund. Stale znaczy "brak bieżącej obserwacji", nie "brak alarmu" i nie "nadal pokryte": otwórz ponownie trasę kanoniczną i przeczytaj Overview, zanim zaufasz alarmom.
+- **Odrzucony skan (rejected).** Dokument został odrzucony, więc żaden skan nie został zastosowany. Linia Scan pokazuje `parser-rejected/<reason>` (także `readiness-timeout/rejected`, `lease-lost/rejected`, `reload-blocked/rejected`), a `Scan reason and outcome` pokazuje `reason <code> · outcome rejected`. Odrzucony skan niczego nie zapisuje: nie czyść danych stron, żeby to "naprawić" — uzupełnij tylko te wartości, których brak udowodniły etykiety `Storage provenance`.
+
+Kolor tylko wzmacnia te słowa; panel nigdy nie maluje faktu na zielono.
+
 ## Sprawdzanie kolejki
 
-Karta Alerts pokazuje liczniki nieudanych i niepewnych partii. Akcje odzyskiwania znajdują się w menu Tampermonkey:
+Karta Alerts (`taa-tab-alerts`) pokazuje liczniki nieudanych i niepewnych partii obok baniera `Failed / uncertain delivery`, a każda akcja odzyskiwania leży w menu Tampermonkey — nigdy w panelu:
 
-- Partie nieudane: `Retry failed Discord batches`, po sprawdzeniu konfiguracji webhooka.
-- Partie niepewne: `Mark uncertain Discord batches delivered` albo `Retry uncertain Discord batches`. Ponowienie może zduplikować.
+- Partie nieudane: `Retry failed Discord batches`, po sprawdzeniu konfiguracji webhooka. Nieudane znaczy trwale odrzucone (zwykłe 4xx), zachowane do ręcznego rozliczenia.
+- Partie niepewne: potwierdzenie zostało utracone (odpowiedź 200 bez używalnego id wiadomości), więc nie da się udowodnić, że wiadomość istnieje. Nigdy nieponawiane automatycznie; rozstrzyga je człowiek z tego menu — `Mark uncertain Discord batches delivered` (wiadomość znalazłeś na Discordzie) albo `Retry uncertain Discord batches` (nie znalazłeś; ponowienie może zduplikować). W czasie dochodzenia `Toggle debug details` włącza rozbudowany debug, a `Load history and health` wczytuje zapisaną historię.
 - Opróżnianie oczekujących: `Flush pending Discord batches`.
-- Debug i historia: `Toggle debug details`, `Load history and health`.
 
-Nieudane znaczy trwale odrzucone (zwykłe 4xx), zachowane do ręcznego rozliczenia. Niepewne znaczy utracone potwierdzenie (zniekształcone lub bez-ID 200), nigdy nieponawiane automatycznie. Oba stany dają się odzyskać; żaden nie jest porzucany po cichu.
+Żaden z tych stanów nie jest porzucany po cichu i żaden nie rozstrzyga się sam; oba dają się odzyskać ręcznie.
 
 ## Przeniesienie z linii 6.x
 
@@ -107,7 +119,7 @@ Nigdy nie czyść danych stron, aby "naprawić" odrzucony skan. Uzupełnij tylko
 
 ## Rozwiązywanie problemów (najpierw diagnostyka)
 
-Wyeksportuj pakiet incydentu NAJPIERW, zanim dotkniesz czegokolwiek: karta Diagnostics (`taa-tab-diagnostics`), `Export incident bundle` (`taa-incident-bundle-export`). Pakiet jest z konstrukcji ograniczony (512 KiB) i zredagowany: bez webhooka, tokenu, surowego DOM, danych graczy, ładunków kolejki, URL-i, ciasteczek i treści odpowiedzi.
+Wyeksportuj pakiet incydentu NAJPIERW, zanim dotkniesz czegokolwiek: karta Diagnostics (`taa-tab-diagnostics`), `Export incident bundle` (`taa-incident-bundle-export`). Pakiet jest z konstrukcji ograniczony (512 KiB) i zredagowany: bez webhooka, tokenu, surowego DOM, danych graczy, ładunków kolejki, URL-i, ciasteczek i treści odpowiedzi. Szczegóły w Diagnostics leżą w trzech zwiniętych grupach: `Storage detail` (`taa-storage-provenance-details`, z etykietami `Storage provenance`), `Filters and recent traces` (`taa-trace-details`, z filtrami scan/stage/outcome, licznikiem śladów i ostatnimi 32 śladami) oraz `Overflow and export bounds` (`taa-bounded-details`, z licznikiem przepełnienia kolejki i limitem eksportu 512 KiB).
 
 Potem dopasuj swój stan:
 
@@ -134,7 +146,7 @@ Skopiuj te pola do zgłoszenia. Załącz zredagowany pakiet incydentu. NIGDY nie
 
 ## Uwaga o wersji
 
-Ta strona dokumentuje `1.0.2` (`taa-1.0.2`). Wcześniejsze zachowanie z ery 6.2.1 (historyczny rozwój wewnętrzny) nie jest częścią kontraktu tego kandydata.
+Ta strona dokumentuje `1.0.2` (`taa-1.0.2`). Wcześniejsze zachowanie z ery 6.2.1 (historyczny rozwój wewnętrzny) nie jest częścią kontraktu bieżącego wydania.
 
 ## Mapa implementacji
 

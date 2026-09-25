@@ -76,7 +76,7 @@ Failed and uncertain batches are never dropped silently. Recovery actions (`Retr
 
 No historical or guessed time is invented. When the observation time is missing, the text remains `Observation time unavailable`; inherited timestamps remain marked as approximate observation. Events that appear and disappear between two accepted scans cannot be inferred — that limitation is by design.
 
-The superseded 5.2.6-era contract is historical; the 1.0.2 contract documented here is the one this candidate implements.
+The superseded 5.2.6-era contract is historical; the 1.0.2 contract documented here is the one the current release implements.
 
 ## Related
 
