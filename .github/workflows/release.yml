@@ -287,11 +287,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ needs.release-build.outputs.source-tag }}
+          RELEASE_ID: ${{ needs.release-draft.outputs.release-id }}
         run: |
           set -euo pipefail
           mkdir -p preflight/draft-assets
-          gh release download "$TAG" --dir preflight/draft-assets --clobber
-          gh api "repos/$REPO/releases/tags/$TAG" > preflight/release-listed.json
+          gh api "repos/$REPO/releases/$RELEASE_ID" > preflight/release-listed.json
+          gh api "repos/$REPO/releases/$RELEASE_ID/assets" --paginate --jq '.[] | [.id, .name] | @tsv' > preflight/asset-ids.tsv
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api "repos/$REPO/releases/assets/$asset_id" -H "Accept: application/octet-stream" > "preflight/draft-assets/$asset_name"
+          done < preflight/asset-ids.tsv
           node -e "
             const fs = require('fs');
             const expected = ['travian-attack-alert.user.js','travian-attack-alert.user.js.sha256','metadata.json','module-manifest.json','sbom.spdx.json','release-manifest.json','SHA256SUMS'].sort();
@@ -346,9 +350,10 @@ jobs:
           ARTIFACT_ID: ${{ needs.release-build.outputs.artifact-id }}
           ARTIFACT_DIGEST: ${{ needs.release-build.outputs.artifact-digest }}
           ATTESTATION_ID: ${{ needs.release-attest.outputs.attestation-id }}
+          RELEASE_ID: ${{ needs.release-draft.outputs.release-id }}
         run: |
           set -euo pipefail
-          gh api "repos/$REPO/releases/tags/$TAG" > preflight/release-before.json
+          gh api "repos/$REPO/releases/$RELEASE_ID" > preflight/release-before.json
           gh api "repos/$REPO/immutable-releases" > preflight/immutable-releases.json
           node -e "
             const fs = require('fs');
@@ -388,9 +393,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ needs.release-build.outputs.source-tag }}
+          RELEASE_ID: ${{ needs.release-draft.outputs.release-id }}
         run: |
           set -euo pipefail
-          gh api "repos/$REPO/releases/tags/$TAG" > preflight/release-recheck.json
+          gh api "repos/$REPO/releases/$RELEASE_ID" > preflight/release-recheck.json
           node -e "
             const fs = require('fs');
             const record = JSON.parse(fs.readFileSync('preflight/publish-record.json', 'utf8'));
@@ -415,6 +421,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ needs.release-build.outputs.source-tag }}
+          SOURCE_SHA: ${{ needs.release-build.outputs.source-sha }}
         run: |
           set -euo pipefail
           gh release verify "$TAG" || { echo "RELEASE PUBLISH FAIL: release attestation verification failed"; exit 1; }
