@@ -12,8 +12,9 @@
 // consults git or the network. This suite proves the happy path through all four
 // states with synthetic owner evidence and proves every adversarial class fails
 // closed with its earliest typed blocker. It also pins the committed
-// `blocked-current-state.json` fixture as a truthful BLOCKED snapshot and pins
-// the active owner runbook's required transitions and rollback/stop behavior.
+// `blocked-current-state.json` fixture as an intentional BLOCKED-state fixture
+// (not a statement about the current release) and pins the active owner
+// runbook's required transitions and rollback/stop behavior.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -181,7 +182,7 @@ function assertBlocked(bundle, expectedCode, label) {
   return report;
 }
 
-test('Given the committed current-state fixture, when evaluated, then it is truthfully BLOCKED with every owner prerequisite named', () => {
+test('Given the committed blocked-state fixture, when evaluated, then it is BLOCKED with every owner prerequisite named', () => {
   const bundle = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
   const report = evaluateReadiness(bundle);
   assert.equal(report.state, READINESS_STATES.BLOCKED);
@@ -199,9 +200,10 @@ test('Given the committed current-state fixture, when evaluated, then it is trut
     'release-state-not-ready',
     'assets-unverified',
   ]) {
-    assert.ok(codes.includes(expected), `current-state fixture must report ${expected}; got ${codes.join(', ')}`);
+    assert.ok(codes.includes(expected), `blocked-state fixture must report ${expected}; got ${codes.join(', ')}`);
   }
-  assert.equal(bundle.releaseState.stable, false, 'the fixture must mirror the live stable:false state');
+  assert.match(bundle.note, /intentional BLOCKED-state fixture/iu, 'the note must state it is an intentional BLOCKED-state fixture, not a live-state snapshot');
+  assert.equal(bundle.releaseState.stable, false, 'the fixture intentionally represents a pre-publication BLOCKED state, not the published stable release');
   assert.equal(bundle.releaseState.publication.tagAndRelease, false, 'the fixture must not claim a published release');
   for (const gate of PRE_PUBLICATION_GATES) {
     assert.equal(bundle.releaseState.ownerManual[gate], gate === 'evidenceRecord' ? null : false, `fixture gate ${gate} must stay unpopulated`);
