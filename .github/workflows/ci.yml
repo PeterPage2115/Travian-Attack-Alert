@@ -303,6 +303,16 @@ jobs:
       # Upload ONLY the exact sealed ZIP bytes + the separate scan report,
       # never the mutable test-results/ directory. Upload stays ineligible
       # unless the seal, the evidence scan, and the digest recheck succeeded.
+      - name: Debug raw capture (temporary, PR-event diagnostic)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: debug-raw
+          path: |
+            test-results/
+            ci-evidence/
+          if-no-files-found: ignore
+
       - name: Upload sealed browser evidence
         if: always() && steps.evidence-seal.outcome == 'success' && steps.evidence-scan.outcome == 'success' && steps.evidence-digest.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
