@@ -1,14 +1,14 @@
-# Solo-owner Release Runbook — 1.0.1
+# Solo-owner Release Runbook — version-generic
 
-Active, ordered publication procedure for the `1.0.1` release (`taa-1.0.1`) of
-Travian Attack Alert, run by a single maintainer. This is the live operational
+Active, ordered publication procedure for a release `<version>` (`taa-<version>`)
+of Travian Attack Alert, run by a single maintainer. This is the live operational
 guide. The frozen 1.0.0 release-candidate records under
 `docs/release-history/1.0.0-rc/` are historical archive, not current proof, and
 are never edited by this procedure.
 
 No automation may perform any owner step below: no npm script, test, build step,
 or CI job sets `stable:true`, creates the tag, or changes a GitHub setting. A
-pushed annotated `v1.0.1` tag is the sole trigger; from there the release
+pushed annotated `v<version>` tag is the sole trigger; from there the release
 workflow builds, drafts and publishes the GitHub Release automatically, on the
 workflow's automatic token, with no second GitHub account, no environment
 reviewer and no settings-read token. Every owner-only evidence item must record
@@ -23,8 +23,10 @@ values in any record.
 > The stages below are retained as the ordered procedure.
 
 > **Run status: v1.0.2 published 2026-09-25** (solo pipeline, run
-> `36185458733`); Stage 11 recorded `publication.tagAndRelease` in
-> `docs/release-state.json`.
+> `36185458733`): the annotated `v1.0.2` tag was published as an immutable
+> GitHub Release (release id `396904420`, exactly two public assets — the
+> userscript and its `.sha256` sidecar), and Stage 11 recorded
+> `publication.tagAndRelease` in `docs/release-state.json`.
 
 ## 0. Readiness verifier
 
@@ -47,19 +49,20 @@ It reports exactly one machine-readable state:
   attestation is verified, its asset digests are unchanged, and
   `publication.tagAndRelease` is recorded.
 
-The committed `blocked-current-state.json` fixture is the truthful current
-snapshot: it reports `BLOCKED`. Do not advance a stage until the verifier for the
-next stage no longer reports `BLOCKED`.
+The committed `blocked-current-state.json` fixture is an intentional
+BLOCKED-state fixture, not a snapshot of the current release: it reports
+`BLOCKED`. Do not advance a stage until the verifier for the next stage no
+longer reports `BLOCKED`.
 
 ## Stage 0 — Merge the reviewed PR
 
-1. Confirm the reviewed PR for the release candidate is approved and that CI
+1. Confirm the reviewed release PR is approved and that CI
    (`offline-node-18`, `offline-node-20`, `browser-node-20`,
    `cross-node-determinism`) is green.
 2. Merge the reviewed PR into the default branch `release/public-1.0.0`. Record
    the resulting remote head commit.
 3. Confirm the merged head is a clean, reviewed commit and that no tag exists
-   (`git ls-remote --tags` shows no `v1.0.1`).
+   (`git ls-remote --tags` shows no `v<version>` tag).
 
 - **Evidence:** PR URL, reviewer, merge commit, remote head, check conclusions.
 - **Stop:** any failing required check, an unapproved PR, or a pre-existing tag
@@ -75,9 +78,9 @@ next stage no longer reports `BLOCKED`.
    node tools/verify-update-channel.cjs
    ```
 
-2. Require HTTP 200, byte equality with the local `1.0.1` artifact, sidecar
-   SHA-256 equality, `@version 1.0.1`, and `@updateURL`/`@downloadURL` identical
-   to the configured release-channel URL.
+2. Require HTTP 200, byte equality with the local `<version>` artifact, sidecar
+   SHA-256 equality, `@version <version>`, and `@updateURL`/`@downloadURL`
+   identical to the configured release-channel URL.
 
 - **Evidence:** command output, status, artifact SHA-256, version, directives.
 - **Stop:** any non-200 response, hash mismatch, wrong version, or directive
@@ -89,9 +92,9 @@ next stage no longer reports `BLOCKED`.
 1. In dedicated, clean, secret-free Tampermonkey and Violentmonkey profiles still
    holding the seed install, run the manager's own update check against the live
    channel. No reinstall from file, no URL change, no profile reset.
-2. Require both managers to move `1.0.0 → 1.0.1` in place with post-update bytes
-   equal to the public raw `1.0.1` artifact byte-for-byte. A reinstall is
-   recorded as a reinstall, never as an update.
+2. Require both managers to move `<previous> → <version>` in place with
+   post-update bytes equal to the public raw `<version>` artifact
+   byte-for-byte. A reinstall is recorded as a reinstall, never as an update.
 3. Have a **second person** (not the release owner) perform and attest the pilot.
 
 - **Evidence:** manager/browser versions, pre/post installed versions and header
@@ -103,8 +106,9 @@ next stage no longer reports `BLOCKED`.
 
 ## Stage 3 — Review the Task 23 seed receipt and Task 31 update receipt
 
-1. Review the **Task 23** seed receipt (the installed `1.0.0` seed identity) and
-   the **Task 31** update receipt (the verified in-place `1.0.0 → 1.0.1` update).
+1. Review the **Task 23** seed receipt (the installed `<previous>` seed
+   identity) and the **Task 31** update receipt (the verified in-place
+   `<previous> → <version>` update).
 2. Confirm both receipts are present, digest-bound, and contain no webhook,
    player data, cookies, extension-profile internals, or private browser state.
 
@@ -178,9 +182,9 @@ Apply, then verify from a clean clone and via read-only authenticated GETs:
 - **Rollback:** revert the owner commit with a reviewed revert; the release
   returns to `BLOCKED`.
 
-## Stage 7 — Create and push the annotated `v1.0.1` tag
+## Stage 7 — Create and push the annotated `v<version>` tag
 
-1. Create an **annotated** tag `v1.0.1` at the reviewed release head and push it.
+1. Create an **annotated** tag `v<version>` at the reviewed release head and push it.
 2. Confirm `git ls-remote` resolves the annotated tag to the exact release head
    and that the head is contained in `release/public-1.0.0`.
 
