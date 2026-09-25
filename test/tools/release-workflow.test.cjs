@@ -256,7 +256,7 @@ function analyzeReleaseWorkflow(source) {
   if (!/m\.source\.commit/u.test(publish)) add('asset-artifact-attestation-mismatch', 'publish job must compare the release-manifest source SHA/tree');
   if (!/draftReleaseId/u.test(publish)) add('missing-draft-record', 'publish job must record the draft release id');
   if (!/draft=false/u.test(publish)) add('missing-publish-mutation', 'publish job must publish the verified draft');
-  if (!/gh release verify/u.test(publish)) add('missing-post-publish-verify', 'publish job must verify the published release and attestation');
+  if (!/post-publish attestation verification failed/u.test(publish)) add('missing-post-publish-verify', 'publish job must verify every published per-asset attestation after publication');
   if (!/asset digests changed after publish/u.test(publish)) add('missing-post-publish-verify', 'publish job must reject changed asset digests after publish');
 
   // The complete draft asset set must be exactly the seven declared names, both
@@ -422,7 +422,7 @@ test('Given the release workflow, when the publish job is inspected, then it is 
   assert.match(publish, /git\/ref\/tags/u);
   assert.match(publish, /gh attestation verify/u);
   assert.match(publish, /draft=false/u);
-  assert.match(publish, /gh release verify/u);
+  assert.match(publish, /post-publish attestation verification failed/u);
 });
 
 test('Given a mutable action reference, when analyzed, then the workflow is rejected', () => {
@@ -469,7 +469,7 @@ test('Given an attached environment, when analyzed, then the workflow is rejecte
 });
 
 test('Given an asset/artifact/attestation mismatch path, when analyzed, then the workflow is rejected', () => {
-  expectRejected(mutate('gh attestation verify', 'gh attestation inspect'), 'asset-artifact-attestation-mismatch');
+  expectRejected(mutateAll('gh attestation verify', 'gh attestation inspect'), 'asset-artifact-attestation-mismatch');
 });
 
 test('Given a direct auto-publish, when analyzed, then the workflow is rejected', () => {
