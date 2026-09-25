@@ -103,7 +103,7 @@ function setReleaseBranch(repo, target, branch = 'release/public-1.0.0') {
   execFileSync('git', ['branch', '-f', branch, target], { cwd: repo });
 }
 
-function annotate(repo, tag = 'v1.0.1') {
+function annotate(repo, tag = 'v1.0.2') {
   execFileSync('git', ['tag', '-a', tag, '-m', `release ${tag}`], { cwd: repo });
 }
 
@@ -183,16 +183,16 @@ test('Given an annotated exact-version tag on the release branch, when prepared,
   const result = prepareOk(repo, out);
 
   assert.equal(result.assetCount, 7);
-  assert.equal(result.releaseId, 'taa-1.0.1');
-  assert.equal(result.tag, 'v1.0.1');
+  assert.equal(result.releaseId, 'taa-1.0.2');
+  assert.equal(result.tag, 'v1.0.2');
   assert.equal(result.commit, head);
   assert.deepEqual(listFiles(out), [...ALL_ASSETS].sort());
 
   const manifest = readManifest(out);
   assert.equal(manifest.schemaVersion, 1);
-  assert.equal(manifest.version, '1.0.1');
-  assert.equal(manifest.releaseId, 'taa-1.0.1');
-  assert.equal(manifest.tag, 'v1.0.1');
+  assert.equal(manifest.version, '1.0.2');
+  assert.equal(manifest.releaseId, 'taa-1.0.2');
+  assert.equal(manifest.tag, 'v1.0.2');
   assert.equal(manifest.source.commit, head);
   assert.equal(manifest.source.branch, 'release/public-1.0.0');
   assert.deepEqual(manifest.assets.map((asset) => asset.name), PRIMARY);
@@ -237,7 +237,7 @@ test('Given one tagged commit, when prepared twice, then both release directorie
 test('Given a lightweight tag, when prepared, then preparation is rejected', (t) => {
   const { base, repo } = cloneRepo(t);
   setReleaseBranch(repo, 'HEAD');
-  execFileSync('git', ['tag', 'v1.0.1'], { cwd: repo });
+  execFileSync('git', ['tag', 'v1.0.2'], { cwd: repo });
   assert.equal(failCode(prepare(repo, path.join(base, 'release'))), 'tag-not-annotated');
 });
 
@@ -298,11 +298,16 @@ test('Given an untracked product file, when prepared, then preparation is reject
 test('Given a runtime identity mismatch, when prepared, then preparation is rejected', (t) => {
   const { base, repo } = cloneRepo(t);
   const pkg = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8'));
-  pkg.version = '1.0.2';
+  // Version-relative successor: a hardcoded literal (it was '1.0.2' while the
+  // tree sat at 1.0.1) rots on every bump — this test failed exactly that way
+  // at 1.0.2 with "nothing to commit" — so derive it from the cloned identity.
+  const [major, minor, patch] = pkg.version.split('.').map(Number);
+  const mismatched = `${major}.${minor}.${patch + 1}`;
+  pkg.version = mismatched;
   fs.writeFileSync(path.join(repo, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
   execFileSync('git', ['commit', '-am', 'bump package only'], { cwd: repo });
   setReleaseBranch(repo, 'HEAD');
-  annotate(repo, 'v1.0.2');
+  annotate(repo, `v${mismatched}`);
   assert.equal(failCode(prepare(repo, path.join(base, 'release'))), 'identity-mismatch');
 });
 
@@ -492,7 +497,7 @@ test('Given a prepared release, when each declared asset is corrupted, then rele
 
 test('Given crafted manifests, when the library verifier is called, then structural attacks fail closed', () => {
   const readiness = require(CHECK);
-  const base = { schemaVersion: 1, version: '1.0.1', releaseId: 'taa-1.0.1', tag: 'v1.0.1', source: { commit: 'a'.repeat(40), tree: 'b'.repeat(40), branch: 'release/public-1.0.0', sourceDateEpoch: 0 }, toolchain: { esbuild: '0.25.9', typescript: '5.9.2', nodeMajor: 18 }, sbom: { file: 'sbom.spdx.json', format: 'SPDX-2.3', classification: 'build-dependency', runtimeDependencies: 0, statement: STATEMENT }, assets: PRIMARY.map((name) => ({ name, bytes: 1, sha256: 'c'.repeat(64) })) };
+  const base = { schemaVersion: 1, version: '1.0.2', releaseId: 'taa-1.0.2', tag: 'v1.0.2', source: { commit: 'a'.repeat(40), tree: 'b'.repeat(40), branch: 'release/public-1.0.0', sourceDateEpoch: 0 }, toolchain: { esbuild: '0.25.9', typescript: '5.9.2', nodeMajor: 18 }, sbom: { file: 'sbom.spdx.json', format: 'SPDX-2.3', classification: 'build-dependency', runtimeDependencies: 0, statement: STATEMENT }, assets: PRIMARY.map((name) => ({ name, bytes: 1, sha256: 'c'.repeat(64) })) };
   assert.doesNotThrow(() => readiness.verifyManifest(base));
   const selfReferential = structuredClone(base);
   selfReferential.assets[4] = { name: 'SHA256SUMS', bytes: 1, sha256: 'c'.repeat(64) };

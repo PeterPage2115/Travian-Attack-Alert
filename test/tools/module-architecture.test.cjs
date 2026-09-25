@@ -395,7 +395,7 @@ test('dist: bundle is generated output, never hand-edited', () => {
   const dist = path.join(ROOT, 'dist', 'travian-attack-alert.user.js');
   const body = fs.readFileSync(dist, 'utf8');
   assert.ok(body.startsWith('// ==UserScript=='), 'dist bundle must start with the generated metadata block');
-  assert.ok(body.includes('taa-1.0.1'), 'dist bundle must carry the release ID of the current artifact');
+  assert.ok(body.includes('taa-1.0.2'), 'dist bundle must carry the release ID of the current artifact');
   assert.ok(!body.includes('__taaModuleProbe'), 'dist bundle must not contain a hand-edit probe');
 });
 

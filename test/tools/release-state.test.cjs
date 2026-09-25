@@ -7,12 +7,12 @@
 // pre-publication gates alone gate `stable`, while PUBLISHED_VERIFIED
 // additionally requires publication.tagAndRelease.
 //
-// Automated steps cannot flip owner fields: this test pins the live state after
-// the owner's 2026-09-25 attestation — stable:true only because every
-// pre-publication owner field is populated with owner-written evidence. The
-// flip rule it enforces still requires an owner edit of BOTH
-// docs/release-state.json AND this test — no npm script, build step, or CI job
-// does it.
+// Automated steps cannot flip owner fields: the live state tracks the staged
+// 1.0.2 release candidate (stable:false, every pre-publication owner field
+// still unpopulated), while the completed, published 1.0.1 record is archived
+// at docs/release-history/1.0.1/release-state.json. The flip rule this test
+// enforces still requires an owner edit of BOTH docs/release-state.json AND
+// this test — no npm script, build step, or CI job does it.
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
@@ -21,8 +21,10 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const STATE_PATH = path.join(ROOT, 'docs', 'release-state.json');
+const ARCHIVE_PATH = path.join(ROOT, 'docs', 'release-history', '1.0.1', 'release-state.json');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const state = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+const archive = JSON.parse(fs.readFileSync(ARCHIVE_PATH, 'utf8'));
 
 // Schema v2 (Task 27): every field below must be populated by the owner before
 // `stable` may become true. publication.tagAndRelease is deliberately NOT in
@@ -123,24 +125,41 @@ describe('release gate (stable-1.0, schema v2)', () => {
     }
   });
 
-  it('records stable:true with every pre-publication owner field populated and an evidence reference', () => {
-    assert.equal(state.stable, true, 'the owner attested 1.0.1 stable on 2026-09-25');
-    const pending = PRE_PUBLICATION_FIELDS.filter((key) => !isPopulated(state.ownerManual[key]));
+  it('keeps the staged 1.0.2 candidate below every pre-publication owner gate', () => {
+    assert.equal(state.stable, false, 'the live 1.0.2 candidate must stay stable:false until the owner attests');
+    const populated = PRE_PUBLICATION_FIELDS.filter((key) => isPopulated(state.ownerManual[key]));
+    assert.deepEqual(
+      populated,
+      [],
+      `the staged 1.0.2 candidate must not claim any owner gate (populated: ${populated.join(', ')})`,
+    );
+    assert.equal(
+      state.ownerManual.evidenceRecord,
+      null,
+      'the 1.0.2 candidate must not carry an owner evidence reference before piloting',
+    );
+  });
+
+  it('archives the complete published 1.0.1 record with every pre-publication owner field populated', () => {
+    assert.equal(archive.version, '1.0.1', 'the archive must be the 1.0.1 record');
+    assert.equal(archive.releaseId, 'taa-1.0.1', 'the archive must carry the 1.0.1 release ID');
+    assert.equal(archive.stable, true, 'the archived 1.0.1 is the published, owner-attested stable release');
+    const pending = PRE_PUBLICATION_FIELDS.filter((key) => !isPopulated(archive.ownerManual[key]));
     assert.deepEqual(
       pending,
       [],
-      `stable:true requires every pre-publication owner field populated (pending: ${pending.join(', ')})`,
+      `the archived stable 1.0.1 requires every pre-publication owner field populated (pending: ${pending.join(', ')})`,
     );
     for (const key of PRE_PUBLICATION_FIELDS) {
-      const value = state.ownerManual[key];
+      const value = archive.ownerManual[key];
       assert.ok(
         typeof value !== 'string' || value.trim().length > 0,
-        `owner field ${key} must never be populated with a blank string`,
+        `archive owner field ${key} must never be populated with a blank string`,
       );
     }
     assert.ok(
-      typeof state.ownerManual.evidenceRecord === 'string' && state.ownerManual.evidenceRecord.trim().length > 0,
-      'stable:true requires a non-empty owner evidence reference',
+      typeof archive.ownerManual.evidenceRecord === 'string' && archive.ownerManual.evidenceRecord.trim().length > 0,
+      'the archived stable 1.0.1 requires a non-empty owner evidence reference',
     );
   });
 
@@ -177,8 +196,10 @@ describe('release gate (stable-1.0, schema v2)', () => {
   });
 
   it('separates post-publication evidence: PUBLISHED_VERIFIED additionally requires publication.tagAndRelease', () => {
-    assert.equal(publishedVerified(state), true, 'the live state records the published, verified immutable Release');
-    assert.equal(state.publication.tagAndRelease, true, 'the owner recorded the published v1.0.1 GitHub Release');
+    assert.equal(publishedVerified(state), false, 'the live 1.0.2 candidate must not claim a published, verified release');
+    assert.equal(state.publication.tagAndRelease, false, 'no 1.0.2 tag or Release may be recorded before the owner publishes one');
+    assert.equal(publishedVerified(archive), true, 'the archived 1.0.1 records the published, verified immutable Release');
+    assert.equal(archive.publication.tagAndRelease, true, 'the archived 1.0.1 recorded the published v1.0.1 GitHub Release');
     const tagged = syntheticPrePublicationState({ publication: { tagAndRelease: 'v1.0.0 + GitHub Release' } });
     assert.equal(publishedVerified(tagged), true, 'a recorded tag/Release must complete PUBLISHED_VERIFIED');
     const untaggedStable = syntheticPrePublicationState();

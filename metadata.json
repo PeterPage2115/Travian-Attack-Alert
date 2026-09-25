@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
   "release": {
-    "version": "1.0.1",
-    "releaseId": "taa-1.0.1"
+    "version": "1.0.2",
+    "releaseId": "taa-1.0.2"
   },
   "artifact": {
     "path": "dist/travian-attack-alert.user.js",
-    "sha256": "0c187870841a62d9b5d064fe242c00c648eaac6936cb6a830207239114045824",
+    "sha256": "67b2a53e467fe24b4ac24291593d9635cca39cba7faec72784cf44abaa2b4544",
     "source": {
       "path": "src/userscript-entry.js",
       "sha256": "e51970c579a4c0e586d482b54fcd39e324eaa56c26aac2465cc4c8fbebf52592"
     },
     "dist": {
       "path": "dist/travian-attack-alert.user.js",
-      "sha256": "0c187870841a62d9b5d064fe242c00c648eaac6936cb6a830207239114045824"
+      "sha256": "67b2a53e467fe24b4ac24291593d9635cca39cba7faec72784cf44abaa2b4544"
     }
   },
   "toolchain": {

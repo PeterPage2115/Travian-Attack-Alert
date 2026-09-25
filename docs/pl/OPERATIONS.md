@@ -1,6 +1,6 @@
 # Codzienna obsługa
 
-Procedura operatorska dla `Travian Attack Alert` w wersji `1.0.1` (ID wydania `taa-1.0.1`).
+Procedura operatorska dla `Travian Attack Alert` w wersji `1.0.2` (ID wydania `taa-1.0.2`).
 
 > Uwaga: to jest polski odpowiednik strony `docs/OPERATIONS.md`. Angielska strona `README.md` pozostaje głównym dokumentem. W razie rozbieżności obowiązuje tekst angielski.
 
@@ -72,7 +72,7 @@ Nieudane znaczy trwale odrzucone (zwykłe 4xx), zachowane do ręcznego rozliczen
 
 ## Przeniesienie z linii 6.x
 
-Każdy, kto przenosi prywatny profil 6.2.1 (historyczny rozwój wewnętrzny) do publicznego 1.0.1, postępuje według `docs/MIGRATION-6X.md`. Cytowana kolejność, niepowielona tutaj: wyeksportuj prywatną kopię ustawień na starym nadawcy, wyłącz skrypt 6.x i sprawdź zero wysyłek przez pełny cykl, zainstaluj plik 1.0.1 jako nowy skrypt, zaimportuj plik kopii albo wpisz webhook ręcznie, sprawdź kolejkę, linię bazową i konfigurację w Diagnostics i dopiero wtedy włącz monitorowanie. Podczas przenoszenia nigdy nie czyść danych stron; nigdy nie kopiuj ciasteczek, profili ani danych logowania. Publiczne `1.0.1` jest liczbowo niższe niż prywatne `6.2.1`, więc żaden menedżer nie zaproponuje go jako aktualizacji. Wycofanie to ponowne zaimportowanie poprzedniego pliku `.user.js`, zachowanie danych stron i przeładowanie trasy kanonicznej.
+Każdy, kto przenosi prywatny profil 6.2.1 (historyczny rozwój wewnętrzny) do publicznego 1.0.2, postępuje według `docs/MIGRATION-6X.md`. Cytowana kolejność, niepowielona tutaj: wyeksportuj prywatną kopię ustawień na starym nadawcy, wyłącz skrypt 6.x i sprawdź zero wysyłek przez pełny cykl, zainstaluj plik 1.0.2 jako nowy skrypt, zaimportuj plik kopii albo wpisz webhook ręcznie, sprawdź kolejkę, linię bazową i konfigurację w Diagnostics i dopiero wtedy włącz monitorowanie. Podczas przenoszenia nigdy nie czyść danych stron; nigdy nie kopiuj ciasteczek, profili ani danych logowania. Publiczne `1.0.2` jest liczbowo niższe niż prywatne `6.2.1`, więc żaden menedżer nie zaproponuje go jako aktualizacji. Wycofanie to ponowne zaimportowanie poprzedniego pliku `.user.js`, zachowanie danych stron i przeładowanie trasy kanonicznej.
 
 ## Aktualizacje
 
@@ -125,7 +125,7 @@ Potem dopasuj swój stan:
 
 Skopiuj te pola do zgłoszenia. Załącz zredagowany pakiet incydentu. NIGDY nie dołączaj URL webhooka ani tokenu, ciasteczek, haseł, surowego HTML strony, ładunków kolejki ani danych graczy ponad to, co pakiet już zawiera w formie zredagowanej.
 
-- Wersja skryptu (na przykład `1.0.1`).
+- Wersja skryptu (na przykład `1.0.2`).
 - Wersja przeglądarki i wersja menedżera skryptów (na przykład wersja Tampermonkey).
 - Kroki odtworzenia (jaka strona, jaki stan kart, co kliknięto, po kolei).
 - Czego oczekiwałeś.
@@ -134,8 +134,8 @@ Skopiuj te pola do zgłoszenia. Załącz zredagowany pakiet incydentu. NIGDY nie
 
 ## Uwaga o wersji
 
-Ta strona dokumentuje `1.0.1` (`taa-1.0.1`). Wcześniejsze zachowanie z ery 6.2.1 (historyczny rozwój wewnętrzny) nie jest częścią kontraktu tego kandydata.
+Ta strona dokumentuje `1.0.2` (`taa-1.0.2`). Wcześniejsze zachowanie z ery 6.2.1 (historyczny rozwój wewnętrzny) nie jest częścią kontraktu tego kandydata.
 
 ## Mapa implementacji
 
-Opisane wyżej zachowanie implementuje 13 modułów domenowych w `src/` (każdy to fasada `X.js` nad kontraktem `X-impl.js`; `storage` obejmuje 12 podmodułów), agregowanych przez referencję w `src/runtime-api.js` bez indirection `select()`. Mutowalny stan cyklu życia ma jedynego właściciela, `src/lifecycle.js`, zasilanego przez siedem fabryk z `src/adapters.js`; `src/runtime.js` pozostaje autorytetem legacy (`taa-1.0.1`), a produkcyjne wiring jest bez zmian. Autorytatywna mapa to `docs/architecture.md` §10, wymuszana przez `test/tools/module-architecture.test.cjs`. Nic tu nie zmienia obsługi: podział panel/menu, trasy i kroki odzyskiwania powyżej są dokładnie takie, jak podano.
+Opisane wyżej zachowanie implementuje 13 modułów domenowych w `src/` (każdy to fasada `X.js` nad kontraktem `X-impl.js`; `storage` obejmuje 12 podmodułów), agregowanych przez referencję w `src/runtime-api.js` bez indirection `select()`. Mutowalny stan cyklu życia ma jedynego właściciela, `src/lifecycle.js`, zasilanego przez siedem fabryk z `src/adapters.js`; `src/runtime.js` pozostaje autorytetem legacy (`taa-1.0.2`), a produkcyjne wiring jest bez zmian. Autorytatywna mapa to `docs/architecture.md` §10, wymuszana przez `test/tools/module-architecture.test.cjs`. Nic tu nie zmienia obsługi: podział panel/menu, trasy i kroki odzyskiwania powyżej są dokładnie takie, jak podano.
