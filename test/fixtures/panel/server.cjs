@@ -55,6 +55,26 @@ function sendFile(response, filePath, contentType) {
   });
 }
 
+// Task-3 hydration fixtures: the 59-row authoritative roster comes from the
+// existing acquisition fixture (its own ids/names), never an inline copy, so
+// e2e and offline parser tests share one roster definition. Rows are cached
+// after the first read; `limit` produces the partial-hydration variant.
+let members59RowsCache = null;
+function members59Rows() {
+  if (members59RowsCache === null) {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'acquisition', 'members-59-incident.html'), 'utf8');
+    const body = html.match(/<table class="allianceMembers">([\s\S]*?)<\/table>/);
+    members59RowsCache = body ? body[1].match(/<tr[\s\S]*?<\/tr>/g) || [] : [];
+  }
+  return members59RowsCache;
+}
+
+function members59TableMarkup(limit) {
+  const rows = members59Rows();
+  const selected = typeof limit === 'number' ? rows.slice(0, limit) : rows;
+  return `<table class="allianceMembers"><tbody>${selected.join('')}</tbody></table>`;
+}
+
 function memberTableMarkup(variant) {
   if (variant === 'canonical') {
     const rows = [900001, 900002, 900003]
@@ -66,6 +86,9 @@ function memberTableMarkup(variant) {
     return `<table class="allianceMembers" data-pagination="true"><tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody></table>`;
   }
   if (variant === 'late') return '<table class="allianceMembers"><tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody></table>';
+  if (variant === 'members59') return members59TableMarkup();
+  if (variant === 'partial-12') return members59TableMarkup(12);
+  if (variant === 'empty-shell') return '<table class="allianceMembers"><tbody></tbody></table>';
   return null;
 }
 
@@ -134,7 +157,12 @@ function sendJson(response, status, value) {
 
 function handleMemberRoute(request, response) {
   const parsed = new URL(String(request.url || '/'), `http://127.0.0.1:${PORT}`);
-  const table = parsed.pathname.endsWith('/extra') ? 'absent' : parsed.searchParams.get('memberTable') || 'canonical';
+  // Task-3 member-table variants travel in a request header: the page URL must
+  // stay query-free (`/alliance/profile/members` is only canonical when
+  // url.search === ''), so a query param would flip the route to
+  // `alliance-noncanonical` and the runtime would never scan.
+  const headerVariant = String(request.headers['x-taa-member-table'] || '');
+  const table = parsed.pathname.endsWith('/extra') ? 'absent' : headerVariant || parsed.searchParams.get('memberTable') || 'canonical';
   handleAlliance(Object.assign(request, { url: `/alliance?memberTable=${encodeURIComponent(table)}&panelState=overview` }), response);
 }
 
