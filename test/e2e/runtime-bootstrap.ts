@@ -51,6 +51,10 @@ declare global {
     __TAA_E2E_SCENARIO__?: RuntimeScenario;
     __TAA_E2E_EVENTS__?: Array<Record<string, unknown>>;
     __TAA_TEST_HOOK__?: Record<string, (payload: Record<string, unknown>) => void>;
+    // holdInteractive probe contract: readystatechange values since document
+    // start, DOM mutation records delivered since document start, and when the
+    // artifact armed its sole one-shot DOMContentLoaded readiness listener.
+    __TAA_READY_PROBE__?: { readyStates: string[]; mutations: number; readinessListenerAt: number | null };
   }
 }
 
@@ -74,12 +78,21 @@ export type RuntimeScenario = {
   // is the single-worker behavior; specs pass testInfo.workerIndex so each
   // worker's loopback traffic is counted in isolation.
   readonly ns?: string | number;
+  // Hold the document at `interactive` behind a delayed loopback image whose
+  // response the fixture server parks until the spec releases it. The artifact
+  // is then executed with a global eval instead of a <script> insert, so the
+  // only DOM activity is the artifact's own startup; the release to `complete`
+  // is driven by a subresource load, never by a mutation.
+  readonly holdInteractive?: boolean;
 };
 
 export type ArtifactRuntime = {
   readonly reset: () => Promise<void>;
   readonly fixtureOrigin: string;
   readonly discordOrigin: string;
+  readonly holdPending: () => Promise<boolean>;
+  readonly releaseHeldLoad: () => Promise<void>;
+  readonly readProbe: () => Promise<{ readonly readyStates: string[]; readonly mutations: number; readonly readyState: string }>;
 };
 
 /**
@@ -160,6 +173,20 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
   // counts in the delivery specs immune to another worker's traffic.
   const ns = String(scenario.ns ?? '');
   const nsQuery = ns ? `?ns=${encodeURIComponent(ns)}` : '';
+  const holdPending = async (): Promise<boolean> => {
+    const response = await page.request.get(`/e2e-hold-status${nsQuery}`);
+    return (await response.json() as { readonly pending?: boolean }).pending === true;
+  };
+  const releaseHeldLoad = async (): Promise<void> => {
+    await expect.poll(async () => {
+      const response = await page.request.post(`/e2e-release-load${nsQuery}`);
+      return (await response.json() as { readonly released?: boolean }).released === true;
+    }, { timeout: 5_000 }).toBe(true);
+  };
+  const readProbe = async (): Promise<{ readonly readyStates: string[]; readonly mutations: number; readonly readyState: string }> => await page.evaluate(() => {
+    const probe = window.__TAA_READY_PROBE__ ?? { readyStates: [], mutations: 0, readinessListenerAt: null };
+    return { readyStates: [...probe.readyStates], mutations: probe.mutations, readyState: document.readyState };
+  });
   await page.request.post(`/e2e-log${nsQuery}`);
   await page.addInitScript(({ leader, webhook, fixture, realLocks, nsQuery }) => {
     const gm = Object.create(null) as Record<string, unknown>;
@@ -213,30 +240,64 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
     window.__TAA_E2E_SCENARIO__ = { leader, webhook, lateTable: false };
   }, { leader: scenario.leader !== false, webhook: scenario.webhook === true, fixture: fixtureOrigin, realLocks: scenario.realLocks === true, nsQuery });
 
-  await page.goto(scenario.path || '/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-  if (scenario.lateTable || scenario.continuousMutation) {
-    await page.evaluate(() => document.querySelector('table.allianceMembers')?.remove());
-  }
-  const artifact = await page.evaluate(async (artifactPath: string) => await (await fetch(artifactPath)).text(), scenario.artifactPath || '/dist/travian-attack-alert.user.js');
-  await page.addScriptTag({ content: artifact });
-  if (scenario.lateTable) {
-    await page.evaluate(() => {
-      window.setTimeout(() => {
-        const table = document.createElement('table');
-        table.className = 'allianceMembers';
-        table.innerHTML = '<tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody>';
-        document.body.append(table);
-      }, 100);
+  const artifactPath = scenario.artifactPath || '/dist/travian-attack-alert.user.js';
+  if (scenario.holdInteractive) {
+    await page.addInitScript(() => {
+      const probe: { readyStates: string[]; mutations: number; readinessListenerAt: number | null } = {
+        readyStates: [],
+        mutations: 0,
+        readinessListenerAt: null,
+      };
+      window.__TAA_READY_PROBE__ = probe;
+      document.addEventListener('readystatechange', () => { probe.readyStates.push(document.readyState); });
+      const counter = new MutationObserver((records) => { probe.mutations += records.length; });
+      counter.observe(document, { childList: true, subtree: true, attributes: true, characterData: true });
+      const nativeAddEventListener = EventTarget.prototype.addEventListener;
+      EventTarget.prototype.addEventListener = function (type, listener, options) {
+        if (this === document && type === 'DOMContentLoaded' && options && (options as AddEventListenerOptions).once === true && probe.readinessListenerAt === null) {
+          probe.readinessListenerAt = Date.now();
+        }
+        return nativeAddEventListener.call(this, type, listener, options);
+      };
     });
-  }
-  if (scenario.continuousMutation) {
-    await page.evaluate(() => {
-      window.setInterval(() => document.body.toggleAttribute('data-fixture-mutation'), 25);
-    });
+    await page.setExtraHTTPHeaders(ns ? { 'x-taa-hold-load': '1', 'x-taa-hold-ns': ns } : { 'x-taa-hold-load': '1' });
+    await page.goto(scenario.path || '/alliance/profile/members', { waitUntil: 'domcontentloaded' });
+    await expect.poll(holdPending, { timeout: 5_000 }).toBe(true);
+    // Global indirect eval instead of page.addScriptTag: the script-element
+    // insert is itself a DOM mutation record, and this scenario must reach
+    // `complete` with none after the readiness observer is armed.
+    const artifact = await page.evaluate(async (path2: string) => await (await fetch(path2)).text(), artifactPath);
+    await page.evaluate((source: string) => { (0, eval)(source); }, artifact);
+    await expect.poll(async () => await page.evaluate(() => window.__TAA_READY_PROBE__?.readinessListenerAt ?? null), { timeout: 10_000 }).not.toBeNull();
+  } else {
+    await page.goto(scenario.path || '/alliance/profile/members', { waitUntil: 'domcontentloaded' });
+    if (scenario.lateTable || scenario.continuousMutation) {
+      await page.evaluate(() => document.querySelector('table.allianceMembers')?.remove());
+    }
+    const artifact = await page.evaluate(async (path2: string) => await (await fetch(path2)).text(), artifactPath);
+    await page.addScriptTag({ content: artifact });
+    if (scenario.lateTable) {
+      await page.evaluate(() => {
+        window.setTimeout(() => {
+          const table = document.createElement('table');
+          table.className = 'allianceMembers';
+          table.innerHTML = '<tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody>';
+          document.body.append(table);
+        }, 100);
+      });
+    }
+    if (scenario.continuousMutation) {
+      await page.evaluate(() => {
+        window.setInterval(() => document.body.toggleAttribute('data-fixture-mutation'), 25);
+      });
+    }
   }
   return {
     fixtureOrigin,
     discordOrigin,
+    holdPending,
+    releaseHeldLoad,
+    readProbe,
     reset: async () => page.evaluate(() => {
       localStorage.clear();
       sessionStorage.clear();
