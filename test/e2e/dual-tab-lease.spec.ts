@@ -629,7 +629,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
   // Task 20's same-document lease reacquisition tests moved, unweakened, to
   // dual-tab-lease-reacquisition.spec.ts: they wait on the real ~30 s renewal
   // cadence, and running them on all six projects pushed THIS file over the
-  // runner's hard 480 s per-spec ceiling. They are now project-filtered to
+  // runner's hard 600 s per-spec ceiling. They are now project-filtered to
   // chromium-1280 (see playwright.qa.config.ts), while T1-T4 here keep running
   // on every project.
 });

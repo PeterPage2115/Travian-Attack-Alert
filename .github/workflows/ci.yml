@@ -174,16 +174,16 @@ jobs:
   #
   # Timeout arithmetic (worst-case valid run WITH the full gate, i.e.
   # without `--no-browser`): the release gate gives every e2e spec its own
-  # 480 s ceiling (never lowered), and discovery finds 12 specs, so
-  # 12 x 480 s = 5,760 s = 96 min of legitimate e2e time alone. Add
+  # 600 s ceiling (never dropped below 480 s), and discovery finds 12 specs,
+  # so 12 x 600 s = 7,200 s = 120 min of legitimate e2e time alone. Add
   # `npm ci`, the `--with-deps` Chromium install, and the 14 non-e2e gates
   # inside the gate: the previous revision of this job, which additionally
-  # re-ran most of those gates by hand, completed in 19m19s. 96 min + 30 min
-  # overhead = 126 min, bounded at 150 min so a slow-but-valid run always
+  # re-ran most of those gates by hand, completed in 19m19s. 120 min + 30 min
+  # overhead = 150 min, bounded at 150 min so a slow-but-valid run always
   # writes its summary instead of being cancelled before it can report.
   # The 150-minute ceiling is retained deliberately with `--no-browser`:
   # the developer-workflow contract computes this envelope from the spec
-  # count on disk and ignores runtime flags (it must stay >= 126 min), and
+  # count on disk and ignores runtime flags (it must stay >= 150 min), and
   # a timeout is a ceiling, not a cost — with the flag this job executes
   # only the 13 non-browser gates.
   #

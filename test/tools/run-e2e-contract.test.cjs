@@ -31,7 +31,7 @@
 //   - a descendant that survives the process-group kill keeps the port bound,
 //     yields CLEANUP_FAILED, and stops the run,
 //   - an already-occupied loopback port fails closed before any spec starts,
-//   - the timeout override is clamped to the 480 s hard ceiling and invalid
+//   - the timeout override is clamped to the 600 s hard ceiling and invalid
 //     overrides are rejected,
 //   - `tools/check-release.cjs` runE2EGate() consumes the separated counters
 //     and fails closed on skipped executions / passes a clean fixture.
@@ -558,14 +558,14 @@ test('the real browser precheck fails closed when no Chromium exists in any cach
   assert.equal(fs.existsSync(ctx.outDir), false, 'the precheck must exit before creating the report directory');
 });
 
-test('a timeout override above the hard ceiling is clamped to 480000ms', async () => {
+test('a timeout override above the hard ceiling is clamped to 600000ms', async () => {
   const ctx = newCase();
   const port = await getFreePort();
   try {
     const run = runRunner({ specs: [PASS_SPEC], ctx, port, release: true, timeoutMs: 999_999_999 });
     assert.equal(run.status, 0, run.output);
-    assert.match(run.output, /clamped to 480000ms/u);
-    assert.match(run.output, /per-spec ceiling 480000ms/u);
+    assert.match(run.output, /clamped to 600000ms/u);
+    assert.match(run.output, /per-spec ceiling 600000ms/u);
     assert.doesNotMatch(run.output, /ceiling 999999999ms/u);
     assert.match(run.output, /executed=2 across 1 specs/u);
   } finally {

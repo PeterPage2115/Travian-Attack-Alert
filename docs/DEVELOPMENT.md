@@ -60,7 +60,9 @@ an operational or release document.
   - `npm run test:browser` — real Chromium integration suites.
   - `npm run test:e2e` — the loopback QA matrix through
     `tools/run-e2e.cjs --release`; it needs Chromium, takes several minutes,
-    and has a 480 s per-spec ceiling that must never be lowered.
+    and has a 600 s per-spec ceiling that must never drop below 480 s (the
+    expanded readiness-late spec legitimately needs ~497 s across multiple
+    real 15 s deadlines).
   - `npm run check:release -- --offline` — the complete offline release gate:
     build, versions, artifact, source, characterization, inventory, tools,
     types, quality, browser, and e2e. There is no `NOT_EXECUTED` verdict; a

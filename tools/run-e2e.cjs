@@ -23,8 +23,10 @@
  *
  * Owned child lifecycle:
  *   - every spec runs in its OWN process group (`detached: true`), with a hard
- *     ceiling of 480_000 ms. The verified clean-install spec needs ~346 s on
+ *     ceiling of 600_000 ms. The verified clean-install spec needs ~346 s on
  *     this DrvFs/WSL workstation, so the ceiling must never drop below 480 s.
+ *     The expanded readiness-late spec legitimately needs ~497 s (multiple
+ *     real 15 s deadlines), so the ceiling was raised from 480_000 to 600_000.
  *   - on timeout the process group gets SIGTERM, then SIGKILL after a bounded
  *     grace, and `close` is awaited (with a final bounded wait even after
  *     SIGKILL) before anything else happens.
@@ -34,7 +36,7 @@
  *
  * Test-only environment seams (never set in production/CI):
  *   TAA_E2E_SPEC_TIMEOUT_MS  positive integer; shortened per-spec ceiling for
- *                            the contract suite; values above 480_000 are
+ *                            the contract suite; values above 600_000 are
  *                            clamped to the hard ceiling.
  *   TAA_E2E_LOOPBACK_PORTS   comma-separated 127.0.0.1 ports to verify
  *                            (default 8899, the QA config webServer port).
@@ -54,8 +56,11 @@ const ROOT = path.resolve(__dirname, '..');
 const DEFAULT_OUT_DIR = path.join(ROOT, 'test-results', 'release-1.0.0');
 const QA_CONFIG = 'test/e2e/playwright.qa.config.ts';
 
-// Hard per-spec ceiling (never lowered in production code).
-const HARD_SPEC_CEILING_MS = 480_000;
+// Hard per-spec ceiling. It must never be lowered below 480_000 ms (the
+// verified clean-install spec needs ~346 s); the expanded readiness-late spec
+// legitimately needs ~497 s across multiple real 15 s deadlines, so the
+// ceiling was raised to 600_000 ms.
+const HARD_SPEC_CEILING_MS = 600_000;
 const TERMINATION_GRACE_MS = 5_000;
 const POST_KILL_CLOSE_WAIT_MS = 5_000;
 const PORT_FREE_TIMEOUT_MS = 5_000;
