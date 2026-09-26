@@ -3394,21 +3394,41 @@ const RELEASE_ID = "taa-1.0.2";
     const safe = {
       schemaVersion: 1,
       kind: "taa-incident-bundle",
-       build: { version: RELEASE_VERSION, releaseId: RELEASE_ID, identity: "userscript" },
+      build: { version: RELEASE_VERSION, releaseId: RELEASE_ID, identity: "userscript" },
       config: { endpointConfigured: input.webhookConfigured === true },
       routeRole: model.routeRole,
       generations: { lease: model.leaseGeneration, monitor: model.monitorGeneration },
-      scan: { id: model.scanId, reason: model.scanReason, outcome: model.scanOutcome },
+      scan: { id: model.scanId, reason: diagnosticString(model.scanReason, 64), outcome: diagnosticString(model.scanOutcome, 64).slice(0, 32) },
       recentTraces: traces.map((record) => ({ sequence: record.sequence, scanId: record.scanId || record.diagnosticId || null, stage: record.stage, outcome: record.status, reason: record.reason || null })),
       deliveryLedger: { pending: model.deliveryTotals.pending, inFlight: model.deliveryTotals.inFlight, failed: model.deliveryTotals.failed, uncertain: model.deliveryTotals.uncertain, acknowledged: model.deliveryTotals.acknowledged, compacted: Array.isArray(accounting.compactedTerminalTotals) ? accounting.compactedTerminalTotals.reduce((sum, range) => sum + (Number(range.count) || 0), 0) : 0 },
       queueCounts: model.deliveryTotals,
       conservation: { firstMismatch: model.firstConservationMismatch, netSampled: true },
       labels: { players: "players", messages: "messages", attacks: "attacks", raids: "raids", net: "net, sampled" }
     };
-    const serialized = canonicalSerializeDiagnostics(safe);
-    let sourceBytes = 0;
-    try { sourceBytes = JSON.stringify(input).length; } catch (error) { sourceBytes = DIAGNOSTICS_LIMITS.exportBytes + 1; }
-    return sourceBytes <= DIAGNOSTICS_LIMITS.exportBytes && diagnosticByteLength(serialized) <= DIAGNOSTICS_LIMITS.exportBytes ? safe : { schemaVersion: 1, kind: "taa-incident-bundle", bounded: true, boundedMessage: "Incident export bounded: content exceeded 512 KiB; sensitive data omitted.", recentTraces: [], conservation: { firstMismatch: null, netSampled: true } };
+    // A cyclic input cannot be measured by JSON.stringify, so it is treated as
+    // oversized here instead of throwing; only the redacted summary is size-checked.
+    let rawOversized = false;
+    try {
+      rawOversized = diagnosticByteLength(JSON.stringify(input)) > DIAGNOSTICS_LIMITS.exportBytes;
+    } catch (error) {
+      rawOversized = true;
+    }
+    if (!rawOversized && diagnosticByteLength(safe) <= DIAGNOSTICS_LIMITS.exportBytes) return safe;
+    const boundedMessage = "Incident export bounded: content exceeded 512 KiB; sensitive data omitted.";
+    const bounded = Object.assign({}, safe, { bounded: true, boundedMessage, recentTraces: safe.recentTraces.slice() });
+    while (bounded.recentTraces.length > 0 && diagnosticByteLength(bounded) > DIAGNOSTICS_LIMITS.exportBytes) bounded.recentTraces.pop();
+    if (diagnosticByteLength(bounded) <= DIAGNOSTICS_LIMITS.exportBytes) return bounded;
+    const core = Object.assign({}, bounded, { recentTraces: [] });
+    if (diagnosticByteLength(core) <= DIAGNOSTICS_LIMITS.exportBytes) return core;
+    return {
+      schemaVersion: 1,
+      kind: "taa-incident-bundle",
+      bounded: true,
+      boundedMessage,
+      build: safe.build,
+      routeRole: safe.routeRole,
+      scan: { id: safe.scan.id, reason: diagnosticString(safe.scan.reason, 64), outcome: diagnosticString(safe.scan.outcome, 32) }
+    };
   }
   function buildStatusPanelModel(lastScan, nextReload, nowMs) {
     const now = Number.isFinite(nowMs) ? nowMs : Date.now();
