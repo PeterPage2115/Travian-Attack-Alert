@@ -103,7 +103,15 @@ function setReleaseBranch(repo, target, branch = 'release/public-1.0.0') {
   execFileSync('git', ['branch', '-f', branch, target], { cwd: repo });
 }
 
-function annotate(repo, tag = 'v1.0.2') {
+// Version-relative fixture identity: read the version from the fixture CLONE's
+// own package.json (its committed HEAD), never a literal that rots on every
+// bump. Deriving from the clone — not the parent working tree — keeps the
+// fixture self-consistent even while the parent has uncommitted edits.
+function fixtureVersion(repo) {
+  return JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')).version;
+}
+
+function annotate(repo, tag = `v${fixtureVersion(repo)}`) {
   execFileSync('git', ['tag', '-a', tag, '-m', `release ${tag}`], { cwd: repo });
 }
 
@@ -180,19 +188,22 @@ test('Given a parent checkout, when cloneRepo runs, then the fixture is detached
 test('Given an annotated exact-version tag on the release branch, when prepared, then the seven declared assets are valid', (t) => {
   const { base, repo, head } = happyFixture(t);
   const out = path.join(base, 'release');
+  const version = fixtureVersion(repo);
+  const releaseId = `taa-${version}`;
+  const tag = `v${version}`;
   const result = prepareOk(repo, out);
 
   assert.equal(result.assetCount, 7);
-  assert.equal(result.releaseId, 'taa-1.0.2');
-  assert.equal(result.tag, 'v1.0.2');
+  assert.equal(result.releaseId, releaseId);
+  assert.equal(result.tag, tag);
   assert.equal(result.commit, head);
   assert.deepEqual(listFiles(out), [...ALL_ASSETS].sort());
 
   const manifest = readManifest(out);
   assert.equal(manifest.schemaVersion, 1);
-  assert.equal(manifest.version, '1.0.2');
-  assert.equal(manifest.releaseId, 'taa-1.0.2');
-  assert.equal(manifest.tag, 'v1.0.2');
+  assert.equal(manifest.version, version);
+  assert.equal(manifest.releaseId, releaseId);
+  assert.equal(manifest.tag, tag);
   assert.equal(manifest.source.commit, head);
   assert.equal(manifest.source.branch, 'release/public-1.0.0');
   assert.deepEqual(manifest.assets.map((asset) => asset.name), PRIMARY);
@@ -237,7 +248,7 @@ test('Given one tagged commit, when prepared twice, then both release directorie
 test('Given a lightweight tag, when prepared, then preparation is rejected', (t) => {
   const { base, repo } = cloneRepo(t);
   setReleaseBranch(repo, 'HEAD');
-  execFileSync('git', ['tag', 'v1.0.2'], { cwd: repo });
+  execFileSync('git', ['tag', `v${fixtureVersion(repo)}`], { cwd: repo });
   assert.equal(failCode(prepare(repo, path.join(base, 'release'))), 'tag-not-annotated');
 });
 
