@@ -484,16 +484,25 @@ test('security policy documents the private path, the published stable support s
   assert.ok(security.includes(SECURITY_REPORT_URL), 'SECURITY.md must link GitHub Private Vulnerability Reporting');
   assert.match(security, /security advisories/iu, 'SECURITY.md must name Security Advisories');
   assert.match(security, /\|\s*Version\s*\|/u, 'SECURITY.md must carry a supported-versions table');
-  assert.match(security, /stable:\s*true/u, 'the supported-versions table must match the live 1.0.2 state stable:true');
+  assert.match(security, /stable:\s*true/u, 'the supported-versions table must match the live 1.0.3 state stable:true');
   assert.match(
     security,
-    /\|\s*1\.0\.2\s*\(published stable/u,
-    'the 1.0.2 line must be described as the published stable release',
+    /\|\s*1\.0\.3\s*\(published stable/u,
+    'the 1.0.3 line must be described as the published stable release',
   );
   assert.match(
     security,
-    /\|\s*1\.0\.1\s*\(previous published stable/u,
-    'the 1.0.1 line must be described as the previous published release',
+    /\|\s*1\.0\.2\s*\(previous published stable/u,
+    'the 1.0.2 line must be described as the previous published stable release',
+  );
+  assert.match(
+    security,
+    /\|\s*1\.0\.1\s*\(earlier published stable/u,
+    'the 1.0.1 line must be described as the earlier published stable release',
+  );
+  assert.ok(
+    !/1\.0\.3[^\n]*release candidate/iu.test(security),
+    'no line may still describe 1.0.3 as a release candidate',
   );
   assert.ok(
     !/1\.0\.2[^\n]*release candidate/iu.test(security),
