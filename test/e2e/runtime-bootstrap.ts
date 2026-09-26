@@ -51,6 +51,13 @@ declare global {
     __TAA_E2E_SCENARIO__?: RuntimeScenario;
     __TAA_E2E_EVENTS__?: Array<Record<string, unknown>>;
     __TAA_TEST_HOOK__?: Record<string, (payload: Record<string, unknown>) => void>;
+    // Readiness probe contract: readystatechange values since document start,
+    // DOM mutation records delivered since document start, when the artifact
+    // armed its sole one-shot DOMContentLoaded readiness listener, and when the
+    // task-3 hydration timer appended member rows (`hydratedAt`, page clock).
+    // Installed for every scenario, not only holdInteractive, so unrelated-DOM
+    // churn evidence carries the same mutation/readyState counters.
+    __TAA_READY_PROBE__?: { readyStates: string[]; mutations: number; readinessListenerAt: number | null; hydratedAt: number | null };
   }
 }
 
@@ -74,12 +81,49 @@ export type RuntimeScenario = {
   // is the single-worker behavior; specs pass testInfo.workerIndex so each
   // worker's loopback traffic is counted in isolation.
   readonly ns?: string | number;
+  // Hold the document at `interactive` behind a delayed loopback image whose
+  // response the fixture server parks until the spec releases it. The artifact
+  // is then executed with a global eval instead of a <script> insert, so the
+  // only DOM activity is the artifact's own startup; the release to `complete`
+  // is driven by a subresource load, never by a mutation.
+  readonly holdInteractive?: boolean;
+  // Task-3 member-table variant. Travels in the `x-taa-member-table` request
+  // header (never a query param: a query flips the route to
+  // `alliance-noncanonical`). `members59` is the 59-row authoritative fixture
+  // roster, `partial-12` is its first 12 rows, `empty-shell` is an accepted
+  // table with zero rows and `absent` renders no table at all.
+  readonly memberTable?: 'canonical' | 'absent' | 'members59' | 'partial-12' | 'empty-shell';
+  // Unrelated DOM churn: toggle a NON-table body attribute every 25ms BEFORE
+  // the artifact boots. The member table itself is never touched, so a fixed
+  // runtime must ignore this activity instead of starving the quiet window.
+  readonly bodyChurn?: boolean;
+  // Append the remaining `members59` fixture rows `hydrateMemberTableAfterMs`
+  // after the artifact boots (inside the page). With an `empty-shell` page this
+  // hydrates an empty table; with `partial-12` it completes the partial roster.
+  // `hydrateKeepRows` selects which fixture rows are appended (defaults to all).
+  readonly hydrateMemberTableAfterMs?: number;
+  readonly hydrateKeepRows?: number;
+  // Restore persisted GM values (e.g. a monitor envelope captured from an
+  // earlier accepted scan) into the fresh per-document GM store BEFORE the
+  // artifact boots. Mirrors clean-install.spec.ts's snapshot/restore technique,
+  // which the harness cannot do itself because its GM store dies with the
+  // document.
+  readonly seedGMValues?: Record<string, string>;
 };
 
 export type ArtifactRuntime = {
   readonly reset: () => Promise<void>;
   readonly fixtureOrigin: string;
   readonly discordOrigin: string;
+  readonly holdPending: () => Promise<boolean>;
+  readonly releaseHeldLoad: () => Promise<void>;
+  readonly readProbe: () => Promise<{
+    readonly readyStates: string[];
+    readonly mutations: number;
+    readonly readyState: string;
+    readonly readinessListenerAt: number | null;
+    readonly hydratedAt: number | null;
+  }>;
 };
 
 /**
@@ -160,6 +204,32 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
   // counts in the delivery specs immune to another worker's traffic.
   const ns = String(scenario.ns ?? '');
   const nsQuery = ns ? `?ns=${encodeURIComponent(ns)}` : '';
+  const holdPending = async (): Promise<boolean> => {
+    const response = await page.request.get(`/e2e-hold-status${nsQuery}`);
+    return (await response.json() as { readonly pending?: boolean }).pending === true;
+  };
+  const releaseHeldLoad = async (): Promise<void> => {
+    await expect.poll(async () => {
+      const response = await page.request.post(`/e2e-release-load${nsQuery}`);
+      return (await response.json() as { readonly released?: boolean }).released === true;
+    }, { timeout: 5_000 }).toBe(true);
+  };
+  const readProbe = async (): Promise<{
+    readonly readyStates: string[];
+    readonly mutations: number;
+    readonly readyState: string;
+    readonly readinessListenerAt: number | null;
+    readonly hydratedAt: number | null;
+  }> => await page.evaluate(() => {
+    const probe = window.__TAA_READY_PROBE__ ?? { readyStates: [], mutations: 0, readinessListenerAt: null, hydratedAt: null };
+    return {
+      readyStates: [...probe.readyStates],
+      mutations: probe.mutations,
+      readyState: document.readyState,
+      readinessListenerAt: probe.readinessListenerAt,
+      hydratedAt: probe.hydratedAt,
+    };
+  });
   await page.request.post(`/e2e-log${nsQuery}`);
   await page.addInitScript(({ leader, webhook, fixture, realLocks, nsQuery }) => {
     const gm = Object.create(null) as Record<string, unknown>;
@@ -183,7 +253,17 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
     window.__TAA_TEST_HOOK__ = {
       onReadinessCommit: (payload: Record<string, unknown>) => events.push({ kind: 'readiness', atMs: payload.atMs, quietMs: payload.quietMs }),
       onExtractionStart: (payload: Record<string, unknown>) => events.push({ kind: 'extraction', observedAtMs: payload.observedAtMs }),
-      onSnapshot: (payload: Record<string, unknown>) => events.push({ kind: 'snapshot', status: payload.status, reason: payload.reason }),
+      // `atMs` is the snapshot's observation time on the page's (deterministic)
+      // clock; task-3 uses it to prove no extraction happened before the
+      // member table was hydrated.
+      onSnapshot: (payload: Record<string, unknown>) => events.push({ kind: 'snapshot', status: payload.status, reason: payload.reason, atMs: payload.observedAtMs }),
+      // Task 6: bounded post-timeout recovery observability. `onReadinessRetry`
+      // proves a failed pre-snapshot attempt re-armed (attempt + next delay);
+      // `onReadinessExhausted` proves the bounded budget ran out; `onReloadBlocked`
+      // proves a draft-refused scheduled reload reached its explicit blocked state.
+      onReadinessRetry: (payload: Record<string, unknown>) => events.push({ kind: 'readiness-retry', attempt: payload.attempt, nextDelayMs: payload.nextDelayMs }),
+      onReadinessExhausted: (payload: Record<string, unknown>) => events.push({ kind: 'readiness-exhausted', attempts: payload.attempts }),
+      onReloadBlocked: (payload: Record<string, unknown>) => events.push({ kind: 'reload-blocked', attempts: payload.attempts }),
     };
     window.GM_xmlhttpRequest = (options: { readonly method: string; readonly url: string; readonly data?: string; readonly onload?: (response: { readonly status: number; readonly responseText: string }) => void; readonly onerror?: (error: unknown) => void }) => {
       const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook${nsQuery}` : options.url;
@@ -213,30 +293,142 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
     window.__TAA_E2E_SCENARIO__ = { leader, webhook, lateTable: false };
   }, { leader: scenario.leader !== false, webhook: scenario.webhook === true, fixture: fixtureOrigin, realLocks: scenario.realLocks === true, nsQuery });
 
-  await page.goto(scenario.path || '/alliance/profile/members', { waitUntil: 'domcontentloaded' });
-  if (scenario.lateTable || scenario.continuousMutation) {
-    await page.evaluate(() => document.querySelector('table.allianceMembers')?.remove());
+  // Probe installed for EVERY scenario (not only holdInteractive): readiness
+  // listener arming, readyState transitions and DOM mutation counts are the
+  // task-3 evidence, and the probe itself is behavior-neutral.
+  await page.addInitScript(() => {
+    const probe: { readyStates: string[]; mutations: number; readinessListenerAt: number | null; hydratedAt: number | null } = {
+      readyStates: [],
+      mutations: 0,
+      readinessListenerAt: null,
+      hydratedAt: null,
+    };
+    window.__TAA_READY_PROBE__ = probe;
+    document.addEventListener('readystatechange', () => { probe.readyStates.push(document.readyState); });
+    const counter = new MutationObserver((records) => { probe.mutations += records.length; });
+    counter.observe(document, { childList: true, subtree: true, attributes: true, characterData: true });
+    const nativeAddEventListener = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+      if (this === document && type === 'DOMContentLoaded' && options && (options as AddEventListenerOptions).once === true && probe.readinessListenerAt === null) {
+        probe.readinessListenerAt = Date.now();
+      }
+      return nativeAddEventListener.call(this, type, listener, options);
+    };
+  });
+
+  const headers: Record<string, string> = {};
+  if (scenario.holdInteractive) {
+    headers['x-taa-hold-load'] = '1';
+    if (ns) headers['x-taa-hold-ns'] = ns;
   }
-  const artifact = await page.evaluate(async (artifactPath: string) => await (await fetch(artifactPath)).text(), scenario.artifactPath || '/dist/travian-attack-alert.user.js');
-  await page.addScriptTag({ content: artifact });
-  if (scenario.lateTable) {
-    await page.evaluate(() => {
+  if (scenario.memberTable) headers['x-taa-member-table'] = scenario.memberTable;
+  await page.setExtraHTTPHeaders(headers);
+
+  const applySeedGM = async (): Promise<void> => {
+    if (!scenario.seedGMValues) return;
+    await page.evaluate((values: Record<string, string>) => {
+      const gm = window.__TAA_GM_VALUES__ ?? (window.__TAA_GM_VALUES__ = Object.create(null) as Record<string, unknown>);
+      for (const [key, value] of Object.entries(values)) gm[key] = value;
+    }, scenario.seedGMValues);
+  };
+
+  const scheduleHydration = async (): Promise<void> => {
+    const delayMs = scenario.hydrateMemberTableAfterMs;
+    if (!delayMs) return;
+    const keepRows = scenario.hydrateKeepRows ?? 0;
+    await page.evaluate(async ({ delay, keep }: { delay: number; keep: number }) => {
+      const html = await (await fetch('/fixtures/member-table/members59')).text();
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      const sourceTable = template.content.querySelector('table.allianceMembers');
+      if (!sourceTable) throw new Error('members59 fixture table missing');
+      const sourceRows = Array.from(sourceTable.querySelectorAll('tbody tr'));
       window.setTimeout(() => {
-        const table = document.createElement('table');
-        table.className = 'allianceMembers';
-        table.innerHTML = '<tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody>';
-        document.body.append(table);
-      }, 100);
-    });
-  }
-  if (scenario.continuousMutation) {
-    await page.evaluate(() => {
-      window.setInterval(() => document.body.toggleAttribute('data-fixture-mutation'), 25);
-    });
+        const probe = window.__TAA_READY_PROBE__;
+        if (probe) probe.hydratedAt = Date.now();
+        const existing = document.querySelector('table.allianceMembers');
+        if (!existing) {
+          document.body.append(sourceTable);
+          return;
+        }
+        const tbody = existing.querySelector('tbody');
+        if (!tbody) throw new Error('member table tbody missing');
+        for (const row of sourceRows.slice(keep)) tbody.append(row.cloneNode(true));
+      }, delay);
+    }, { delay: delayMs, keep: keepRows });
+  };
+
+  const artifactPath = scenario.artifactPath || '/dist/travian-attack-alert.user.js';
+  if (scenario.holdInteractive) {
+    await page.goto(scenario.path || '/alliance/profile/members', { waitUntil: 'domcontentloaded' });
+    await expect.poll(holdPending, { timeout: 5_000 }).toBe(true);
+    await applySeedGM();
+    // Global indirect eval instead of page.addScriptTag: the script-element
+    // insert is itself a DOM mutation record, and this scenario must reach
+    // `complete` with none after the readiness observer is armed.
+    const artifact = await page.evaluate(async (path2: string) => await (await fetch(path2)).text(), artifactPath);
+    await page.evaluate((source: string) => { (0, eval)(source); }, artifact);
+    await expect.poll(async () => await page.evaluate(() => window.__TAA_READY_PROBE__?.readinessListenerAt ?? null), { timeout: 10_000 }).not.toBeNull();
+    await scheduleHydration();
+  } else {
+    await page.goto(scenario.path || '/alliance/profile/members', { waitUntil: 'domcontentloaded' });
+    if (scenario.bodyChurn) {
+      await page.evaluate(() => {
+        window.setInterval(() => document.body.toggleAttribute('data-fixture-mutation'), 25);
+      });
+    }
+    if (scenario.lateTable || scenario.continuousMutation) {
+      await page.evaluate(() => document.querySelector('table.allianceMembers')?.remove());
+    }
+    await applySeedGM();
+    const artifact = await page.evaluate(async (path2: string) => await (await fetch(path2)).text(), artifactPath);
+    await page.addScriptTag({ content: artifact });
+    if (scenario.lateTable) {
+      await page.evaluate(() => {
+        window.setTimeout(() => {
+          const table = document.createElement('table');
+          table.className = 'allianceMembers';
+          table.innerHTML = '<tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody>';
+          document.body.append(table);
+        }, 100);
+      });
+    }
+    if (scenario.continuousMutation) {
+      // Task-3 retarget: the storm now lands on MEMBER-TABLE rows (the table is
+      // re-added first), so this scenario guards "table churn must still fail
+      // closed" after the readiness fix. Non-table body churn moved to
+      // `bodyChurn`, which a fixed runtime must ignore.
+      await page.evaluate(() => {
+        window.setTimeout(() => {
+          if (document.querySelector('table.allianceMembers')) return;
+          const table = document.createElement('table');
+          table.className = 'allianceMembers';
+          table.innerHTML = '<tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody>';
+          document.body.append(table);
+        }, 300);
+        window.setInterval(() => {
+          const tbody = document.querySelector('table.allianceMembers tbody');
+          if (!tbody) return;
+          const storm = tbody.querySelector('tr[data-fixture-storm]');
+          if (storm) {
+            storm.remove();
+            return;
+          }
+          const row = document.createElement('tr');
+          row.setAttribute('data-fixture-storm', '1');
+          row.innerHTML = '<td class="player"><a href="/profile/900099">Fixture Storm</a></td>';
+          tbody.append(row);
+        }, 25);
+      });
+    }
+    await scheduleHydration();
   }
   return {
     fixtureOrigin,
     discordOrigin,
+    holdPending,
+    releaseHeldLoad,
+    readProbe,
     reset: async () => page.evaluate(() => {
       localStorage.clear();
       sessionStorage.clear();

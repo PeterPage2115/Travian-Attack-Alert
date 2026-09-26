@@ -2,15 +2,18 @@
 
 ## Supported versions
 
-`docs/release-state.json` records `stable: true`: the published `1.0.2` is
-the live stable channel, published as an immutable GitHub Release (tag
-`v1.0.2`) with two public assets, and is the release we support. The previous
-published release is `1.0.1` (`stable: true`, tag `v1.0.1`, immutable GitHub
-Release), kept as history. Security fixes are best-effort, and no
+`docs/release-state.json` tracks the `1.0.3` release candidate: the six
+pre-publication owner gates are recorded (`stable: true`), and no `v1.0.3` tag
+or GitHub Release exists yet, so it is not a published release. The published
+`1.0.2` is the live stable channel, published as an immutable GitHub Release
+(tag `v1.0.2`) with two public assets, and is the release we support. The
+previous published release is `1.0.1` (`stable: true`, tag `v1.0.1`, immutable
+GitHub Release), kept as history. Security fixes are best-effort, and no
 response-time promise is made.
 
 | Version | Supported |
 | --- | --- |
+| 1.0.3 (staged release candidate; `docs/release-state.json` `stable: true`, no `v1.0.3` tag or Release) | Best-effort security fixes |
 | 1.0.2 (published stable; `docs/release-state.json` `stable: true`) | Best-effort security fixes |
 | 1.0.1 (previous published stable; `docs/release-state.json` `stable: true`) | Best-effort security fixes |
 | Older than 1.0.1 | No |

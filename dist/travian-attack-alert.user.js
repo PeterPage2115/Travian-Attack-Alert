@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Travian Attack Alert
 // @namespace    travian-attack-alert-public
-// @version      1.0.2
+// @version      1.0.3
 // @description  Notifies on Discord about new attacks on alliance members
 // @match        https://*.travian.com/alliance*
 // @grant        GM_xmlhttpRequest
@@ -30,8 +30,8 @@ var require_runtime = __commonJS({
   "src/runtime.js"(exports2, module2) {
     (function() {
       "use strict";
-      const RELEASE_VERSION = "1.0.2";
-      const RELEASE_ID = "taa-1.0.2";
+      const RELEASE_VERSION = "1.0.3";
+      const RELEASE_ID = "taa-1.0.3";
       const CONFIG = {
         // Losowe odświeżanie strony co 1–2 minuty.
         reloadMinSeconds: 60,
@@ -273,6 +273,10 @@ var require_runtime = __commonJS({
       const TAB_LEASE_RENEW_MS = 3e4;
       const TAB_LEASE_RETRY_MS = 1e4;
       const READINESS_QUIET_MS = 500;
+      const READINESS_MAX_ATTEMPTS = 3;
+      const READINESS_RETRY_DELAYS_MS = [2e3, 5e3];
+      const SCHEDULED_RELOAD_RECHECK_MS = 1e4;
+      const SCHEDULED_RELOAD_MAX_RECHECKS = 3;
       const STARTUP_ACQUIRE_JITTER_MIN_MS = 25;
       const STARTUP_ACQUIRE_JITTER_MAX_MS = 250;
       const MAX_ATTEMPT_COUNT = 3;
@@ -347,6 +351,12 @@ var require_runtime = __commonJS({
       let scanCycleId = null;
       let scheduledReloadTimerId = null;
       let flushTimerId = null;
+      let readinessRetryTimerId = null;
+      let preSnapshotAttemptCount = 0;
+      let scheduledReloadRecheckTimerId = null;
+      let scheduledReloadRecheckCount = 0;
+      let scheduledReloadBlocked = false;
+      let lastReloadRefusalOutcome = null;
       let followerWatchdogTimerId = null;
       let followerWatchdogCheck = null;
       const lifecycleTimerIds = /* @__PURE__ */ new Set();
@@ -358,6 +368,10 @@ var require_runtime = __commonJS({
       let adminPanelOpener = null;
       let adminRecoveryActions = null;
       let readinessStartedAtMono = null;
+      let readinessReadyStateListener = null;
+      let readinessDomContentLoadedListener = null;
+      let readinessLoadListener = null;
+      let readinessPageHideListener = null;
       let visibilityDriftState = null;
       function monotonicNow() {
         if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -481,10 +495,7 @@ var require_runtime = __commonJS({
           clearTimeout(id);
         }
         lifecycleTimerIds.clear();
-        if (readinessTimerId !== null) {
-          clearTimeout(readinessTimerId);
-          readinessTimerId = null;
-        }
+        teardownReadinessObserver();
         if (scanDeadlineTimerId !== null) {
           clearTimeout(scanDeadlineTimerId);
           lifecycleTimerIds.delete(scanDeadlineTimerId);
@@ -494,25 +505,45 @@ var require_runtime = __commonJS({
           clearTimeout(scheduledReloadTimerId);
           scheduledReloadTimerId = null;
         }
+        clearReadinessRetryTimer();
+        clearScheduledReloadRecheck();
         if (flushTimerId !== null) {
           clearTimeout(flushTimerId);
           flushTimerId = null;
         }
-        if (readinessObserver) {
-          readinessObserver.disconnect();
-          readinessObserver = null;
-        }
       }
       function requestPanelExit(reason, continuation) {
+        if (typeof window !== "undefined" && window.__TAA_TEST_HOOK__ && typeof window.__TAA_TEST_HOOK__.requestPanelExit === "function") {
+          return window.__TAA_TEST_HOOK__.requestPanelExit(reason, continuation) === true;
+        }
         return typeof adminPanelRequestExit === "function" ? adminPanelRequestExit(reason, continuation) : false;
       }
+      function hasPanelExitGate() {
+        if (typeof adminPanelRequestExit === "function") return true;
+        return typeof window !== "undefined" && window.__TAA_TEST_HOOK__ && typeof window.__TAA_TEST_HOOK__.requestPanelExit === "function";
+      }
+      function clearReadinessRetryTimer() {
+        if (readinessRetryTimerId === null) return;
+        clearTimeout(readinessRetryTimerId);
+        lifecycleTimerIds.delete(readinessRetryTimerId);
+        readinessRetryTimerId = null;
+      }
+      function clearScheduledReloadRecheck() {
+        if (scheduledReloadRecheckTimerId === null) return;
+        clearTimeout(scheduledReloadRecheckTimerId);
+        lifecycleTimerIds.delete(scheduledReloadRecheckTimerId);
+        scheduledReloadRecheckTimerId = null;
+      }
       function requestLifecycleReload(reason, allowFollowerTakeover = false) {
+        lastReloadRefusalOutcome = null;
         if (!tabLeaseActive && !allowFollowerTakeover) {
+          lastReloadRefusalOutcome = "lease-lost-before-reload";
           recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("lease-lost-before-reload", scanCycleId));
           return false;
         }
         const reload = () => {
           if (typeof location === "undefined" || typeof location.reload !== "function") {
+            lastReloadRefusalOutcome = "reload-unavailable";
             recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("reload-unavailable", scanCycleId));
             return false;
           }
@@ -525,16 +556,60 @@ var require_runtime = __commonJS({
           location.reload();
           return true;
         };
-        if (typeof adminPanelRequestExit === "function") {
+        if (hasPanelExitGate()) {
           const accepted = requestPanelExit("reload", reload);
-          if (!accepted) recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("reload-blocked-by-draft", scanCycleId));
+          if (!accepted) {
+            lastReloadRefusalOutcome = "reload-blocked-by-draft";
+            recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("reload-blocked-by-draft", scanCycleId));
+          }
           return accepted;
         }
         if (typeof adminDraftReloadGate === "function" && !adminDraftReloadGate()) {
+          lastReloadRefusalOutcome = "reload-blocked-by-draft";
           recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("reload-blocked-by-draft", scanCycleId));
           return false;
         }
         return reload();
+      }
+      function scheduleScheduledReloadRecheck(reason) {
+        if (scheduledReloadBlocked || !tabLeaseActive) return;
+        if (scheduledReloadRecheckCount >= SCHEDULED_RELOAD_MAX_RECHECKS) {
+          scheduledReloadBlocked = true;
+          recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), {
+            stage: "reload",
+            status: "blocked",
+            reason: "reload-blocked-by-draft",
+            scanId: scanCycleId
+          });
+          reportLifecycleHook("onReloadBlocked", {
+            attempts: scheduledReloadRecheckCount,
+            reason: "reload-blocked-by-draft"
+          });
+          return;
+        }
+        scheduledReloadRecheckCount += 1;
+        clearScheduledReloadRecheck();
+        scheduledReloadRecheckTimerId = scheduleLifecycleTimeout(() => {
+          scheduledReloadRecheckTimerId = null;
+          if (!tabLeaseActive || scheduledReloadBlocked) return;
+          requestScheduledReload(reason);
+        }, SCHEDULED_RELOAD_RECHECK_MS);
+      }
+      function requestScheduledReload(reason) {
+        if (scheduledReloadBlocked) return false;
+        const accepted = requestLifecycleReload(reason);
+        if (accepted) {
+          scheduledReloadBlocked = false;
+          scheduledReloadRecheckCount = 0;
+          clearScheduledReloadRecheck();
+          return true;
+        }
+        if (lastReloadRefusalOutcome !== "reload-blocked-by-draft") {
+          clearScheduledReloadRecheck();
+          return false;
+        }
+        scheduleScheduledReloadRecheck(reason);
+        return false;
       }
       function normalizeAdminDraftScope(scope) {
         const source = scope && typeof scope === "object" && !Array.isArray(scope) ? scope : {};
@@ -3407,21 +3482,35 @@ var require_runtime = __commonJS({
           config: { endpointConfigured: input.webhookConfigured === true },
           routeRole: model.routeRole,
           generations: { lease: model.leaseGeneration, monitor: model.monitorGeneration },
-          scan: { id: model.scanId, reason: model.scanReason, outcome: model.scanOutcome },
+          scan: { id: model.scanId, reason: diagnosticString(model.scanReason, 64), outcome: diagnosticString(model.scanOutcome, 64).slice(0, 32) },
           recentTraces: traces.map((record) => ({ sequence: record.sequence, scanId: record.scanId || record.diagnosticId || null, stage: record.stage, outcome: record.status, reason: record.reason || null })),
           deliveryLedger: { pending: model.deliveryTotals.pending, inFlight: model.deliveryTotals.inFlight, failed: model.deliveryTotals.failed, uncertain: model.deliveryTotals.uncertain, acknowledged: model.deliveryTotals.acknowledged, compacted: Array.isArray(accounting.compactedTerminalTotals) ? accounting.compactedTerminalTotals.reduce((sum, range) => sum + (Number(range.count) || 0), 0) : 0 },
           queueCounts: model.deliveryTotals,
           conservation: { firstMismatch: model.firstConservationMismatch, netSampled: true },
           labels: { players: "players", messages: "messages", attacks: "attacks", raids: "raids", net: "net, sampled" }
         };
-        const serialized = canonicalSerializeDiagnostics(safe);
-        let sourceBytes = 0;
+        let rawOversized = false;
         try {
-          sourceBytes = JSON.stringify(input).length;
+          rawOversized = diagnosticByteLength(JSON.stringify(input)) > DIAGNOSTICS_LIMITS.exportBytes;
         } catch (error) {
-          sourceBytes = DIAGNOSTICS_LIMITS.exportBytes + 1;
+          rawOversized = true;
         }
-        return sourceBytes <= DIAGNOSTICS_LIMITS.exportBytes && diagnosticByteLength(serialized) <= DIAGNOSTICS_LIMITS.exportBytes ? safe : { schemaVersion: 1, kind: "taa-incident-bundle", bounded: true, boundedMessage: "Incident export bounded: content exceeded 512 KiB; sensitive data omitted.", recentTraces: [], conservation: { firstMismatch: null, netSampled: true } };
+        if (!rawOversized && diagnosticByteLength(safe) <= DIAGNOSTICS_LIMITS.exportBytes) return safe;
+        const boundedMessage = "Incident export bounded: content exceeded 512 KiB; sensitive data omitted.";
+        const bounded = Object.assign({}, safe, { bounded: true, boundedMessage, recentTraces: safe.recentTraces.slice() });
+        while (bounded.recentTraces.length > 0 && diagnosticByteLength(bounded) > DIAGNOSTICS_LIMITS.exportBytes) bounded.recentTraces.pop();
+        if (diagnosticByteLength(bounded) <= DIAGNOSTICS_LIMITS.exportBytes) return bounded;
+        const core = Object.assign({}, bounded, { recentTraces: [] });
+        if (diagnosticByteLength(core) <= DIAGNOSTICS_LIMITS.exportBytes) return core;
+        return {
+          schemaVersion: 1,
+          kind: "taa-incident-bundle",
+          bounded: true,
+          boundedMessage,
+          build: safe.build,
+          routeRole: safe.routeRole,
+          scan: { id: safe.scan.id, reason: diagnosticString(safe.scan.reason, 64), outcome: diagnosticString(safe.scan.outcome, 32) }
+        };
       }
       function buildStatusPanelModel(lastScan, nextReload, nowMs) {
         const now = Number.isFinite(nowMs) ? nowMs : Date.now();
@@ -7360,6 +7449,49 @@ ${entry.line}`;
         lifecycleTimerIds.delete(scanDeadlineTimerId);
         scanDeadlineTimerId = null;
       }
+      function teardownReadinessObserver() {
+        clearReadinessRetryTimer();
+        if (readinessTimerId !== null) {
+          clearTimeout(readinessTimerId);
+          lifecycleTimerIds.delete(readinessTimerId);
+          readinessTimerId = null;
+        }
+        if (readinessObserver) {
+          readinessObserver.disconnect();
+          readinessObserver = null;
+        }
+        if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+          if (readinessReadyStateListener) {
+            document.removeEventListener("readystatechange", readinessReadyStateListener);
+            readinessReadyStateListener = null;
+          }
+          if (readinessDomContentLoadedListener) {
+            document.removeEventListener("DOMContentLoaded", readinessDomContentLoadedListener);
+            readinessDomContentLoadedListener = null;
+          }
+        }
+        if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+          if (readinessLoadListener) {
+            window.removeEventListener("load", readinessLoadListener);
+            readinessLoadListener = null;
+          }
+          if (readinessPageHideListener) {
+            window.removeEventListener("pagehide", readinessPageHideListener);
+            readinessPageHideListener = null;
+          }
+        } else {
+          readinessLoadListener = null;
+          readinessPageHideListener = null;
+        }
+      }
+      function recordScanTerminalTrace(outcome) {
+        recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), {
+          stage: String(outcome.stage),
+          status: String(outcome.status),
+          reason: String(outcome.reason),
+          scanId: scanCycleId
+        });
+      }
       function emitScanCycleTerminal(outcome) {
         if (!isScanTerminalRecord(outcome) || scanAttemptedForDocument) return false;
         scanAttemptedForDocument = true;
@@ -7368,21 +7500,40 @@ ${entry.line}`;
           authoritativeScanForDocument = true;
         }
         clearScanDeadlineTimer();
-        if (readinessTimerId !== null) {
-          clearTimeout(readinessTimerId);
-          readinessTimerId = null;
-        }
-        if (readinessObserver) {
-          readinessObserver.disconnect();
-          readinessObserver = null;
-        }
-        recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), {
-          stage: String(outcome.stage),
-          status: String(outcome.status),
-          reason: String(outcome.reason),
-          scanId: scanCycleId
-        });
+        teardownReadinessObserver();
+        recordScanTerminalTrace(outcome);
         return true;
+      }
+      function scheduleReadinessRetry(retryIndex) {
+        if (scanAttemptedForDocument || !tabLeaseActive) return;
+        const delayMs = READINESS_RETRY_DELAYS_MS[retryIndex];
+        if (!Number.isFinite(delayMs)) return;
+        clearReadinessRetryTimer();
+        readinessRetryTimerId = scheduleLifecycleTimeout(() => {
+          readinessRetryTimerId = null;
+          if (scanAttemptedForDocument || !tabLeaseActive) return;
+          installReadinessObserver();
+        }, delayMs);
+      }
+      function handlePreSnapshotTimeout(outcome) {
+        if (scanAttemptedForDocument) return;
+        teardownReadinessObserver();
+        preSnapshotAttemptCount += 1;
+        if (preSnapshotAttemptCount < READINESS_MAX_ATTEMPTS) {
+          recordScanTerminalTrace(outcome);
+          scheduleReadinessRetry(preSnapshotAttemptCount - 1);
+          reportLifecycleHook("onReadinessRetry", {
+            attempt: preSnapshotAttemptCount,
+            nextDelayMs: READINESS_RETRY_DELAYS_MS[preSnapshotAttemptCount - 1] || null,
+            reason: "readiness-timeout"
+          });
+          return;
+        }
+        finishScanCycle(outcome);
+        reportLifecycleHook("onReadinessExhausted", {
+          attempts: preSnapshotAttemptCount,
+          reason: "readiness-timeout"
+        });
       }
       function finishScanCycle(outcome) {
         return emitScanCycleTerminal(Object.assign({}, outcome, { scanId: scanCycleId }));
@@ -7394,6 +7545,7 @@ ${entry.line}`;
         scanAttemptedForDocument = false;
         lastScanTerminalForDocument = null;
         scanCycleId = null;
+        preSnapshotAttemptCount = 0;
         return true;
       }
       function pageLooksLoaded() {
@@ -7420,33 +7572,116 @@ ${entry.line}`;
           hasPlayerRow
         );
       }
+      function memberTableHasParseableRow(table) {
+        if (!table || typeof table.querySelectorAll !== "function") return false;
+        for (const row of table.querySelectorAll("tr")) {
+          if (!row || typeof row.querySelectorAll !== "function") continue;
+          for (const link of row.querySelectorAll("a")) {
+            const href = link.getAttribute("href") || "";
+            if (extractPlayerId(href) !== null) return true;
+          }
+        }
+        return false;
+      }
+      function readinessNodeIsInsidePanel(node) {
+        const element = node && node.nodeType === 1 ? node : node && node.parentElement;
+        if (!element || typeof element.closest !== "function") return false;
+        try {
+          return element.closest("#taa-panel-overlay, #taa-open-panel") !== null;
+        } catch (error) {
+          return false;
+        }
+      }
+      function readinessNodeTouchesMemberTable(node) {
+        if (!node) return false;
+        if (node.nodeType !== 1) {
+          const parent = node.parentElement;
+          return parent ? readinessNodeTouchesMemberTable(parent) : false;
+        }
+        if (typeof node.matches === "function" && node.matches("table.allianceMembers")) return true;
+        if (typeof node.closest === "function" && node.closest("table.allianceMembers")) return true;
+        if (typeof node.querySelector === "function" && node.querySelector("table.allianceMembers")) return true;
+        return false;
+      }
+      function readinessMutationTouchesMemberTable(record) {
+        if (!record || !record.target) return false;
+        const target = record.target;
+        if (readinessNodeIsInsidePanel(target)) return false;
+        if (record.type === "childList") {
+          if (target.nodeType === 1 && typeof target.closest === "function" && target.closest("table.allianceMembers")) return true;
+          const added = record.addedNodes || [];
+          for (let index = 0; index < added.length; index += 1) {
+            if (readinessNodeTouchesMemberTable(added[index])) return true;
+          }
+          const removed = record.removedNodes || [];
+          for (let index = 0; index < removed.length; index += 1) {
+            if (readinessNodeTouchesMemberTable(removed[index])) return true;
+          }
+          return false;
+        }
+        if (record.type === "attributes") {
+          if (target.nodeType !== 1) return false;
+          if (typeof target.matches === "function" && target.matches("table.allianceMembers")) return true;
+          if (typeof target.closest === "function" && target.closest("table.allianceMembers")) return true;
+          const name = String(record.attributeName || "");
+          const tableSignals = name === "class" || name === "data-partial" || name === "data-pagination" || name === "data-filtered" || name === "data-filter";
+          return Boolean(tableSignals && typeof target.matches === "function" && target.matches("table"));
+        }
+        if (record.type === "characterData") {
+          return readinessNodeTouchesMemberTable(target);
+        }
+        return false;
+      }
       function installReadinessObserver() {
         if (typeof document === "undefined" || typeof MutationObserver !== "function") {
           return;
         }
         if (scanAttemptedForDocument) return;
+        teardownReadinessObserver();
         if (scanCycleId === null) scanCycleId = createScanCycleId(String(Date.now()) + ":" + String(monotonicNow()));
         readinessStartedAtMono = monotonicNow();
-        let lastMutationAtMs = Date.now() - READINESS_QUIET_MS;
+        let lastRelevantAtMs = null;
+        const initialSelection = selectMemberTable(document);
+        let lastSelectionStatus = initialSelection.status;
+        let lastSelectionReason = initialSelection.reason || null;
+        let lastSelectedTable = initialSelection.table || null;
+        const quietElapsedMs = () => lastRelevantAtMs === null ? 0 : Date.now() - lastRelevantAtMs;
+        const scheduleCheck = () => {
+          if (readinessTimerId !== null) {
+            clearTimeout(readinessTimerId);
+            lifecycleTimerIds.delete(readinessTimerId);
+          }
+          const remaining = Math.max(0, READINESS_QUIET_MS - quietElapsedMs());
+          readinessTimerId = scheduleLifecycleTimeout(check, remaining);
+        };
         const check = () => {
-          readinessTimerId = null;
+          if (readinessTimerId !== null) {
+            clearTimeout(readinessTimerId);
+            lifecycleTimerIds.delete(readinessTimerId);
+            readinessTimerId = null;
+          }
           if (scanAttemptedForDocument || !tabLeaseActive) {
             return;
           }
-          const tablePresent = selectMemberTable(document).status === "accepted";
-          const quietMs = Date.now() - lastMutationAtMs;
+          const selection = selectMemberTable(document);
+          const tableAccepted = selection.status === "accepted";
+          const hasParseableRow = tableAccepted && memberTableHasParseableRow(selection.table);
+          if (hasParseableRow && lastRelevantAtMs === null) {
+            lastRelevantAtMs = Date.now();
+          }
+          const quietMs = quietElapsedMs();
           if (!isReadinessReady(
             document.readyState,
-            tablePresent,
+            hasParseableRow,
             quietMs
           )) {
+            if (document.readyState === "complete" && hasParseableRow) {
+              scheduleCheck();
+            }
             return;
           }
           clearScanDeadlineTimer();
-          if (readinessObserver) {
-            readinessObserver.disconnect();
-            readinessObserver = null;
-          }
+          teardownReadinessObserver();
           reportLifecycleHook("onReadinessCommit", {
             atMs: Date.now(),
             quietMs,
@@ -7454,18 +7689,25 @@ ${entry.line}`;
           });
           scanAttacks(false);
         };
-        const scheduleCheck = () => {
-          if (readinessTimerId !== null) {
-            clearTimeout(readinessTimerId);
+        readinessObserver = new MutationObserver((records) => {
+          let relevant = false;
+          for (let index = 0; index < records.length; index += 1) {
+            if (readinessMutationTouchesMemberTable(records[index])) {
+              relevant = true;
+              break;
+            }
           }
-          const remaining = Math.max(
-            0,
-            READINESS_QUIET_MS - (Date.now() - lastMutationAtMs)
-          );
-          readinessTimerId = scheduleLifecycleTimeout(check, remaining);
-        };
-        readinessObserver = new MutationObserver(() => {
-          lastMutationAtMs = Date.now();
+          const selection = selectMemberTable(document);
+          const selectedTable = selection.table || null;
+          const selectionReason = selection.reason || null;
+          if (selection.status !== lastSelectionStatus || selectionReason !== lastSelectionReason || selectedTable !== lastSelectedTable) {
+            lastSelectionStatus = selection.status;
+            lastSelectionReason = selectionReason;
+            lastSelectedTable = selectedTable;
+            relevant = true;
+          }
+          if (!relevant) return;
+          lastRelevantAtMs = Date.now();
           scheduleCheck();
         });
         readinessObserver.observe(
@@ -7477,7 +7719,23 @@ ${entry.line}`;
             characterData: true
           }
         );
-        document.addEventListener("DOMContentLoaded", check, { once: true });
+        const reevaluate = () => {
+          if (scanAttemptedForDocument || !tabLeaseActive) return;
+          check();
+        };
+        readinessReadyStateListener = reevaluate;
+        readinessDomContentLoadedListener = check;
+        readinessLoadListener = reevaluate;
+        readinessPageHideListener = () => {
+          clearScanDeadlineTimer();
+          teardownReadinessObserver();
+        };
+        document.addEventListener("readystatechange", readinessReadyStateListener);
+        document.addEventListener("DOMContentLoaded", readinessDomContentLoadedListener, { once: true });
+        if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+          window.addEventListener("load", readinessLoadListener);
+          window.addEventListener("pagehide", readinessPageHideListener);
+        }
         scanDeadlineTimerId = scheduleLifecycleTimeout(() => {
           scanDeadlineTimerId = null;
           if (scanAttemptedForDocument) return;
@@ -7485,9 +7743,9 @@ ${entry.line}`;
             finishScanCycle(decideScanCycleOutcome({ leaseHeld: false }));
             return;
           }
-          finishScanCycle(decideScanCycleOutcome({
+          handlePreSnapshotTimeout(decideScanCycleOutcome({
             elapsedMs: SCAN_CYCLE_DEADLINE_MS,
-            quietMs: Date.now() - lastMutationAtMs,
+            quietMs: quietElapsedMs(),
             leaseHeld: true,
             parserResult: null
           }));
@@ -7989,7 +8247,7 @@ ${entry.line}`;
               nextReloadAtMs
             );
             mergeRuntimeDiagnostics(hostname, { visibility: visibilityDriftState });
-            requestLifecycleReload("scheduled-refresh");
+            requestScheduledReload("scheduled-refresh");
             return;
           }
           const startedAtMs = Date.now();
@@ -8004,7 +8262,7 @@ ${entry.line}`;
               elapsedMs,
               DRAIN_MAX_WAIT_MS
             )) {
-              requestLifecycleReload("scheduled-refresh-after-drain");
+              requestScheduledReload("scheduled-refresh-after-drain");
               return;
             }
             scheduleLifecycleTimeout(drainCheck, DRAIN_POLL_MS);
@@ -10192,6 +10450,7 @@ ${entry.line}`;
                     lastScanTerminalForDocument = null;
                     authoritativeScanForDocument = false;
                     scanCycleId = null;
+                    preSnapshotAttemptCount = 0;
                     alert(
                       "Attack memory cleared for this world. The next accepted scan establishes a fresh baseline and does not clear site data."
                     );

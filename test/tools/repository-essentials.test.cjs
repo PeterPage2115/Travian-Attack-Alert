@@ -496,7 +496,7 @@ test('security policy documents the private path, the published stable support s
     'the 1.0.1 line must be described as the previous published release',
   );
   assert.ok(
-    !/release candidate/iu.test(security),
+    !/1\.0\.2[^\n]*release candidate/iu.test(security),
     'no line may still describe 1.0.2 as a release candidate',
   );
   assert.match(

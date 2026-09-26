@@ -7,7 +7,7 @@
 // Why this is a SEPARATE spec file (Task 19/20 runtime contract):
 // both tests wait on the product's real ~30 s lease-renewal cadence (≈70-150 s
 // per project), so running them on all six Chromium projects pushed the
-// dual-tab-lease spec over `tools/run-e2e.cjs`'s hard 480 s per-spec ceiling.
+// dual-tab-lease spec over `tools/run-e2e.cjs`'s hard 600 s per-spec ceiling.
 // They are restricted to ONE representative desktop project (chromium-1280)
 // through the QA config's per-project `testIgnore` — a project filter, not a
 // `test.skip`: release mode rejects any skipped execution, so a filter keeps

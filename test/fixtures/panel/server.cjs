@@ -8,6 +8,10 @@ const ROOT = path.resolve(__dirname, '..', '..', '..');
 const PORT = Number(process.env.PORT || 8899);
 const PANEL_HTML = path.join(__dirname, 'attack-panel.html');
 
+// 1x1 transparent GIF served when a held /fixtures/hold-load response is
+// released. Kept as bytes so the "release" is a real image completion.
+const TINY_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
 const sockets = new Set();
 // Per-namespace fixture state. Playwright runs tests in parallel workers, and
 // every worker's pages carry a distinct `?ns=<workerIndex>` on their loopback
@@ -20,7 +24,7 @@ const e2eStates = new Map();
 function stateFor(ns) {
   let state = e2eStates.get(ns);
   if (!state) {
-    state = { discordRequests: [], openRequests: 0, webhookAttempts: 0, deliveryHold: false };
+    state = { discordRequests: [], openRequests: 0, webhookAttempts: 0, deliveryHold: false, heldLoads: [] };
     e2eStates.set(ns, state);
   }
   return state;
@@ -51,6 +55,26 @@ function sendFile(response, filePath, contentType) {
   });
 }
 
+// Task-3 hydration fixtures: the 59-row authoritative roster comes from the
+// existing acquisition fixture (its own ids/names), never an inline copy, so
+// e2e and offline parser tests share one roster definition. Rows are cached
+// after the first read; `limit` produces the partial-hydration variant.
+let members59RowsCache = null;
+function members59Rows() {
+  if (members59RowsCache === null) {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'acquisition', 'members-59-incident.html'), 'utf8');
+    const body = html.match(/<table class="allianceMembers">([\s\S]*?)<\/table>/);
+    members59RowsCache = body ? body[1].match(/<tr[\s\S]*?<\/tr>/g) || [] : [];
+  }
+  return members59RowsCache;
+}
+
+function members59TableMarkup(limit) {
+  const rows = members59Rows();
+  const selected = typeof limit === 'number' ? rows.slice(0, limit) : rows;
+  return `<table class="allianceMembers"><tbody>${selected.join('')}</tbody></table>`;
+}
+
 function memberTableMarkup(variant) {
   if (variant === 'canonical') {
     const rows = [900001, 900002, 900003]
@@ -62,6 +86,9 @@ function memberTableMarkup(variant) {
     return `<table class="allianceMembers" data-pagination="true"><tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody></table>`;
   }
   if (variant === 'late') return '<table class="allianceMembers"><tbody><tr><td class="player"><a href="/profile/900001">Fixture Player 001</a></td></tr></tbody></table>';
+  if (variant === 'members59') return members59TableMarkup();
+  if (variant === 'partial-12') return members59TableMarkup(12);
+  if (variant === 'empty-shell') return '<table class="allianceMembers"><tbody></tbody></table>';
   return null;
 }
 
@@ -84,6 +111,23 @@ function handleAlliance(request, response) {
       /<table aria-label="Alliance members">[\s\S]*?<\/table>/,
       markup || ''
     );
+    // Task-2 hold-at-interactive support: when `holdLoad` is requested, the
+    // page carries an eager 1x1 <img> whose response /fixtures/hold-load keeps
+    // pending until the spec POSTs /e2e-release-load. An image is used (not a
+    // script) because it delays `document.readyState === "complete"` without
+    // delaying DOMContentLoaded, so the artifact can be executed while the
+    // document is still `interactive` — the exact production race. The signal
+    // travels in a request header so the page URL stays free of query
+    // parameters (a query makes the runtime classify the route noncanonical).
+    const holdLoad = url.searchParams.get('holdLoad') || request.headers['x-taa-hold-load'];
+    if (holdLoad) {
+      const holdNs = url.searchParams.get('ns') || request.headers['x-taa-hold-ns'] || '';
+      const holdNsQuery = holdNs ? `?ns=${encodeURIComponent(holdNs)}` : '';
+      withState = withState.replace(
+        '</body>',
+        `<img id="taa-hold-load" alt="" width="1" height="1" src="/fixtures/hold-load${holdNsQuery}"></body>`
+      );
+    }
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     response.end(withState);
   });
@@ -113,7 +157,12 @@ function sendJson(response, status, value) {
 
 function handleMemberRoute(request, response) {
   const parsed = new URL(String(request.url || '/'), `http://127.0.0.1:${PORT}`);
-  const table = parsed.pathname.endsWith('/extra') ? 'absent' : parsed.searchParams.get('memberTable') || 'canonical';
+  // Task-3 member-table variants travel in a request header: the page URL must
+  // stay query-free (`/alliance/profile/members` is only canonical when
+  // url.search === ''), so a query param would flip the route to
+  // `alliance-noncanonical` and the runtime would never scan.
+  const headerVariant = String(request.headers['x-taa-member-table'] || '');
+  const table = parsed.pathname.endsWith('/extra') ? 'absent' : headerVariant || parsed.searchParams.get('memberTable') || 'canonical';
   handleAlliance(Object.assign(request, { url: `/alliance?memberTable=${encodeURIComponent(table)}&panelState=overview` }), response);
 }
 
@@ -145,6 +194,41 @@ function handleRequest(request, response) {
     const markup = memberTableMarkup(variant) || '<table class="allianceMembers"><tbody></tbody></table>';
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     response.end(markup);
+    return;
+  }
+
+  // Task-2 hold-at-interactive support. The response is parked (never ended)
+  // until /e2e-release-load arrives, which keeps document.readyState at
+  // `interactive` for as long as the spec needs. Request/response `close`
+  // removes the parked entry when the page goes away, so a never-released
+  // hold cannot leak into a later test.
+  if (pathname === '/fixtures/hold-load' && request.method === 'GET') {
+    const e2eState = stateFor(parsed.searchParams.get('ns') || '');
+    const entry = { response };
+    e2eState.heldLoads.push(entry);
+    const drop = () => {
+      e2eState.heldLoads = e2eState.heldLoads.filter(candidate => candidate !== entry);
+    };
+    request.on('error', drop);
+    response.on('close', drop);
+    return;
+  }
+
+  if (pathname === '/e2e-hold-status') {
+    const e2eState = stateFor(parsed.searchParams.get('ns') || '');
+    sendJson(response, 200, { pending: e2eState.heldLoads.length > 0 });
+    return;
+  }
+
+  if (pathname === '/e2e-release-load' && request.method === 'POST') {
+    const e2eState = stateFor(parsed.searchParams.get('ns') || '');
+    const held = e2eState.heldLoads;
+    e2eState.heldLoads = [];
+    for (const entry of held) {
+      entry.response.writeHead(200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store' });
+      entry.response.end(TINY_GIF);
+    }
+    sendJson(response, 200, { released: held.length > 0, count: held.length });
     return;
   }
 
@@ -219,8 +303,9 @@ function handleRequest(request, response) {
       e2eState.discordRequests.length = 0;
       e2eState.webhookAttempts = 0;
       e2eState.deliveryHold = false;
+      e2eState.heldLoads = [];
       sendJson(response, 200, { reset: true, openRequests: e2eState.openRequests });
-    } else sendJson(response, 200, { ...e2eState, discordRequests: [...e2eState.discordRequests] });
+    } else sendJson(response, 200, { ...e2eState, heldLoads: e2eState.heldLoads.length, discordRequests: [...e2eState.discordRequests] });
     return;
   }
 

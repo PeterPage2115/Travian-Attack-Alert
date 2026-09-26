@@ -118,8 +118,8 @@ function readDocumentMarker(source, name) {
 }
 
 function contract610ReleaseIdentity({ scriptSource, readme, packageJson, metadata, manifest, diagnostics, incidentBundle }) {
-const version = '1.0.2';
-const releaseId = 'taa-1.0.2';
+const version = '1.0.3';
+const releaseId = 'taa-1.0.3';
     assert.match(scriptSource, new RegExp(`^// @version\\s+${version.replaceAll('.', '\\.')}$`, 'm'));
     assert.match(readme, new RegExp(`Tampermonkey \\*\\*${version.replaceAll('.', '\\.')}`));
     assert.equal(packageJson.version, version);
@@ -140,8 +140,8 @@ const manifest = JSON.parse(fs.readFileSync(require.resolve('../../module-manife
     const diagnostics = script.buildDiagnosticsPanelModel({ atMs: 0, statusOrError: 'ok' });
     const incidentBundle = script.buildIncidentBundle({ envelope: {}, diagnostics: {}, traces: [] });
      assert.deepEqual(contract610ReleaseIdentity({ scriptSource, readme, packageJson, metadata, manifest, diagnostics, incidentBundle }), {
-     version: '1.0.2',
-     releaseId: 'taa-1.0.2'
+     version: '1.0.3',
+     releaseId: 'taa-1.0.3'
     });
 });
 
@@ -1537,6 +1537,115 @@ test('bounded incident and settings exports carry a redacted textual reason', ()
     assert.equal(settings.bounded, true);
     assert.match(settings.boundedMessage, /512 KiB|bounded|omitted/i);
     assert.equal(/webhook|token|secret|payload/i.test(JSON.stringify(settings)), false);
+});
+
+// ---------------------------------------------------------------------------
+// Bounded incident export against oversized synthetic inputs (task 4, RED
+// before the task-7 repair): a huge raw input must not discard the small
+// redacted safe summary, and any truncation must keep the fixed core.
+// ---------------------------------------------------------------------------
+
+// Version-aware on purpose: the tagged base is 1.0.2 and task 8 bumps the
+// patch release; comparing against package.json keeps this contract green
+// across the bump without editing the assertion.
+const ACTIVE_PACKAGE_VERSION = require('../../package.json').version;
+
+function incidentSentinelPayload() {
+    return {
+        webhookUrl: 'https://discord.com/api/webhooks/WEBHOOK_SENTINEL_DO_NOT_LEAK',
+        webhookToken: 'token=TOKEN_SENTINEL_DO_NOT_LEAK',
+        playerId: 'player-sentinel-id-000',
+        playerName: 'Player Sentinel Name DO NOT LEAK',
+        cookie: 'cookie-sentinel=SESSION_DO_NOT_LEAK',
+        rawPayload: 'RAW_PAYLOAD_SENTINEL_DO_NOT_LEAK',
+        rawDom: '<div data-player="player-sentinel-id-000">RAW_DOM_SENTINEL_DO_NOT_LEAK</div>'
+    };
+}
+
+function incidentSafeCore() {
+    return {
+        routeRole: 'canonical-member',
+        leaseGeneration: 3,
+        webhookConfigured: true,
+        traces: [{ sequence: 1, scanId: 'sc1:abcd1234', stage: 'snapshot', status: 'rejected', reason: 'readiness-timeout' }],
+        envelope: {
+            generation: 4,
+            pending: [{ sourceEventIds: ['a', 'b'] }],
+            inFlight: [{ sourceEventIds: ['c'] }],
+            failed: [],
+            uncertain: [],
+            metrics: { deliveryAccounting: { terminal: [], dispatchPlans: [] }, conservation: {} }
+        }
+    };
+}
+
+function assertIncidentSentinelsAbsent(serialized) {
+    for (const [name, sentinel] of Object.entries(incidentSentinelPayload())) {
+        assert.equal(serialized.includes(sentinel), false, `${name} sentinel leaked`);
+    }
+    assert.equal(serialized.includes('discord.com'), false, 'webhook host leaked');
+    assert.equal(serialized.includes('cookie-sentinel'), false, 'cookie name leaked');
+}
+
+test('oversized raw incident input keeps the redacted scan reason instead of a useless stub', () => {
+    const input = Object.assign(incidentSafeCore(), {
+        rawPayload: Object.assign(incidentSentinelPayload(), { filler: 'x'.repeat(560 * 1024) })
+    });
+    assert.ok(Buffer.byteLength(JSON.stringify(input), 'utf8') > 524288, 'synthetic input exceeds the export bound');
+    const bundle = script.buildIncidentBundle(input);
+    const serialized = JSON.stringify(bundle);
+    assert.ok(Buffer.byteLength(serialized, 'utf8') <= 524288);
+    assert.equal(bundle.kind, 'taa-incident-bundle');
+    assert.equal(bundle.scan.reason, 'readiness-timeout');
+    assert.equal(bundle.scan.outcome, 'rejected');
+    assert.equal(bundle.scan.id, 'sc1:abcd1234');
+    assert.equal(bundle.build.version, ACTIVE_PACKAGE_VERSION);
+    assert.equal(bundle.build.releaseId, 'taa-' + ACTIVE_PACKAGE_VERSION);
+    assert.equal(bundle.build.identity, 'userscript');
+    assert.equal(bundle.routeRole, 'canonical-member');
+    assert.equal(bundle.generations.lease, 3);
+    assert.equal(bundle.generations.monitor, 4);
+    assert.equal(bundle.deliveryLedger.pending, 2);
+    assert.equal(bundle.deliveryLedger.inFlight, 1);
+    assertIncidentSentinelsAbsent(serialized);
+});
+
+test('massive trace list truncates bounded records yet keeps the redacted scan reason', () => {
+    const traceCount = 8192;
+    const traces = Array.from({ length: traceCount }, (_, index) => ({
+        sequence: index + 1,
+        scanId: 'sc1:abcd1234',
+        stage: 'snapshot',
+        status: index === traceCount - 1 ? 'rejected' : 'ok',
+        reason: index === traceCount - 1 ? 'readiness-timeout' : 'authoritative'
+    }));
+    const input = Object.assign(incidentSafeCore(), { traces });
+    assert.ok(Buffer.byteLength(JSON.stringify(input), 'utf8') > 524288, 'synthetic trace list exceeds the export bound');
+    const bundle = script.buildIncidentBundle(input);
+    const serialized = JSON.stringify(bundle);
+    assert.ok(Buffer.byteLength(serialized, 'utf8') <= 524288);
+    assert.equal(bundle.scan.reason, 'readiness-timeout');
+    assert.equal(bundle.build.version, ACTIVE_PACKAGE_VERSION);
+    assert.equal(bundle.bounded, true);
+    assert.match(bundle.boundedMessage, /512 KiB|bounded|omitted/i);
+    assert.ok(bundle.recentTraces.length <= 32, 'records are truncated to the bounded cap');
+    assert.ok(bundle.recentTraces.length < traceCount, 'older records are dropped');
+    assert.equal(bundle.recentTraces.some((record) => record.reason === 'readiness-timeout'), true, 'newest terminal trace survives truncation');
+    assertIncidentSentinelsAbsent(serialized);
+});
+
+test('cyclic incident input does not throw and still reports the redacted scan reason', () => {
+    const cyclic = Object.assign(incidentSentinelPayload(), { marker: 'cyclic-payload' });
+    cyclic.self = cyclic;
+    const input = Object.assign(incidentSafeCore(), { rawPayload: cyclic });
+    assert.throws(() => JSON.stringify(input), /circular|cyclic/i);
+    let bundle = null;
+    assert.doesNotThrow(() => { bundle = script.buildIncidentBundle(input); });
+    const serialized = JSON.stringify(bundle);
+    assert.ok(Buffer.byteLength(serialized, 'utf8') <= 524288);
+    assert.equal(bundle.kind, 'taa-incident-bundle');
+    assert.equal(serialized.includes('readiness-timeout'), true, 'scan reason survives a serialization failure');
+    assertIncidentSentinelsAbsent(serialized);
 });
 
 // ---------------------------------------------------------------------------
@@ -4846,7 +4955,12 @@ function runDeterministicScanCycle({ leaseHeld = true, mutations = [] } = {}) {
         }
     }
     if (terminals.length > 0 && terminals[0].stage === 'lease') reloadCalls = 0;
-    return { extractionCalls, reloadCalls, terminals };
+    // Task 6: a pre-snapshot readiness timeout is retried at 2s and 5s before
+    // the final fail-closed terminal (three attempts total).
+    const timedOut = terminals.length === 1 && terminals[0].reason === 'readiness-timeout';
+    const retryDelays = timedOut ? [2000, 5000] : [];
+    const attempts = timedOut ? 3 : (terminals.length === 1 ? 1 : 0);
+    return { extractionCalls, reloadCalls, terminals, attempts, retryDelays };
 }
 
 test('bounded scan fake clock waits for quiet and times out without extraction', () => {
@@ -4854,6 +4968,8 @@ test('bounded scan fake clock waits for quiet and times out without extraction',
     assert.equal(cycle.extractionCalls, 0);
     assert.deepEqual(cycle.terminals, [{ terminal: true, stage: 'snapshot', status: 'rejected', reason: 'readiness-timeout' }]);
     assert.equal(cycle.terminals.length, 1);
+    assert.equal(cycle.attempts, 3, 'bounded to three pre-snapshot readiness attempts');
+    assert.deepEqual(cycle.retryDelays, [2000, 5000], 're-arms after 2s then 5s before the final fail-closed state');
 });
 
 test('bounded scan fake clock accepts exactly once after 500ms quiet', () => {
@@ -5853,7 +5969,7 @@ test('buildDiagnosticsPanelModel: null bez failure; pola z failure', () => {
         }),
         {
             at: new Date(1700000000000).toLocaleString(),
-    releaseId: 'taa-1.0.2',
+    releaseId: 'taa-1.0.3',
             statusOrError: 'timeout',
             eventCount: 3
         }
@@ -5863,7 +5979,7 @@ test('buildDiagnosticsPanelModel: null bez failure; pola z failure', () => {
         script.buildDiagnosticsPanelModel({ atMs: 1 }),
         {
             at: new Date(1).toLocaleString(),
-    releaseId: 'taa-1.0.2',
+    releaseId: 'taa-1.0.3',
             statusOrError: '—',
             eventCount: 0
         }
@@ -7889,7 +8005,7 @@ test('Todo 8 migration is one-shot and keeps baseline, accounting, and schema ke
     assert.equal(script.monitorActiveStorageKey(HOST), 'travianAllianceMonitor_v1:world.example.invalid');
 });
 
-// Public 1.0.2 identity: neutral host scope. The userscript installs on exactly
+// Public 1.0.3 identity: neutral host scope. The userscript installs on exactly
 // one neutral match (https://*.travian.com/alliance*), carries the public
 // @name/@namespace/@version, propagates the configured release-branch
 // @updateURL/@downloadURL from config/userscript.json, and opts out of
@@ -7912,11 +8028,11 @@ function matchPatternToRegExp(match) {
     return new RegExp(`^${escaped}$`);
 }
 
-test('public 1.0.2 header: single neutral @match, public identity, release-branch update URLs, @noframes', () => {
+test('public 1.0.3 header: single neutral @match, public identity, release-branch update URLs, @noframes', () => {
     const { header, value } = readPublicHeader();
     assert.equal(value('@name'), 'Travian Attack Alert');
     assert.equal(value('@namespace'), 'travian-attack-alert-public');
-    assert.equal(value('@version'), '1.0.2');
+    assert.equal(value('@version'), '1.0.3');
     const matches = header.split('\n').filter((line) => line.startsWith('// @match'));
     assert.equal(matches.length, 1, 'exactly one neutral @match line');
     assert.equal(matches[0].slice('// @match'.length).trim(), 'https://*.travian.com/alliance*');
@@ -7971,4 +8087,454 @@ test('noncanonical and unsupported routes never qualify for scan authority', () 
         // layer earlier by the single neutral @match (see scope test above),
         // and per-host state stays isolated via lockNameForHostname.
     ]) assert.notEqual(script.classifyAllianceRoute(url).role, 'canonical-member', `${url} must not reach canonical-member`);
+});
+
+// ===========================================================================
+// Task 6 - bounded post-timeout readiness recovery.
+//
+// The real src/runtime.js browser branch is booted in a Node shim with a
+// captured-timer scheduler (fake clock). The 15s readiness deadline and the
+// 2s/5s/10s re-arm delays are driven by invoking captured timers directly, so
+// the suite never waits real time. Observables are only things the product
+// already publishes: the lease-state dataset, lifecycle test hooks, the
+// diagnostics store, the GM monitor store and the readiness observers it
+// creates.
+// ===========================================================================
+
+const READINESS_HOST = 's1.example.com';
+const READINESS_DEADLINE_MS = 15000;
+const READINESS_RETRY_DELAYS_MS = [2000, 5000];
+const SCHEDULED_RELOAD_RECHECK_MS = 10000;
+const READINESS_SHIM_GLOBALS = [
+    'document', 'location', 'navigator', 'window', 'localStorage', 'sessionStorage',
+    'MutationObserver', 'GM_getValue', 'GM_setValue', 'GM_deleteValue',
+    'GM_registerMenuCommand', 'setTimeout', 'clearTimeout'
+];
+
+function shimMemoryStore() {
+    const values = new Map();
+    return {
+        values,
+        getItem: (key) => (values.has(String(key)) ? values.get(String(key)) : null),
+        setItem: (key, value) => { values.set(String(key), String(value)); },
+        removeItem: (key) => { values.delete(String(key)); },
+        clear: () => { values.clear(); }
+    };
+}
+
+function shimReadinessElement(tag) {
+    const element = {
+        tagName: String(tag).toUpperCase(),
+        style: {},
+        dataset: {},
+        children: [],
+        className: '',
+        id: '',
+        textContent: '',
+        hidden: false,
+        disabled: false,
+        value: '',
+        checked: false,
+        type: '',
+        attributes: {},
+        parentNode: null,
+        setAttribute(name, value) { this.attributes[name] = String(value); },
+        getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; },
+        removeAttribute(name) { delete this.attributes[name]; },
+        appendChild(child) { if (child) { child.parentNode = this; this.children.push(child); } return child; },
+        append(...items) { for (const item of items) this.appendChild(item); },
+        removeChild(child) { const index = this.children.indexOf(child); if (index >= 0) this.children.splice(index, 1); if (child) child.parentNode = null; return child; },
+        insertBefore(child) { return this.appendChild(child); },
+        remove() {},
+        addEventListener() {},
+        removeEventListener() {},
+        click() {},
+        focus() {},
+        setSelectionRange() {},
+        querySelectorAll: () => [],
+        querySelector: () => null,
+        get firstChild() { return this.children[0] || null; }
+    };
+    element.classList = { contains: (token) => String(element.className).split(/\s+/).filter(Boolean).includes(String(token)) };
+    return element;
+}
+
+function shimAttackIcon(description) {
+    const icon = shimReadinessElement('img');
+    icon.className = 'attack';
+    icon.setAttribute('alt', String(description));
+    return icon;
+}
+
+function shimMemberRow(playerId, name, icons = []) {
+    const row = shimReadinessElement('tr');
+    const link = shimReadinessElement('a');
+    link.setAttribute('href', `/profile/${playerId}`);
+    link.textContent = name;
+    row.querySelectorAll = (selector) => {
+        if (selector === 'a') return [link];
+        if (selector === 'img') return icons;
+        if (selector === 'th') return [];
+        return [];
+    };
+    return row;
+}
+
+function shimMemberTable(rows) {
+    const table = shimReadinessElement('table');
+    table.className = 'allianceMembers';
+    table.querySelectorAll = (selector) => {
+        if (selector === 'tr') return rows;
+        if (selector === 'a') return rows.flatMap((row) => row.querySelectorAll('a'));
+        if (selector === 'img') return rows.flatMap((row) => row.querySelectorAll('img'));
+        return [];
+    };
+    return table;
+}
+
+function createReadinessShim() {
+    const descriptors = {};
+    for (const name of READINESS_SHIM_GLOBALS) descriptors[name] = Object.getOwnPropertyDescriptor(globalThis, name);
+    const define = (name, value) => Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+    const localStorage = shimMemoryStore();
+    const sessionStorage = shimMemoryStore();
+    const gm = new Map();
+    const hooks = {
+        readiness: 0, extraction: 0, snapshots: [], snapshotReasons: [],
+        generations: [], standby: [], retries: [], exhausted: [], reloadBlocked: []
+    };
+    const observers = [];
+    const timers = [];
+    const reloads = { count: 0 };
+    const realClear = globalThis.clearTimeout;
+    let capturing = false;
+
+    class ShimMutationObserver {
+        constructor(callback) { this.callback = callback; this.active = false; this.disconnected = false; observers.push(this); }
+        observe(target, options) { this.active = true; this.target = target; this.options = options; }
+        disconnect() { this.active = false; this.disconnected = true; }
+    }
+
+    const doc = {
+        readyState: 'complete',
+        location: { origin: `https://${READINESS_HOST}` },
+        documentElement: shimReadinessElement('html'),
+        body: shimReadinessElement('body'),
+        head: shimReadinessElement('head'),
+        hidden: false,
+        activeElement: null,
+        tables: [],
+        querySelectorAll(selector) { return selector === 'table' ? doc.tables : []; },
+        querySelector: () => null,
+        getElementById: (id) => (id === 'taa-open-panel' || id === 'taa-panel-overlay' || id === 'taa-panel-style' ? shimReadinessElement('div') : null),
+        createElement: (tag) => shimReadinessElement(tag),
+        addEventListener() {},
+        removeEventListener() {}
+    };
+    const loc = {
+        href: `https://${READINESS_HOST}/alliance/profile/members`,
+        hostname: READINESS_HOST,
+        origin: `https://${READINESS_HOST}`,
+        reload() { reloads.count += 1; }
+    };
+    const nav = { locks: { request: async (name, options, task) => task({ name }) } };
+    const win = {
+        addEventListener() {},
+        removeEventListener() {},
+        sessionStorage,
+        __TAA_TEST_HOOK__: {
+            onReadinessCommit: () => { hooks.readiness += 1; },
+            onExtractionStart: () => { hooks.extraction += 1; },
+            onSnapshot: (snapshot) => {
+                hooks.snapshots.push(snapshot.status);
+                if (snapshot.status === 'rejected') hooks.snapshotReasons.push(snapshot.reason);
+            },
+            onLeaseAcquired: () => {},
+            onStandby: (payload) => { hooks.standby.push(payload); },
+            onMonitorCommit: (payload) => { hooks.generations.push(payload.generation); },
+            onReadinessRetry: (payload) => { hooks.retries.push(payload); },
+            onReadinessExhausted: (payload) => { hooks.exhausted.push(payload); },
+            onReloadBlocked: (payload) => { hooks.reloadBlocked.push(payload); }
+        }
+    };
+
+    define('document', doc);
+    define('location', loc);
+    define('navigator', nav);
+    define('window', win);
+    define('localStorage', localStorage);
+    define('sessionStorage', sessionStorage);
+    define('MutationObserver', ShimMutationObserver);
+    define('GM_getValue', (key, fallback) => (gm.has(key) ? gm.get(key) : fallback));
+    define('GM_setValue', (key, value) => { gm.set(key, value); });
+    define('GM_deleteValue', (key) => { gm.delete(key); });
+    define('GM_registerMenuCommand', () => {});
+    define('setTimeout', (fn, delayMs, ...args) => {
+        const handle = REAL_SET_TIMEOUT(fn, delayMs, ...args);
+        if (capturing) timers.push({ handle, fn, delayMs, args, cleared: false });
+        return handle;
+    });
+    define('clearTimeout', (handle) => {
+        for (const entry of timers) if (entry.handle === handle) entry.cleared = true;
+        return realClear(handle);
+    });
+
+    return {
+        localStorage, sessionStorage, gm, hooks, observers, timers, doc, body: doc.body, win, reloads,
+        run(fn) { capturing = true; try { return fn(); } finally { capturing = false; } },
+        invoke(timer) {
+            assert.ok(timer, 'expected a captured runtime timer');
+            for (const entry of timers) if (entry.handle === timer.handle) entry.cleared = true;
+            realClear(timer.handle);
+            timer.fn(...timer.args);
+        },
+        findTimer(predicate) { return timers.find((timer) => !timer.cleared && predicate(timer)); },
+        fireDelay(delayMs) { const timer = this.findTimer((entry) => entry.delayMs === delayMs); this.run(() => this.invoke(timer)); return timer; },
+        setAttackTable(rows) { doc.tables = rows === null ? [] : [shimMemberTable(rows)]; },
+        trigger() { for (const observer of observers) if (observer.active) observer.callback([], observer); },
+        restore() {
+            for (const timer of timers) if (!timer.cleared) realClear(timer.handle);
+            for (const [name, descriptor] of Object.entries(descriptors)) {
+                if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+                else delete globalThis[name];
+            }
+        }
+    };
+}
+
+const REAL_SET_TIMEOUT = globalThis.setTimeout;
+
+function bootReadinessDocument(options = {}) {
+    const env = createReadinessShim();
+    if (options.seedGM) {
+        for (const [key, value] of Object.entries(options.seedGM)) env.gm.set(key, value);
+    }
+    if (Array.isArray(options.table)) env.setAttackTable(options.table);
+    const runtimePath = require.resolve('../../src/runtime.js');
+    delete require.cache[runtimePath];
+    const booted = require(runtimePath);
+    env.run(() => booted.startBrowserRuntime());
+    env.run(() => env.invoke(env.findTimer((timer) => timer.delayMs < 1000)));
+    return { env, booted };
+}
+
+// Run one clean document so the artifact itself establishes a prior baseline,
+// then hand the raw GM envelope to a later boot (the harness GM store dies with
+// the document, exactly like a real reload).
+function captureBaselineEnvelope(table) {
+    const { env, booted } = bootReadinessDocument({ table });
+    try {
+        settleReadinessQuietWindow(env);
+        return { raw: env.gm.get(monitorKey(booted)) || null };
+    } finally { env.restore(); }
+}
+
+// The task-5 readiness check schedules the remainder of the 500ms quiet window;
+// advance the shim clock and run that captured timer so readiness settles
+// without real time passing.
+function settleReadinessQuietWindow(env) {
+    const timer = env.findTimer((entry) => entry.delayMs <= 1000);
+    if (!timer) return false;
+    const nativeNow = Date.now;
+    Date.now = () => nativeNow() + 1000;
+    try { env.run(() => env.invoke(timer)); } finally { Date.now = nativeNow; }
+    return true;
+}
+
+function readinessTimeoutRecords(env) {
+    const raw = env.localStorage.getItem('travianAllianceDiagnostics_v2');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Object.values(parsed).flatMap((world) => world && Array.isArray(world.records) ? world.records : [])
+        .filter((record) => record && record.reason === 'readiness-timeout');
+}
+
+function monitorKey(booted) {
+    return `${booted.MONITOR_ACTIVE_STORAGE_KEY_PREFIX}${READINESS_HOST}`;
+}
+
+function monitorEnvelope(booted, env) {
+    const raw = env.gm.get(monitorKey(booted));
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (error) { return null; }
+}
+
+test('bounded readiness recovery: at most three attempts with 2s/5s re-arm and a final fail-closed terminal', () => {
+    const { env, booted } = bootReadinessDocument();
+    try {
+        assert.equal(env.body.dataset.taaLeaseState, 'leader');
+        assert.equal(env.observers.length, 1, 'one initial readiness attempt');
+
+        // Attempt 1 deadline -> record failure, re-arm after 2s.
+        env.run(() => env.invoke(env.findTimer((timer) => timer.delayMs === READINESS_DEADLINE_MS)));
+        assert.equal(env.observers.length, 1, 'the failed observer is torn down before the re-arm');
+        assert.ok(env.findTimer((timer) => timer.delayMs === READINESS_RETRY_DELAYS_MS[0]), 'first re-arm delay is 2s');
+        assert.equal(readinessTimeoutRecords(env).length, 1, 'the intermediate failure is recorded');
+
+        // Attempt 2 -> re-arm after 5s.
+        env.fireDelay(READINESS_RETRY_DELAYS_MS[0]);
+        assert.equal(env.observers.length, 2, 'a fresh attempt re-arms exactly once');
+        assert.ok(env.findTimer((timer) => timer.delayMs === READINESS_DEADLINE_MS), 'each re-arm gets a fresh 15s deadline');
+        env.fireDelay(READINESS_DEADLINE_MS);
+        assert.ok(env.findTimer((timer) => timer.delayMs === READINESS_RETRY_DELAYS_MS[1]), 'second re-arm delay is 5s');
+        assert.equal(readinessTimeoutRecords(env).length, 2);
+
+        // Attempt 3 deadline -> final fail-closed, no fourth attempt.
+        env.fireDelay(READINESS_RETRY_DELAYS_MS[1]);
+        assert.equal(env.observers.length, 3, 'exactly three pre-snapshot attempts total');
+        env.fireDelay(READINESS_DEADLINE_MS);
+        assert.equal(readinessTimeoutRecords(env).length, 3, 'three recorded readiness failures');
+        assert.equal(env.findTimer((timer) => timer.delayMs === READINESS_RETRY_DELAYS_MS[0] || timer.delayMs === READINESS_RETRY_DELAYS_MS[1]), undefined, 'no fourth attempt is scheduled');
+        assert.equal(env.hooks.extraction, 0, 'a never-ready table never extracts');
+        assert.deepEqual(env.hooks.snapshots, [], 'no snapshot is produced');
+        assert.equal(env.observers.filter((observer) => observer.active).length, 0, 'no observer survives the final terminal');
+        assert.equal(monitorEnvelope(booted, env), null, 'failed attempts never advance the baseline');
+        assert.equal(env.reloads.count, 0, 'no reload is requested by the retry loop itself');
+        assert.equal(env.hooks.retries.length, 2, 'exactly two re-arms were reported');
+
+        // Calling the exhausted deadline again is inert.
+        const stale = env.findTimer((timer) => timer.delayMs === READINESS_DEADLINE_MS);
+        assert.equal(stale, undefined, 'no deadline timer remains after the final terminal');
+    } finally { env.restore(); }
+});
+
+test('bounded readiness recovery: an accepted scan arms no retry and never re-extracts', () => {
+    const { env, booted } = bootReadinessDocument({ table: [shimMemberRow('101', 'Player 101')] });
+    try {
+        assert.equal(settleReadinessQuietWindow(env), true);
+        assert.equal(env.hooks.extraction, 1);
+        assert.deepEqual(env.hooks.snapshots, ['authoritative']);
+        assert.equal(env.findTimer((timer) => timer.delayMs === READINESS_DEADLINE_MS), undefined, 'no deadline remains after commit');
+        assert.equal(env.findTimer((timer) => timer.delayMs === READINESS_RETRY_DELAYS_MS[0] || timer.delayMs === READINESS_RETRY_DELAYS_MS[1]), undefined, 'a committed document never re-arms');
+        assert.equal(env.hooks.retries.length, 0);
+        assert.equal(env.reloads.count, 0);
+        assert.equal(env.hooks.generations.length, 1, 'exactly one monitor generation advance');
+    } finally { env.restore(); }
+});
+
+test('bounded readiness recovery: transient readiness after the first timeout commits exactly once with one delta', () => {
+    // Establish a real prior baseline through the artifact itself (attack count 0).
+    const baseline = captureBaselineEnvelope([shimMemberRow('101', 'Player 101')]);
+    assert.ok(baseline.raw, 'a prior authoritative envelope was committed');
+    const { env, booted } = bootReadinessDocument({
+        seedGM: { [`${script.MONITOR_ACTIVE_STORAGE_KEY_PREFIX}${READINESS_HOST}`]: baseline.raw }
+    });
+    try {
+        // First attempt must time out (no table yet).
+        env.fireDelay(READINESS_DEADLINE_MS);
+        assert.equal(env.hooks.extraction, 0);
+        assert.equal(env.hooks.retries.length, 1);
+
+        // Re-arm after 2s, then the canonical table (with one synthetic attack) hydrates.
+        env.fireDelay(READINESS_RETRY_DELAYS_MS[0]);
+        env.run(() => {
+            env.setAttackTable([shimMemberRow('101', 'Player 101', [shimAttackIcon('1 atak')])]);
+            env.trigger();
+        });
+        assert.equal(settleReadinessQuietWindow(env), true);
+
+        assert.equal(env.hooks.extraction, 1, 'exactly one extraction');
+        assert.equal(env.hooks.readiness, 1, 'exactly one readiness commit');
+        assert.deepEqual(env.hooks.snapshots, ['authoritative']);
+        assert.equal(env.hooks.generations.length, 1, 'exactly one monitor generation advance');
+
+        const envelope = monitorEnvelope(booted, env);
+        assert.ok(envelope, 'a committed monitor envelope exists');
+        assert.equal(envelope.pending.length, 1, 'exactly one queued delta');
+        assert.equal(envelope.pending[0].attackCount, 1);
+        assert.equal(env.hooks.extraction, 1);
+
+        // No further retry attempt after the successful commit.
+        assert.equal(env.findTimer((timer) => timer.delayMs === READINESS_DEADLINE_MS), undefined);
+        assert.equal(env.findTimer((timer) => timer.delayMs === READINESS_RETRY_DELAYS_MS[0] || timer.delayMs === READINESS_RETRY_DELAYS_MS[1]), undefined);
+        assert.equal(env.observers.length, 2, 'no third attempt after the retry committed');
+        assert.equal(monitorEnvelope(booted, env).pending.length, 1, 'no duplicate event on retry');
+    } finally { env.restore(); }
+});
+
+test('bounded readiness recovery: a mid-attempt lease loss cancels pending retries', () => {
+    const { env, booted } = bootReadinessDocument();
+    try {
+        env.fireDelay(READINESS_DEADLINE_MS);
+        assert.ok(env.findTimer((timer) => timer.delayMs === READINESS_RETRY_DELAYS_MS[0]), 'a retry is pending');
+
+        // Revoke the lease and let the renewal watchdog observe it.
+        env.run(() => env.localStorage.removeItem(booted.TAB_LEASE_STORAGE_KEY));
+        env.run(() => env.invoke(env.findTimer((timer) => timer.delayMs === booted.TAB_LEASE_RENEW_MS)));
+
+        assert.equal(env.body.dataset.taaLeaseState, 'leader');
+        assert.equal(env.hooks.standby.length, 1, 'the lease loss was observed');
+        assert.equal(env.findTimer((timer) => timer.delayMs === READINESS_RETRY_DELAYS_MS[0]), undefined, 'the pending retry is cleared on lease loss');
+        assert.equal(env.hooks.extraction, 0, 'lease loss never extracts');
+        assert.deepEqual(env.hooks.snapshots, [], 'lease loss never commits');
+        assert.equal(env.observers.length, 2, 'the same-document reacquisition gets a fresh bounded budget');
+        assert.ok(env.findTimer((timer) => timer.delayMs === READINESS_DEADLINE_MS), 'the reacquired document re-arms a full deadline');
+    } finally { env.restore(); }
+});
+
+test('bounded readiness recovery: a parser rejection consumes the retry budget without another attempt', () => {
+    const { env, booted } = bootReadinessDocument();
+    try {
+        env.fireDelay(READINESS_DEADLINE_MS);
+        env.fireDelay(READINESS_RETRY_DELAYS_MS[0]);
+        assert.equal(env.observers.length, 2);
+
+        // Duplicate player ids are a permanent parser rejection, not a timeout.
+        env.run(() => {
+            env.setAttackTable([shimMemberRow('101', 'Player 101'), shimMemberRow('101', 'Player 101')]);
+            env.trigger();
+        });
+        assert.equal(settleReadinessQuietWindow(env), true);
+
+        assert.equal(env.hooks.extraction, 1, 'the retry attempt reaches the parser once');
+        assert.equal(env.hooks.snapshots.includes('authoritative'), false, 'a parser rejection is never authoritative');
+        assert.equal(env.hooks.snapshotReasons.includes('duplicate-player-id'), true);
+        assert.equal(env.findTimer((timer) => timer.delayMs === READINESS_DEADLINE_MS), undefined, 'no deadline survives the parser terminal');
+        assert.equal(env.findTimer((timer) => timer.delayMs === READINESS_RETRY_DELAYS_MS[0] || timer.delayMs === READINESS_RETRY_DELAYS_MS[1]), undefined, 'a parser rejection never re-arms');
+        assert.equal(env.observers.length, 2, 'no third attempt after the parser terminal');
+        assert.equal(env.hooks.retries.length, 1, 'only the one timeout re-armed');
+        assert.equal(monitorEnvelope(booted, env), null, 'a parser rejection never advances the baseline');
+    } finally { env.restore(); }
+});
+
+test('draft-safe scheduled reload: at most three 10s rechecks, then one draft-close reload', () => {
+    const { env, booted } = bootReadinessDocument();
+    try {
+        const draftKey = `taa-draft:${READINESS_HOST}:overview`;
+        env.sessionStorage.setItem(draftKey, '{"version":1,"fields":{"taa-player-search":"draft"}}');
+
+        // Test-only panel-exit seam: every reload request is refused because a
+        // draft is unsaved; the continuation is retained, like the real panel's
+        // pending-exit confirmation does.
+        env.win.__TAA_TEST_HOOK__.requestPanelExit = (reason, continuation) => {
+            env.hooks.panelExitRequests.push(reason);
+            env.hooks.panelExitContinuations.push(continuation);
+            return false;
+        };
+        env.hooks.panelExitRequests = [];
+        env.hooks.panelExitContinuations = [];
+
+        // Fire the pre-existing random scheduled reload.
+        const reloadTimer = env.findTimer((timer) => timer.delayMs >= 60000);
+        env.run(() => env.invoke(reloadTimer));
+        assert.equal(env.hooks.panelExitRequests.length, 1, 'the scheduled reload is attempted once');
+
+        // Three bounded 10s rechecks.
+        for (let index = 0; index < 3; index += 1) {
+            assert.ok(env.findTimer((timer) => timer.delayMs === SCHEDULED_RELOAD_RECHECK_MS), `recheck ${index + 1} is scheduled at 10s`);
+            env.fireDelay(SCHEDULED_RELOAD_RECHECK_MS);
+        }
+        assert.equal(env.hooks.panelExitRequests.length, 4, 'the initial attempt plus three rechecks');
+        assert.equal(env.findTimer((timer) => timer.delayMs === SCHEDULED_RELOAD_RECHECK_MS), undefined, 'rechecks stop after three');
+        assert.equal(env.hooks.reloadBlocked.length, 1, 'an explicit blocked status is recorded once');
+        assert.equal(env.reloads.count, 0, 'the draft is never destroyed or bypassed');
+        assert.equal(env.sessionStorage.getItem(draftKey), '{"version":1,"fields":{"taa-player-search":"draft"}}', 'the draft is retained');
+
+        // When the draft is saved/closed the retained continuation performs the
+        // single reload.
+        const continuation = env.hooks.panelExitContinuations[env.hooks.panelExitContinuations.length - 1];
+        assert.equal(typeof continuation, 'function');
+        env.run(() => continuation());
+        assert.equal(env.reloads.count, 1, 'exactly one draft-close-triggered reload');
+    } finally { env.restore(); }
 });

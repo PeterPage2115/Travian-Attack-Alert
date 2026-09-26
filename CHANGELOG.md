@@ -39,6 +39,30 @@ rewritten here; it is noted as lineage only.
   `release/public-1.0.0`, and the generated header carries both directives.
   The stale `/main/` channel URL is gone; `main` does not exist on the remote.
 
+## 1.0.3 — scan reliability patch (release candidate)
+
+Patch candidate built off the installed `v1.0.2` tag; **not published**. The
+update channel keeps serving the prior artifact until the owner approves a
+separate publication. Semver patch: fixes only, no new feature and no schema
+break.
+
+- Readiness now re-evaluates the complete document transition (`load` /
+  `readystatechange`) and requires a stable, fully parseable canonical member
+  table, so a visible alliance list can no longer be starved by unrelated DOM
+  churn or an incomplete/late-hydrated table.
+- A transient pre-snapshot `readiness-timeout` re-arms at most two bounded
+  same-document attempts (2 s then 5 s) and still commits exactly once on
+  success; failed attempts never advance the baseline, duplicate an alert, or
+  send. A refused reload caused by an unsaved draft reschedules without
+  destroying the draft.
+- Bounded (512 KiB) incident exports retain the redacted scan reason and build
+  identity even when raw input is huge; older trace records are dropped first
+  and no unknown input key is copied to output.
+- Version identity moved to `1.0.3` / `taa-1.0.3` across `package.json`,
+  `package-lock.json`, the runtime, the generated artifact, sidecar, metadata,
+  and module manifest, the `tools/*` fallbacks, `docs/release-state.json`, the
+  README/docs identity claims, and the current-version test assertions.
+
 ## 1.0.2 — stable (owner-attested, published)
 
 Owner decision 2026-09-25: the `1.0.2` candidate is the stable target. All six

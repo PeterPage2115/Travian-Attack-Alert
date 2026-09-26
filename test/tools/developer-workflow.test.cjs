@@ -51,7 +51,7 @@ const REQUIRED_JOBS = ['offline-node-18', 'offline-node-20', 'browser-node-20', 
 const DEVELOPMENT_JOB = 'offline-node-22';
 const DEVELOPMENT_MAJOR = 22;
 const MAX_JOB_TIMEOUT_MINUTES = 180;
-const E2E_PER_SPEC_CEILING_MS = 480_000;
+const E2E_PER_SPEC_CEILING_MS = 600_000;
 const E2E_FIXED_OVERHEAD_MINUTES = 30;
 const RELEASE_GATE_COMMAND = 'npm run check:release -- --offline';
 const RELEASE_GATE_ORDER = [
@@ -220,7 +220,7 @@ test('the Node 22 job is bounded and delegates every gate category to the releas
   assert.ok(
     timeout >= e2eCeilingMinutes + E2E_FIXED_OVERHEAD_MINUTES,
     `${DEVELOPMENT_JOB} timeout ${timeout} must enclose the worst-case valid envelope:`
-    + ` ${specs} specs x 480 s = ${e2eCeilingMinutes} min plus ${E2E_FIXED_OVERHEAD_MINUTES} min of install/gate overhead`,
+    + ` ${specs} specs x 600 s = ${e2eCeilingMinutes} min plus ${E2E_FIXED_OVERHEAD_MINUTES} min of install/gate overhead`,
   );
   const runs = jobRuns(job);
   const requiredRuns = [
@@ -307,7 +307,7 @@ test('docs/DEVELOPMENT.md documents every required environment topic', () => {
     assert.match(install, pattern, `install section must document ${pattern}`);
   }
   const playwright = section(markdown, DEVELOPMENT_DOC_HEADINGS[3]);
-  for (const pattern of [/npx playwright install --with-deps chromium/u, /test:browser/u, /test:e2e/u, /check:release -- --offline/u, /NOT_EXECUTED/u, /480 s/u]) {
+  for (const pattern of [/npx playwright install --with-deps chromium/u, /test:browser/u, /test:e2e/u, /check:release -- --offline/u, /NOT_EXECUTED/u, /600 s/u]) {
     assert.match(playwright, pattern, `Playwright section must document ${pattern}`);
   }
   const backup = section(markdown, DEVELOPMENT_DOC_HEADINGS[4]);

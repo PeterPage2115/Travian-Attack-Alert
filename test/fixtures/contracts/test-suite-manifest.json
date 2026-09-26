@@ -293,7 +293,7 @@
       "id": "suite:test/e2e/readiness-late.spec.ts",
       "path": "test/e2e/readiness-late.spec.ts",
       "classification": "browser",
-      "expectedExecutionCount": 18,
+      "expectedExecutionCount": 48,
       "coverage": [
         "browser-runtime",
         "readiness-late"
@@ -612,7 +612,7 @@
   ],
   "totals": {
     "suiteCount": 59,
-    "expectedExecutionCount": 1270,
+    "expectedExecutionCount": 1300,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -620,7 +620,7 @@
       },
       "browser": {
         "suiteCount": 13,
-        "expectedExecutionCount": 361
+        "expectedExecutionCount": 391
       },
       "source-artifact": {
         "suiteCount": 16,

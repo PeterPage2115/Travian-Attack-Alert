@@ -11,7 +11,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 // Task 20's same-document lease reacquisition tests wait on the product's real
 // ~30 s lease-renewal cadence (≈70-150 s per project). Running them on all six
-// projects pushed the dual-tab-lease spec over `tools/run-e2e.cjs`'s hard 480 s
+// projects pushed the dual-tab-lease spec over `tools/run-e2e.cjs`'s hard 600 s
 // per-spec ceiling, so they live in their own spec file and run on ONE
 // representative desktop project only. This is a project FILTER (the file is
 // never collected for the other projects), not a `test.skip`: release mode
