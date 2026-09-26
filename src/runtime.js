@@ -243,6 +243,18 @@ const RELEASE_ID = "taa-1.0.2";
   const TAB_LEASE_RENEW_MS = 3e4;
   const TAB_LEASE_RETRY_MS = 1e4;
   const READINESS_QUIET_MS = 500;
+  // Bounded post-timeout recovery: one initial pre-snapshot readiness attempt
+  // plus two same-document re-arms (2s then 5s), each with its own 15s
+  // deadline. Exhausting them falls through to the pre-existing scheduled
+  // reload instead of spinning.
+  const READINESS_MAX_ATTEMPTS = 3;
+  const READINESS_RETRY_DELAYS_MS = [2000, 5000];
+  // A scheduled reload refused by an unsaved panel draft is rechecked at most
+  // three times; after that the runtime leaves an explicit blocked status and
+  // lets the panel's pending exit continuation perform the single reload when
+  // the draft is saved or discarded.
+  const SCHEDULED_RELOAD_RECHECK_MS = 10000;
+  const SCHEDULED_RELOAD_MAX_RECHECKS = 3;
   const STARTUP_ACQUIRE_JITTER_MIN_MS = 25;
   const STARTUP_ACQUIRE_JITTER_MAX_MS = 250;
   const MAX_ATTEMPT_COUNT = 3;
@@ -325,6 +337,15 @@ const RELEASE_ID = "taa-1.0.2";
   let scanCycleId = null;
   let scheduledReloadTimerId = null;
   let flushTimerId = null;
+  // Bounded pre-snapshot attempt state, distinct from the permanent
+  // scanAttemptedForDocument successful-commit guard: only a
+  // readiness-timeout consumes a retry.
+  let readinessRetryTimerId = null;
+  let preSnapshotAttemptCount = 0;
+  let scheduledReloadRecheckTimerId = null;
+  let scheduledReloadRecheckCount = 0;
+  let scheduledReloadBlocked = false;
+  let lastReloadRefusalOutcome = null;
   let followerWatchdogTimerId = null;
   let followerWatchdogCheck = null;
   const lifecycleTimerIds = /* @__PURE__ */ new Set();
@@ -474,21 +495,45 @@ const RELEASE_ID = "taa-1.0.2";
       clearTimeout(scheduledReloadTimerId);
       scheduledReloadTimerId = null;
     }
+    clearReadinessRetryTimer();
+    clearScheduledReloadRecheck();
     if (flushTimerId !== null) {
       clearTimeout(flushTimerId);
       flushTimerId = null;
     }
   }
   function requestPanelExit(reason, continuation) {
+    if (typeof window !== "undefined" && window.__TAA_TEST_HOOK__ && typeof window.__TAA_TEST_HOOK__.requestPanelExit === "function") {
+      return window.__TAA_TEST_HOOK__.requestPanelExit(reason, continuation) === true;
+    }
     return typeof adminPanelRequestExit === "function" ? adminPanelRequestExit(reason, continuation) : false;
   }
+  function hasPanelExitGate() {
+    if (typeof adminPanelRequestExit === "function") return true;
+    return typeof window !== "undefined" && window.__TAA_TEST_HOOK__ && typeof window.__TAA_TEST_HOOK__.requestPanelExit === "function";
+  }
+  function clearReadinessRetryTimer() {
+    if (readinessRetryTimerId === null) return;
+    clearTimeout(readinessRetryTimerId);
+    lifecycleTimerIds.delete(readinessRetryTimerId);
+    readinessRetryTimerId = null;
+  }
+  function clearScheduledReloadRecheck() {
+    if (scheduledReloadRecheckTimerId === null) return;
+    clearTimeout(scheduledReloadRecheckTimerId);
+    lifecycleTimerIds.delete(scheduledReloadRecheckTimerId);
+    scheduledReloadRecheckTimerId = null;
+  }
   function requestLifecycleReload(reason, allowFollowerTakeover = false) {
+    lastReloadRefusalOutcome = null;
     if (!tabLeaseActive && !allowFollowerTakeover) {
+      lastReloadRefusalOutcome = "lease-lost-before-reload";
       recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("lease-lost-before-reload", scanCycleId));
       return false;
     }
     const reload = () => {
       if (typeof location === "undefined" || typeof location.reload !== "function") {
+        lastReloadRefusalOutcome = "reload-unavailable";
         recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("reload-unavailable", scanCycleId));
         return false;
       }
@@ -501,16 +546,60 @@ const RELEASE_ID = "taa-1.0.2";
       location.reload();
       return true;
     };
-    if (typeof adminPanelRequestExit === "function") {
+    if (hasPanelExitGate()) {
       const accepted = requestPanelExit("reload", reload);
-      if (!accepted) recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("reload-blocked-by-draft", scanCycleId));
+      if (!accepted) {
+        lastReloadRefusalOutcome = "reload-blocked-by-draft";
+        recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("reload-blocked-by-draft", scanCycleId));
+      }
       return accepted;
     }
     if (typeof adminDraftReloadGate === "function" && !adminDraftReloadGate()) {
+      lastReloadRefusalOutcome = "reload-blocked-by-draft";
       recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), classifyReloadRefusal("reload-blocked-by-draft", scanCycleId));
       return false;
     }
     return reload();
+  }
+  function scheduleScheduledReloadRecheck(reason) {
+    if (scheduledReloadBlocked || !tabLeaseActive) return;
+    if (scheduledReloadRecheckCount >= SCHEDULED_RELOAD_MAX_RECHECKS) {
+      scheduledReloadBlocked = true;
+      recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), {
+        stage: "reload",
+        status: "blocked",
+        reason: "reload-blocked-by-draft",
+        scanId: scanCycleId
+      });
+      reportLifecycleHook("onReloadBlocked", {
+        attempts: scheduledReloadRecheckCount,
+        reason: "reload-blocked-by-draft"
+      });
+      return;
+    }
+    scheduledReloadRecheckCount += 1;
+    clearScheduledReloadRecheck();
+    scheduledReloadRecheckTimerId = scheduleLifecycleTimeout(() => {
+      scheduledReloadRecheckTimerId = null;
+      if (!tabLeaseActive || scheduledReloadBlocked) return;
+      requestScheduledReload(reason);
+    }, SCHEDULED_RELOAD_RECHECK_MS);
+  }
+  function requestScheduledReload(reason) {
+    if (scheduledReloadBlocked) return false;
+    const accepted = requestLifecycleReload(reason);
+    if (accepted) {
+      scheduledReloadBlocked = false;
+      scheduledReloadRecheckCount = 0;
+      clearScheduledReloadRecheck();
+      return true;
+    }
+    if (lastReloadRefusalOutcome !== "reload-blocked-by-draft") {
+      clearScheduledReloadRecheck();
+      return false;
+    }
+    scheduleScheduledReloadRecheck(reason);
+    return false;
   }
   function normalizeAdminDraftScope(scope) {
     const source = scope && typeof scope === "object" && !Array.isArray(scope) ? scope : {};
@@ -7308,6 +7397,7 @@ ${entry.line}`;
     scanDeadlineTimerId = null;
   }
   function teardownReadinessObserver() {
+    clearReadinessRetryTimer();
     if (readinessTimerId !== null) {
       clearTimeout(readinessTimerId);
       lifecycleTimerIds.delete(readinessTimerId);
@@ -7341,6 +7431,14 @@ ${entry.line}`;
       readinessPageHideListener = null;
     }
   }
+  function recordScanTerminalTrace(outcome) {
+    recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), {
+      stage: String(outcome.stage),
+      status: String(outcome.status),
+      reason: String(outcome.reason),
+      scanId: scanCycleId
+    });
+  }
   function emitScanCycleTerminal(outcome) {
     if (!isScanTerminalRecord(outcome) || scanAttemptedForDocument) return false;
     scanAttemptedForDocument = true;
@@ -7350,13 +7448,39 @@ ${entry.line}`;
     }
     clearScanDeadlineTimer();
     teardownReadinessObserver();
-    recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), {
-      stage: String(outcome.stage),
-      status: String(outcome.status),
-      reason: String(outcome.reason),
-      scanId: scanCycleId
-    });
+    recordScanTerminalTrace(outcome);
     return true;
+  }
+  function scheduleReadinessRetry(retryIndex) {
+    if (scanAttemptedForDocument || !tabLeaseActive) return;
+    const delayMs = READINESS_RETRY_DELAYS_MS[retryIndex];
+    if (!Number.isFinite(delayMs)) return;
+    clearReadinessRetryTimer();
+    readinessRetryTimerId = scheduleLifecycleTimeout(() => {
+      readinessRetryTimerId = null;
+      if (scanAttemptedForDocument || !tabLeaseActive) return;
+      installReadinessObserver();
+    }, delayMs);
+  }
+  function handlePreSnapshotTimeout(outcome) {
+    if (scanAttemptedForDocument) return;
+    teardownReadinessObserver();
+    preSnapshotAttemptCount += 1;
+    if (preSnapshotAttemptCount < READINESS_MAX_ATTEMPTS) {
+      recordScanTerminalTrace(outcome);
+      scheduleReadinessRetry(preSnapshotAttemptCount - 1);
+      reportLifecycleHook("onReadinessRetry", {
+        attempt: preSnapshotAttemptCount,
+        nextDelayMs: READINESS_RETRY_DELAYS_MS[preSnapshotAttemptCount - 1] || null,
+        reason: "readiness-timeout"
+      });
+      return;
+    }
+    finishScanCycle(outcome);
+    reportLifecycleHook("onReadinessExhausted", {
+      attempts: preSnapshotAttemptCount,
+      reason: "readiness-timeout"
+    });
   }
   function finishScanCycle(outcome) {
     return emitScanCycleTerminal(Object.assign({}, outcome, { scanId: scanCycleId }));
@@ -7368,6 +7492,7 @@ ${entry.line}`;
     scanAttemptedForDocument = false;
     lastScanTerminalForDocument = null;
     scanCycleId = null;
+    preSnapshotAttemptCount = 0;
     return true;
   }
   function pageLooksLoaded() {
@@ -7569,7 +7694,7 @@ ${entry.line}`;
         finishScanCycle(decideScanCycleOutcome({ leaseHeld: false }));
         return;
       }
-      finishScanCycle(decideScanCycleOutcome({
+      handlePreSnapshotTimeout(decideScanCycleOutcome({
         elapsedMs: SCAN_CYCLE_DEADLINE_MS,
         quietMs: quietElapsedMs(),
         leaseHeld: true,
@@ -8075,7 +8200,7 @@ ${entry.line}`;
           nextReloadAtMs
         );
         mergeRuntimeDiagnostics(hostname, { visibility: visibilityDriftState });
-        requestLifecycleReload("scheduled-refresh");
+        requestScheduledReload("scheduled-refresh");
         return;
       }
       const startedAtMs = Date.now();
@@ -8090,7 +8215,7 @@ ${entry.line}`;
           elapsedMs,
           DRAIN_MAX_WAIT_MS
         )) {
-          requestLifecycleReload("scheduled-refresh-after-drain");
+          requestScheduledReload("scheduled-refresh-after-drain");
           return;
         }
         scheduleLifecycleTimeout(drainCheck, DRAIN_POLL_MS);
@@ -10254,6 +10379,7 @@ ${entry.line}`;
                 lastScanTerminalForDocument = null;
                 authoritativeScanForDocument = false;
                 scanCycleId = null;
+                preSnapshotAttemptCount = 0;
                 alert(
                   "Attack memory cleared for this world. The next accepted scan establishes a fresh baseline and does not clear site data."
                 );

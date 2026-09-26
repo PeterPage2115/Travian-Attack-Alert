@@ -257,18 +257,22 @@ test('a mutation-free interactive to complete transition is scanned exactly once
 
 // Bounded failure path: the subresource stays parked past the 15s scan-cycle
 // deadline, so no scan may be accepted and the rejection must be classified
-// as readiness-timeout with the monitor baseline untouched.
+// as readiness-timeout with the monitor baseline untouched. Task 6 bounds the
+// recovery: after the first timeout the runtime re-arms a second same-document
+// attempt (2s, then 5s) instead of committing or spinning.
 test('a document held interactive past the scan deadline is rejected without a baseline advance', async ({ page }, testInfo) => {
   const runtime = await installArtifactRuntime(page, { path: '/alliance/profile/members', holdInteractive: true, ns: testInfo.workerIndex });
   const armedAtMs = Date.now();
   const beforeInstall = await runtime.readProbe();
   expect(beforeInstall.readyState).toBe('interactive');
   const terminal = await waitForTerminalRecord(page, 20_000);
+  await expect.poll(async () => (await readEvents(page)).filter((event) => event.kind === 'readiness-retry').length, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
   const atTerminal = await runtime.readProbe();
   const observedAtMs = Date.now();
   const events = await page.evaluate(() => window.__TAA_E2E_EVENTS__ ?? []);
   const requests = await page.evaluate(() => window.__TAA_REQUESTS__ ?? []);
   const monitorKeys = await page.evaluate((prefix: string) => Object.keys(localStorage).filter((key) => key.startsWith(prefix)), MONITOR_KEY_PREFIX);
+  const readinessRetries = events.filter((event) => event.kind === 'readiness-retry');
   const report = {
     test: 'a document held interactive past the scan deadline is rejected without a baseline advance',
     readyStates: atTerminal.readyStates,
@@ -277,6 +281,7 @@ test('a document held interactive past the scan deadline is rejected without a b
     readinessEvents: events.filter((event) => event.kind === 'readiness').length,
     snapshots: events.filter((event) => event.kind === 'snapshot').length,
     extractionEvents: events.filter((event) => event.kind === 'extraction').length,
+    readinessRetries,
     terminal: terminal ?? null,
     elapsedArmedToTerminalMs: observedAtMs - armedAtMs,
     monitorKeys,
@@ -289,6 +294,7 @@ test('a document held interactive past the scan deadline is rejected without a b
   expect(report.extractionEvents).toBe(0);
   expect(monitorKeys).toHaveLength(0);
   expect(requests).toHaveLength(0);
+  expect(readinessRetries[0]).toMatchObject({ attempt: 1, nextDelayMs: 2000 });
   await runtime.releaseHeldLoad();
 });
 

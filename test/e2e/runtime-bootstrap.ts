@@ -257,6 +257,13 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
       // clock; task-3 uses it to prove no extraction happened before the
       // member table was hydrated.
       onSnapshot: (payload: Record<string, unknown>) => events.push({ kind: 'snapshot', status: payload.status, reason: payload.reason, atMs: payload.observedAtMs }),
+      // Task 6: bounded post-timeout recovery observability. `onReadinessRetry`
+      // proves a failed pre-snapshot attempt re-armed (attempt + next delay);
+      // `onReadinessExhausted` proves the bounded budget ran out; `onReloadBlocked`
+      // proves a draft-refused scheduled reload reached its explicit blocked state.
+      onReadinessRetry: (payload: Record<string, unknown>) => events.push({ kind: 'readiness-retry', attempt: payload.attempt, nextDelayMs: payload.nextDelayMs }),
+      onReadinessExhausted: (payload: Record<string, unknown>) => events.push({ kind: 'readiness-exhausted', attempts: payload.attempts }),
+      onReloadBlocked: (payload: Record<string, unknown>) => events.push({ kind: 'reload-blocked', attempts: payload.attempts }),
     };
     window.GM_xmlhttpRequest = (options: { readonly method: string; readonly url: string; readonly data?: string; readonly onload?: (response: { readonly status: number; readonly responseText: string }) => void; readonly onerror?: (error: unknown) => void }) => {
       const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook${nsQuery}` : options.url;
