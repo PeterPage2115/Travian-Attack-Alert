@@ -118,8 +118,8 @@ async function collectCase(
     : events.filter((event) => event.kind === 'snapshot' && typeof event.atMs === 'number' && event.atMs < hydratedAt).length;
   const acceptedBeforeHydration = hydratedAt === null
     ? 0
-    : events.filter((event) => event.kind === 'snapshot' && event.status === 'ok' && event.reason === 'authoritative' && typeof event.atMs === 'number' && event.atMs < hydratedAt).length;
-  const acceptedSnapshots = events.filter((event) => event.kind === 'snapshot' && event.status === 'ok' && event.reason === 'authoritative').length;
+    : events.filter((event) => event.kind === 'snapshot' && event.status === 'authoritative' && typeof event.atMs === 'number' && event.atMs < hydratedAt).length;
+  const acceptedSnapshots = events.filter((event) => event.kind === 'snapshot' && event.status === 'authoritative').length;
   return {
     test: testName,
     case: caseId,

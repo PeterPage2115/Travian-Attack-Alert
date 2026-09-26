@@ -336,6 +336,11 @@ const RELEASE_ID = "taa-1.0.2";
   let adminPanelOpener = null;
   let adminRecoveryActions = null;
   let readinessStartedAtMono = null;
+  // Module-scoped so every terminal path can remove the readiness listeners.
+  let readinessReadyStateListener = null;
+  let readinessDomContentLoadedListener = null;
+  let readinessLoadListener = null;
+  let readinessPageHideListener = null;
   let visibilityDriftState = null;
   function monotonicNow() {
     if (typeof performance !== "undefined" && typeof performance.now === "function") {
@@ -459,10 +464,7 @@ const RELEASE_ID = "taa-1.0.2";
       clearTimeout(id);
     }
     lifecycleTimerIds.clear();
-    if (readinessTimerId !== null) {
-      clearTimeout(readinessTimerId);
-      readinessTimerId = null;
-    }
+    teardownReadinessObserver();
     if (scanDeadlineTimerId !== null) {
       clearTimeout(scanDeadlineTimerId);
       lifecycleTimerIds.delete(scanDeadlineTimerId);
@@ -475,10 +477,6 @@ const RELEASE_ID = "taa-1.0.2";
     if (flushTimerId !== null) {
       clearTimeout(flushTimerId);
       flushTimerId = null;
-    }
-    if (readinessObserver) {
-      readinessObserver.disconnect();
-      readinessObserver = null;
     }
   }
   function requestPanelExit(reason, continuation) {
@@ -7309,6 +7307,40 @@ ${entry.line}`;
     lifecycleTimerIds.delete(scanDeadlineTimerId);
     scanDeadlineTimerId = null;
   }
+  function teardownReadinessObserver() {
+    if (readinessTimerId !== null) {
+      clearTimeout(readinessTimerId);
+      lifecycleTimerIds.delete(readinessTimerId);
+      readinessTimerId = null;
+    }
+    if (readinessObserver) {
+      readinessObserver.disconnect();
+      readinessObserver = null;
+    }
+    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+      if (readinessReadyStateListener) {
+        document.removeEventListener("readystatechange", readinessReadyStateListener);
+        readinessReadyStateListener = null;
+      }
+      if (readinessDomContentLoadedListener) {
+        document.removeEventListener("DOMContentLoaded", readinessDomContentLoadedListener);
+        readinessDomContentLoadedListener = null;
+      }
+    }
+    if (typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+      if (readinessLoadListener) {
+        window.removeEventListener("load", readinessLoadListener);
+        readinessLoadListener = null;
+      }
+      if (readinessPageHideListener) {
+        window.removeEventListener("pagehide", readinessPageHideListener);
+        readinessPageHideListener = null;
+      }
+    } else {
+      readinessLoadListener = null;
+      readinessPageHideListener = null;
+    }
+  }
   function emitScanCycleTerminal(outcome) {
     if (!isScanTerminalRecord(outcome) || scanAttemptedForDocument) return false;
     scanAttemptedForDocument = true;
@@ -7317,14 +7349,7 @@ ${entry.line}`;
       authoritativeScanForDocument = true;
     }
     clearScanDeadlineTimer();
-    if (readinessTimerId !== null) {
-      clearTimeout(readinessTimerId);
-      readinessTimerId = null;
-    }
-    if (readinessObserver) {
-      readinessObserver.disconnect();
-      readinessObserver = null;
-    }
+    teardownReadinessObserver();
     recordDiagnosticTraceV2(normalizeHostname(typeof location !== "undefined" ? location.hostname : ""), {
       stage: String(outcome.stage),
       status: String(outcome.status),
@@ -7369,33 +7394,120 @@ ${entry.line}`;
       hasPlayerRow
     );
   }
+  function memberTableHasParseableRow(table) {
+    if (!table || typeof table.querySelectorAll !== "function") return false;
+    for (const row of table.querySelectorAll("tr")) {
+      if (!row || typeof row.querySelectorAll !== "function") continue;
+      for (const link of row.querySelectorAll("a")) {
+        const href = link.getAttribute("href") || "";
+        if (extractPlayerId(href) !== null) return true;
+      }
+    }
+    return false;
+  }
+  function readinessNodeIsInsidePanel(node) {
+    const element = node && node.nodeType === 1 ? node : node && node.parentElement;
+    if (!element || typeof element.closest !== "function") return false;
+    try {
+      return element.closest("#taa-panel-overlay, #taa-open-panel") !== null;
+    } catch (error) {
+      return false;
+    }
+  }
+  function readinessNodeTouchesMemberTable(node) {
+    if (!node) return false;
+    if (node.nodeType !== 1) {
+      const parent = node.parentElement;
+      return parent ? readinessNodeTouchesMemberTable(parent) : false;
+    }
+    if (typeof node.matches === "function" && node.matches("table.allianceMembers")) return true;
+    if (typeof node.closest === "function" && node.closest("table.allianceMembers")) return true;
+    if (typeof node.querySelector === "function" && node.querySelector("table.allianceMembers")) return true;
+    return false;
+  }
+  // Member-table churn only; unrelated churn and the monitor panel are ignored.
+  function readinessMutationTouchesMemberTable(record) {
+    if (!record || !record.target) return false;
+    const target = record.target;
+    if (readinessNodeIsInsidePanel(target)) return false;
+    if (record.type === "childList") {
+      if (target.nodeType === 1 && typeof target.closest === "function" && target.closest("table.allianceMembers")) return true;
+      const added = record.addedNodes || [];
+      for (let index = 0; index < added.length; index += 1) {
+        if (readinessNodeTouchesMemberTable(added[index])) return true;
+      }
+      const removed = record.removedNodes || [];
+      for (let index = 0; index < removed.length; index += 1) {
+        if (readinessNodeTouchesMemberTable(removed[index])) return true;
+      }
+      return false;
+    }
+    if (record.type === "attributes") {
+      if (target.nodeType !== 1) return false;
+      if (typeof target.matches === "function" && target.matches("table.allianceMembers")) return true;
+      if (typeof target.closest === "function" && target.closest("table.allianceMembers")) return true;
+      const name = String(record.attributeName || "");
+      const tableSignals = name === "class" || name === "data-partial" || name === "data-pagination" || name === "data-filtered" || name === "data-filter";
+      return Boolean(tableSignals && typeof target.matches === "function" && target.matches("table"));
+    }
+    if (record.type === "characterData") {
+      return readinessNodeTouchesMemberTable(target);
+    }
+    return false;
+  }
   function installReadinessObserver() {
     if (typeof document === "undefined" || typeof MutationObserver !== "function") {
       return;
     }
     if (scanAttemptedForDocument) return;
+    teardownReadinessObserver();
     if (scanCycleId === null) scanCycleId = createScanCycleId(String(Date.now()) + ":" + String(monotonicNow()));
     readinessStartedAtMono = monotonicNow();
-    let lastMutationAtMs = Date.now() - READINESS_QUIET_MS;
+    // Fail-closed: the quiet window is not pre-seeded; it starts on first observed table+row.
+    let lastRelevantAtMs = null;
+    const initialSelection = selectMemberTable(document);
+    let lastSelectionStatus = initialSelection.status;
+    let lastSelectionReason = initialSelection.reason || null;
+    let lastSelectedTable = initialSelection.table || null;
+    const quietElapsedMs = () => lastRelevantAtMs === null ? 0 : Date.now() - lastRelevantAtMs;
+    const scheduleCheck = () => {
+      if (readinessTimerId !== null) {
+        clearTimeout(readinessTimerId);
+        lifecycleTimerIds.delete(readinessTimerId);
+      }
+      const remaining = Math.max(0, READINESS_QUIET_MS - quietElapsedMs());
+      readinessTimerId = scheduleLifecycleTimeout(check, remaining);
+    };
     const check = () => {
-      readinessTimerId = null;
+      if (readinessTimerId !== null) {
+        clearTimeout(readinessTimerId);
+        lifecycleTimerIds.delete(readinessTimerId);
+        readinessTimerId = null;
+      }
       if (scanAttemptedForDocument || !tabLeaseActive) {
         return;
       }
-      const tablePresent = selectMemberTable(document).status === "accepted";
-      const quietMs = Date.now() - lastMutationAtMs;
+      const selection = selectMemberTable(document);
+      const tableAccepted = selection.status === "accepted";
+      const hasParseableRow = tableAccepted && memberTableHasParseableRow(selection.table);
+      if (hasParseableRow && lastRelevantAtMs === null) {
+        lastRelevantAtMs = Date.now();
+      }
+      const quietMs = quietElapsedMs();
       if (!isReadinessReady(
         document.readyState,
-        tablePresent,
+        hasParseableRow,
         quietMs
       )) {
+        // Complete may arrive before the quiet window closes; schedule the remainder.
+        if (document.readyState === "complete" && hasParseableRow) {
+          scheduleCheck();
+        }
         return;
       }
+      // Recheck the authoritative parser before persisting; no baseline advance on rejection.
       clearScanDeadlineTimer();
-      if (readinessObserver) {
-        readinessObserver.disconnect();
-        readinessObserver = null;
-      }
+      teardownReadinessObserver();
       reportLifecycleHook("onReadinessCommit", {
         atMs: Date.now(),
         quietMs,
@@ -7403,18 +7515,25 @@ ${entry.line}`;
       });
       scanAttacks(false);
     };
-    const scheduleCheck = () => {
-      if (readinessTimerId !== null) {
-        clearTimeout(readinessTimerId);
+    readinessObserver = new MutationObserver((records) => {
+      let relevant = false;
+      for (let index = 0; index < records.length; index += 1) {
+        if (readinessMutationTouchesMemberTable(records[index])) {
+          relevant = true;
+          break;
+        }
       }
-      const remaining = Math.max(
-        0,
-        READINESS_QUIET_MS - (Date.now() - lastMutationAtMs)
-      );
-      readinessTimerId = scheduleLifecycleTimeout(check, remaining);
-    };
-    readinessObserver = new MutationObserver(() => {
-      lastMutationAtMs = Date.now();
+      const selection = selectMemberTable(document);
+      const selectedTable = selection.table || null;
+      const selectionReason = selection.reason || null;
+      if (selection.status !== lastSelectionStatus || selectionReason !== lastSelectionReason || selectedTable !== lastSelectedTable) {
+        lastSelectionStatus = selection.status;
+        lastSelectionReason = selectionReason;
+        lastSelectedTable = selectedTable;
+        relevant = true;
+      }
+      if (!relevant) return;
+      lastRelevantAtMs = Date.now();
       scheduleCheck();
     });
     readinessObserver.observe(
@@ -7426,7 +7545,23 @@ ${entry.line}`;
         characterData: true
       }
     );
-    document.addEventListener("DOMContentLoaded", check, { once: true });
+    const reevaluate = () => {
+      if (scanAttemptedForDocument || !tabLeaseActive) return;
+      check();
+    };
+    readinessReadyStateListener = reevaluate;
+    readinessDomContentLoadedListener = check;
+    readinessLoadListener = reevaluate;
+    readinessPageHideListener = () => {
+      clearScanDeadlineTimer();
+      teardownReadinessObserver();
+    };
+    document.addEventListener("readystatechange", readinessReadyStateListener);
+    document.addEventListener("DOMContentLoaded", readinessDomContentLoadedListener, { once: true });
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("load", readinessLoadListener);
+      window.addEventListener("pagehide", readinessPageHideListener);
+    }
     scanDeadlineTimerId = scheduleLifecycleTimeout(() => {
       scanDeadlineTimerId = null;
       if (scanAttemptedForDocument) return;
@@ -7436,7 +7571,7 @@ ${entry.line}`;
       }
       finishScanCycle(decideScanCycleOutcome({
         elapsedMs: SCAN_CYCLE_DEADLINE_MS,
-        quietMs: Date.now() - lastMutationAtMs,
+        quietMs: quietElapsedMs(),
         leaseHeld: true,
         parserResult: null
       }));

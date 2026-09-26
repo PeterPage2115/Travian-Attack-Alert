@@ -250,6 +250,21 @@ function freshRuntime() {
   return require(runtimePath);
 }
 
+// The product now requires a full quiet window after the first member-table
+// observation; advance the shim clock rather than real time so the captured
+// readiness check sees the window elapsed.
+function settleReadinessQuietWindow(env) {
+  const readinessTimer = env.findTimer((timer) => timer.delayMs <= 1000);
+  if (!readinessTimer) return;
+  const nativeNow = Date.now;
+  Date.now = () => nativeNow() + 1000;
+  try {
+    env.run(() => env.invoke(readinessTimer));
+  } finally {
+    Date.now = nativeNow;
+  }
+}
+
 // Boots one leader document and runs the startup jitter timer synchronously.
 function bootLeaderDocument(options = {}) {
   const env = createRuntimeBootShim();
@@ -257,6 +272,7 @@ function bootLeaderDocument(options = {}) {
   const booted = freshRuntime();
   env.run(() => booted.startBrowserRuntime());
   env.run(() => env.invoke(env.findTimer((timer) => timer.delayMs < 1000)));
+  settleReadinessQuietWindow(env);
   return { env, booted };
 }
 
