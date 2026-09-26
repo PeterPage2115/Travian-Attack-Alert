@@ -4,7 +4,7 @@ Alliance attack, raid, and departure alerts from Travian to your own Discord ser
 
 **English** | [Polski](README.pl.md)
 
-> **Release:** `1.0.3` candidate (unpublished) · **Live:** v1.0.2 (stable) · **License:** MIT · **[Install ↓](#install)** · **[Documentation](docs/README.md)**
+> **Release:** [v1.0.3](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.3) (stable) · **Live:** v1.0.3 · **License:** MIT · **[Install ↓](#install)** · **[Documentation](docs/README.md)**
 
 ![Synthetic screenshot of the Travian Attack Alert operations panel: the Alliance alert monitor dialog with the Overview, Players, Alerts, and Diagnostics tabs, leader status, accepted-scan status lines, and an established baseline.](docs/assets/panel-overview.png)
 
@@ -12,14 +12,14 @@ Alliance attack, raid, and departure alerts from Travian to your own Discord ser
 
 ## What it does
 
-The script watches the alliance members table on your Travian world and pings your Discord when new attacks, raids, or departures appear. It keeps a delta baseline, so the first accepted scan is silent and only what changed since the previous scan produces alerts. Everything runs locally in your browser tab: the Travian session never leaves your machine, and the Discord webhook lives only in your userscript manager. Current build: `1.0.3` (`taa-1.0.3`), an unpublished release candidate pending owner sign-off.
+The script watches the alliance members table on your Travian world and pings your Discord when new attacks, raids, or departures appear. It keeps a delta baseline, so the first accepted scan is silent and only what changed since the previous scan produces alerts. Everything runs locally in your browser tab: the Travian session never leaves your machine, and the Discord webhook lives only in your userscript manager. Current build: `1.0.3` (`taa-1.0.3`), the current published stable release.
 
 ## Install
 
 1. Install a userscript manager: [Tampermonkey for Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo) or [Tampermonkey for Firefox](https://addons.mozilla.org/firefox/addon/tampermonkey/).
 2. Open the installer from the [latest GitHub Release](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest) and confirm the Tampermonkey prompt. The one-click asset is [`travian-attack-alert.user.js`](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest/download/travian-attack-alert.user.js).
 3. On Chrome 138+ with Tampermonkey 5.3+, turn on **Allow User Scripts** (or Developer Mode). Without it the browser runs no userscript at all: no panel, no menu, no scan, no alert. This is Tampermonkey FAQ Q209.
-4. Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version v1.0.2.
+4. Confirm the installed script shows name `Travian Attack Alert`, namespace `travian-attack-alert-public`, and version v1.0.3.
 
 Updates arrive automatically through the script's `@updateURL` channel on the `release/public-1.0.0` branch, so a manager that honors it pulls the current file without manual work. Reinstalling from the latest release applies a new version too. Never enable two senders at once during an update.
 
@@ -159,4 +159,4 @@ Travian Attack Alert is an unofficial fan tool. It is not affiliated with, endor
 
 ---
 
-This page documents the Tampermonkey **1.0.3** userscript candidate, identified by release ID `taa-1.0.3`. The current published release is [v1.0.2](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest).
+This page documents the Tampermonkey **1.0.3** userscript, identified by release ID `taa-1.0.3`. The current published release is [v1.0.3](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.3).
