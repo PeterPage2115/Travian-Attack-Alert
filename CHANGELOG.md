@@ -39,12 +39,14 @@ rewritten here; it is noted as lineage only.
   `release/public-1.0.0`, and the generated header carries both directives.
   The stale `/main/` channel URL is gone; `main` does not exist on the remote.
 
-## 1.0.3 — scan reliability patch (release candidate)
+## 1.0.3 — scan reliability patch (stable, published)
 
-Patch candidate built off the installed `v1.0.2` tag; **not published**. The
-update channel keeps serving the prior artifact until the owner approves a
-separate publication. Semver patch: fixes only, no new feature and no schema
-break.
+Patch built off the installed `v1.0.2` tag. It is published as an immutable
+GitHub Release on 2026-09-26 (release id 397408960; two public assets: the
+userscript and its `.sha256` checksum sidecar). `docs/release-state.json`
+records `stable: true` with every owner gate populated and
+`publication.tagAndRelease: true` for the `v1.0.3` tag. Semver patch: fixes
+only, no new feature and no schema break.
 
 - Readiness now re-evaluates the complete document transition (`load` /
   `readystatechange`) and requires a stable, fully parseable canonical member
