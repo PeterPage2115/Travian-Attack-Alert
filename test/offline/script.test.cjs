@@ -1540,6 +1540,115 @@ test('bounded incident and settings exports carry a redacted textual reason', ()
 });
 
 // ---------------------------------------------------------------------------
+// Bounded incident export against oversized synthetic inputs (task 4, RED
+// before the task-7 repair): a huge raw input must not discard the small
+// redacted safe summary, and any truncation must keep the fixed core.
+// ---------------------------------------------------------------------------
+
+// Version-aware on purpose: the tagged base is 1.0.2 and task 8 bumps the
+// patch release; comparing against package.json keeps this contract green
+// across the bump without editing the assertion.
+const ACTIVE_PACKAGE_VERSION = require('../../package.json').version;
+
+function incidentSentinelPayload() {
+    return {
+        webhookUrl: 'https://discord.com/api/webhooks/WEBHOOK_SENTINEL_DO_NOT_LEAK',
+        webhookToken: 'token=TOKEN_SENTINEL_DO_NOT_LEAK',
+        playerId: 'player-sentinel-id-000',
+        playerName: 'Player Sentinel Name DO NOT LEAK',
+        cookie: 'cookie-sentinel=SESSION_DO_NOT_LEAK',
+        rawPayload: 'RAW_PAYLOAD_SENTINEL_DO_NOT_LEAK',
+        rawDom: '<div data-player="player-sentinel-id-000">RAW_DOM_SENTINEL_DO_NOT_LEAK</div>'
+    };
+}
+
+function incidentSafeCore() {
+    return {
+        routeRole: 'canonical-member',
+        leaseGeneration: 3,
+        webhookConfigured: true,
+        traces: [{ sequence: 1, scanId: 'sc1:abcd1234', stage: 'snapshot', status: 'rejected', reason: 'readiness-timeout' }],
+        envelope: {
+            generation: 4,
+            pending: [{ sourceEventIds: ['a', 'b'] }],
+            inFlight: [{ sourceEventIds: ['c'] }],
+            failed: [],
+            uncertain: [],
+            metrics: { deliveryAccounting: { terminal: [], dispatchPlans: [] }, conservation: {} }
+        }
+    };
+}
+
+function assertIncidentSentinelsAbsent(serialized) {
+    for (const [name, sentinel] of Object.entries(incidentSentinelPayload())) {
+        assert.equal(serialized.includes(sentinel), false, `${name} sentinel leaked`);
+    }
+    assert.equal(serialized.includes('discord.com'), false, 'webhook host leaked');
+    assert.equal(serialized.includes('cookie-sentinel'), false, 'cookie name leaked');
+}
+
+test('oversized raw incident input keeps the redacted scan reason instead of a useless stub', () => {
+    const input = Object.assign(incidentSafeCore(), {
+        rawPayload: Object.assign(incidentSentinelPayload(), { filler: 'x'.repeat(560 * 1024) })
+    });
+    assert.ok(Buffer.byteLength(JSON.stringify(input), 'utf8') > 524288, 'synthetic input exceeds the export bound');
+    const bundle = script.buildIncidentBundle(input);
+    const serialized = JSON.stringify(bundle);
+    assert.ok(Buffer.byteLength(serialized, 'utf8') <= 524288);
+    assert.equal(bundle.kind, 'taa-incident-bundle');
+    assert.equal(bundle.scan.reason, 'readiness-timeout');
+    assert.equal(bundle.scan.outcome, 'rejected');
+    assert.equal(bundle.scan.id, 'sc1:abcd1234');
+    assert.equal(bundle.build.version, ACTIVE_PACKAGE_VERSION);
+    assert.equal(bundle.build.releaseId, 'taa-' + ACTIVE_PACKAGE_VERSION);
+    assert.equal(bundle.build.identity, 'userscript');
+    assert.equal(bundle.routeRole, 'canonical-member');
+    assert.equal(bundle.generations.lease, 3);
+    assert.equal(bundle.generations.monitor, 4);
+    assert.equal(bundle.deliveryLedger.pending, 2);
+    assert.equal(bundle.deliveryLedger.inFlight, 1);
+    assertIncidentSentinelsAbsent(serialized);
+});
+
+test('massive trace list truncates bounded records yet keeps the redacted scan reason', () => {
+    const traceCount = 8192;
+    const traces = Array.from({ length: traceCount }, (_, index) => ({
+        sequence: index + 1,
+        scanId: 'sc1:abcd1234',
+        stage: 'snapshot',
+        status: index === traceCount - 1 ? 'rejected' : 'ok',
+        reason: index === traceCount - 1 ? 'readiness-timeout' : 'authoritative'
+    }));
+    const input = Object.assign(incidentSafeCore(), { traces });
+    assert.ok(Buffer.byteLength(JSON.stringify(input), 'utf8') > 524288, 'synthetic trace list exceeds the export bound');
+    const bundle = script.buildIncidentBundle(input);
+    const serialized = JSON.stringify(bundle);
+    assert.ok(Buffer.byteLength(serialized, 'utf8') <= 524288);
+    assert.equal(bundle.scan.reason, 'readiness-timeout');
+    assert.equal(bundle.build.version, ACTIVE_PACKAGE_VERSION);
+    assert.equal(bundle.bounded, true);
+    assert.match(bundle.boundedMessage, /512 KiB|bounded|omitted/i);
+    assert.ok(bundle.recentTraces.length <= 32, 'records are truncated to the bounded cap');
+    assert.ok(bundle.recentTraces.length < traceCount, 'older records are dropped');
+    assert.equal(bundle.recentTraces.some((record) => record.reason === 'readiness-timeout'), true, 'newest terminal trace survives truncation');
+    assertIncidentSentinelsAbsent(serialized);
+});
+
+test('cyclic incident input does not throw and still reports the redacted scan reason', () => {
+    const cyclic = Object.assign(incidentSentinelPayload(), { marker: 'cyclic-payload' });
+    cyclic.self = cyclic;
+    const input = Object.assign(incidentSafeCore(), { rawPayload: cyclic });
+    assert.throws(() => JSON.stringify(input), /circular|cyclic/i);
+    let bundle = null;
+    assert.doesNotThrow(() => { bundle = script.buildIncidentBundle(input); });
+    const serialized = JSON.stringify(bundle);
+    assert.ok(Buffer.byteLength(serialized, 'utf8') <= 524288);
+    assert.equal(bundle.kind, 'taa-incident-bundle');
+    assert.equal(serialized.includes('readiness-timeout'), true, 'scan reason survives a serialization failure');
+    assertIncidentSentinelsAbsent(serialized);
+});
+
+// ---------------------------------------------------------------------------
 // Storage bez localStorage / GM (bezpieczne no-opy)
 // ---------------------------------------------------------------------------
 
