@@ -1,5 +1,5 @@
 <!--
-  PR template for Travian Attack Alert (1.0.0 / taa-1.0.0).
+  PR template for Travian Attack Alert (1.0.2 / taa-1.0.2).
   Fill in every section. CI is read-only: build + offline/tools/artifact
   gates, checks, type/quality ratchets, privacy scans, browser/e2e gates.
 -->

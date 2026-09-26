@@ -4,16 +4,16 @@ All notable changes to the public release line are documented here.
 This file starts at 1.0.0. The earlier internal 6.x history is not
 rewritten here; it is noted as lineage only.
 
-## Unreleased — repository cleanup: `src/` runtime authority
+## Repository cleanup — `src/` runtime authority (historical; merged into the 1.0.2 line)
 
 - Owner release runbook and readiness verifier: `docs/RELEASE-RUNBOOK.md`
   documents the ordered owner-gated publication procedure (merged PR through
   verified published release, with rollback/stop behavior at each stage), and
   `tools/check-release-readiness.cjs` reports the machine-readable states
   `BLOCKED`, `READY_FOR_OWNER_TAG`, `DRAFT_READY_FOR_APPROVAL`, and
-  `PUBLISHED_VERIFIED` from a self-contained bundle. The task performs no tag,
-  Release, or repository-settings change; `docs/release-state.json` then stayed
-  `stable: false`.
+  `PUBLISHED_VERIFIED` from a self-contained bundle. The task performed no tag,
+  Release, or repository-settings change; at that point `docs/release-state.json`
+  stayed `stable: false` until the later owner-attested `1.0.2` publication.
 - The checked-in root monolith authority is removed: `src/runtime.js` is the
   sole editable runtime authority and `dist/travian-attack-alert.user.js` is
   generated from `src/userscript-entry.js` via `npm run build`. The
@@ -63,12 +63,12 @@ break.
   and module manifest, the `tools/*` fallbacks, `docs/release-state.json`, the
   README/docs identity claims, and the current-version test assertions.
 
-## 1.0.2 — stable target (owner-attested, pre-publication)
+## 1.0.2 — stable (owner-attested, published)
 
 Owner decision 2026-09-25: the `1.0.2` candidate is the stable target. All six
 schema-v2 pre-publication owner gates in `docs/release-state.json` are populated
-and `stable` is `true`; `publication.tagAndRelease` stays `false` until the
-`v1.0.2` tag and GitHub Release are published. The `1.0.2` bytes are already
+and `stable` is `true`; `publication.tagAndRelease` is recorded because the
+`v1.0.2` tag and the immutable GitHub Release are now published. The `1.0.2` bytes are already
 live on the update channel — `release/public-1.0.0` has served `1.0.2`
 (sha256 `67b2a53e…`) since the PR #23 merge — and the tag and Release formalize
 the publication.
@@ -101,6 +101,7 @@ the publication.
   `release-manifest.json`, `SHA256SUMS`) stay internal to the workflow artifact
   (still built, checksummed, SBOM'd and attested) and are no longer published
   as Release assets.
+- Published as an immutable GitHub Release on 2026-09-25 (release id 396904420; two public assets: userscript + .sha256 sidecar; assets attested).
 
 ## 1.0.1 — stable (owner-attested, published)
 

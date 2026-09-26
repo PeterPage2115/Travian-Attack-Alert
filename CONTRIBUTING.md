@@ -1,6 +1,6 @@
 # Contributing to Travian Attack Alert
 
-Thank you for considering a contribution. This project is a Tampermonkey userscript (release candidate `1.0.2` / `taa-1.0.2`) with a small, strict workflow. Please read this file, `AGENTS.md`, and `SECURITY.md` before opening a pull request.
+Thank you for considering a contribution. This project is a Tampermonkey userscript (current stable release `1.0.2` / `taa-1.0.2`) with a small, strict workflow. Please read this file, `AGENTS.md`, and `SECURITY.md` before opening a pull request.
 
 ## Ground rules
 
