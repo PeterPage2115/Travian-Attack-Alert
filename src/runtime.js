@@ -363,6 +363,11 @@ const RELEASE_ID = "taa-1.0.3";
   let readinessLoadListener = null;
   let readinessPageHideListener = null;
   let visibilityDriftState = null;
+  // Distinct from the periodic flushTimerId: a single zero-delay callback that
+  // fires once after a durable commit leaves pending work, so a healthy alert
+  // does not wait for the 30-second watchdog. Declared outside the frozen
+  // mutable-singleton contract block; deduplicated while pending.
+  let immediateFlushTimerId = null;
   function monotonicNow() {
     if (typeof performance !== "undefined" && typeof performance.now === "function") {
       return performance.now();
@@ -500,6 +505,10 @@ const RELEASE_ID = "taa-1.0.3";
     if (flushTimerId !== null) {
       clearTimeout(flushTimerId);
       flushTimerId = null;
+    }
+    if (immediateFlushTimerId !== null) {
+      clearTimeout(immediateFlushTimerId);
+      immediateFlushTimerId = null;
     }
   }
   function requestPanelExit(reason, continuation) {
@@ -8203,11 +8212,14 @@ ${entry.line}`;
           return;
         }
         lastScanAtMs = observedAtMs;
-        const nextPending = commit.envelope.pending;
+        const committedPending = commit.envelope.pending;
         reportLifecycleHook("onMonitorCommit", {
           observedAtMs,
           generation: commit.generation
         });
+        if (Array.isArray(committedPending) && committedPending.length > 0) {
+          requestImmediateBatchFlush();
+        }
         if (nextRoster !== null) {
           saveRoster(nextRoster);
         }
@@ -8712,6 +8724,18 @@ ${entry.line}`;
       flushPendingBatch();
       scheduleBatchFlush();
     }, BATCH_FLUSH_MS);
+  }
+  function requestImmediateBatchFlush() {
+    if (immediateFlushTimerId !== null) {
+      return;
+    }
+    immediateFlushTimerId = scheduleLifecycleTimeout(() => {
+      immediateFlushTimerId = null;
+      if (!tabLeaseActive || !isCurrentLeaseOwner()) {
+        return;
+      }
+      flushPendingBatch();
+    }, 0);
   }
   function initAdminPanel() {
     if (isNodeEnvironment || typeof document === "undefined") {
@@ -9462,6 +9486,9 @@ ${entry.line}`;
         setFeedback("Could not retry failed delivery.", true);
         return result;
       }
+      if (Array.isArray(result.envelope.pending) && result.envelope.pending.length > 0) {
+        requestImmediateBatchFlush();
+      }
       setFeedback("Failed delivery requeued; retry may duplicate.", false);
       renderPanel();
       return result;
@@ -9478,6 +9505,9 @@ ${entry.line}`;
       if (result.outcome !== "ok") {
         setFeedback("Could not retry uncertain delivery.", true);
         return result;
+      }
+      if (Array.isArray(result.envelope.pending) && result.envelope.pending.length > 0) {
+        requestImmediateBatchFlush();
       }
       setFeedback("Uncertain delivery requeued; retry may duplicate.", false);
       renderPanel();
