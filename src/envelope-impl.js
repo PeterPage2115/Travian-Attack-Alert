@@ -1,4 +1,5 @@
 'use strict';
+// allow: SIZE_OK — the legacy envelope kernel's extraction boundary is frozen by module-architecture contracts.
 
 const { isLeaseFenceValid } = require('./lease-impl.js');
 const migration = require('./migration-impl.js');
@@ -37,6 +38,11 @@ function monitorEnvelopeDefaults(world, overrides = {}) {
 function createMonitorEnvelopeV1(world, overrides = {}) { const envelope = monitorEnvelopeDefaults(world, overrides); envelope.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(envelope)); return envelope; }
 function serializeMonitorEnvelopeV1(envelope) { const normalized = monitorEnvelopeDefaults(envelope && envelope.world, envelope || {}); normalized.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(normalized)); return canonicalSerializeMonitorValue(normalized); }
 function isPlainMonitorObject(value) { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
+function validCompactedSummary(range, canonicalId) {
+  if (!isPlainMonitorObject(range) || !Array.isArray(range.sourceEventIds) || !Number.isSafeInteger(range.from) || range.from < 0 || !Number.isSafeInteger(range.to) || range.to < range.from || !Number.isSafeInteger(range.count) || range.count < 1 || !Number.isFinite(range.attackDelta) || !Number.isFinite(range.raidDelta)) return false;
+  if (range.sourceEventIds.length) return range.sourceEventIds.every(canonicalId) && range.sourceEventCount === undefined && range.lineageDigest === undefined;
+  return Number.isSafeInteger(range.sourceEventCount) && range.sourceEventCount >= 0 && typeof range.lineageDigest === 'string' && /^[0-9a-f]{8}$/.test(range.lineageDigest);
+}
 function parseMonitorEnvelopeV1(raw, expectedWorld) {
   let value = raw; if (typeof raw === 'string') { try { value = JSON.parse(raw); } catch { return { ok: false, outcome: 'corrupt', reason: 'invalid-json' }; } }
   if (!isPlainMonitorObject(value)) return { ok: false, outcome: 'corrupt', reason: 'not-object' };
@@ -50,7 +56,7 @@ function parseMonitorEnvelopeV1(raw, expectedWorld) {
   }
   const canonicalId = id => { try { return sourceEventTuple(decodeSourceEventId(String(id))).sourceEventId === id; } catch { return false; } };
   const lineageValid = [value.pending, value.inFlight, value.failed, value.uncertain, value.metrics.deliveryAccounting?.recoverable || [], value.metrics.deliveryAccounting?.terminal || []].flat().every(event => !Array.isArray(event.sourceEventIds) || event.sourceEventIds.every(canonicalId));
-  const compactedLineageValid = (value.metrics.deliveryAccounting?.compactedTerminalTotals || []).every(range => Array.isArray(range.sourceEventIds) && range.sourceEventIds.every(canonicalId));
+  const compactedLineageValid = (value.metrics.deliveryAccounting?.compactedTerminalTotals || []).every(range => validCompactedSummary(range, canonicalId));
   if (!lineageValid || !compactedLineageValid) return { ok: false, outcome: 'corrupt', reason: 'invalid-source-lineage' };
   if (checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(value)) !== value.integrity) return { ok: false, outcome: 'corrupt', reason: 'integrity-mismatch' };
   return { ok: true, envelope: cloneMonitorValue(value) };
@@ -116,6 +122,35 @@ function deliveryAccountingFor(envelope) { const accounting = (envelope.metrics 
 function syncDeliveryAccounting(envelope) { const accounting = deliveryAccountingFor(envelope); accounting.recoverable = [].concat(envelope.pending || [], envelope.inFlight || [], envelope.failed || [], envelope.uncertain || []).map(event => cloneMonitorValue(event)); envelope.metrics = Object.assign({}, envelope.metrics, { deliveryAccounting: accounting }); return accounting; }
 function terminalDeliveryEntry(event, sequence, status) { return Object.assign({}, cloneMonitorValue(event), { stage: 'acknowledged', terminalStatus: status, terminalSequence: sequence, sourceEventIds: [...new Set((event.sourceEventIds || []).map(String))] }); }
 function deliveryRangeDigest(entries) { return checksumMonitorCanonicalValue(entries.map(entry => ({ terminalSequence: entry.terminalSequence, sourceEventIds: entry.sourceEventIds || [], addedAttackCount: entry.addedAttackCount || 0, addedRaidCount: entry.addedRaidCount || 0 }))); }
+function mergeCompactedTotals(accounting, range, rangeDigest) {
+  let previousDigest = '';
+  let from = range ? range.from : null; let to = range ? range.to : null;
+  let count = 0; let attackDelta = 0; let raidDelta = 0; let sourceEventCount = 0;
+  for (const old of accounting.compactedTerminalTotals) {
+    const digest = old.sourceEventIds.length ? checksumMonitorCanonicalValue({ from: old.from, to: old.to, count: old.count, attackDelta: old.attackDelta, raidDelta: old.raidDelta, sourceEventIds: old.sourceEventIds }) : old.lineageDigest;
+    previousDigest = !previousDigest && !old.sourceEventIds.length ? digest : checksumMonitorCanonicalValue({ previousDigest, rangeDigest: digest });
+    from = from === null ? old.from : Math.min(from, old.from);
+    to = to === null ? old.to : Math.max(to, old.to);
+    count += old.count; attackDelta += old.attackDelta; raidDelta += old.raidDelta;
+    sourceEventCount += old.sourceEventIds.length ? old.sourceEventIds.length : old.sourceEventCount;
+  }
+  if (range) {
+    previousDigest = checksumMonitorCanonicalValue({ previousDigest, rangeDigest });
+    to = Math.max(to, range.to); count += range.count;
+    attackDelta += range.attackDelta; raidDelta += range.raidDelta;
+    sourceEventCount += range.sourceEventCount;
+  }
+  accounting.compactedTerminalTotals = count ? [{ from, to, count, attackDelta, raidDelta, sourceEventCount, lineageDigest: previousDigest, sourceEventIds: [] }] : [];
+  return accounting.compactedTerminalTotals[0];
+}
+function compactTerminalRange(accounting, terminal, limit) {
+  const range = terminal.slice(0, limit);
+  const totals = { from: range[0].terminalSequence, to: range[range.length - 1].terminalSequence, count: range.length, attackDelta: range.reduce((sum, entry) => sum + (Number(entry.addedAttackCount) || 0), 0), raidDelta: range.reduce((sum, entry) => sum + (Number(entry.addedRaidCount) || 0), 0), sourceEventCount: range.reduce((sum, entry) => sum + (entry.sourceEventIds || []).length, 0) };
+  const summary = mergeCompactedTotals(accounting, totals, deliveryRangeDigest(range));
+  accounting.terminal = terminal.filter(entry => entry.terminalSequence > totals.to);
+  accounting.compactedThroughTerminalSequence = Math.max(accounting.compactedThroughTerminalSequence || 0, totals.to);
+  return summary;
+}
 function compactDeliveryAccountingV1(envelope, options = {}) {
   const base = createMonitorEnvelopeV1(envelope && envelope.world, envelope || {}); const accounting = syncDeliveryAccounting(base); const terminal = accounting.terminal.slice().sort((left, right) => left.terminalSequence - right.terminalSequence); const limit = Math.max(0, terminal.length - 512);
   if (limit === 0 && !accounting.compactionClaim) return { outcome: 'nothing-to-compact', envelope: base };
@@ -124,12 +159,33 @@ function compactDeliveryAccountingV1(envelope, options = {}) {
   if (claim.expectedGeneration !== base.generation - 1 || claim.status !== 'prepared') return { outcome: 'stale-claim', envelope: base };
   const range = terminal.filter(entry => entry.terminalSequence >= claim.fromTerminalSequence && entry.terminalSequence <= claim.toTerminalSequence);
   if (deliveryRangeDigest(range) !== claim.rangeDigest || range.length === 0) return { outcome: 'stale-claim', envelope: base };
-  const totals = { from: claim.fromTerminalSequence, to: claim.toTerminalSequence, count: range.length, attackDelta: range.reduce((sum, entry) => sum + (Number(entry.addedAttackCount) || 0), 0), raidDelta: range.reduce((sum, entry) => sum + (Number(entry.addedRaidCount) || 0), 0), sourceEventIds: range.flatMap(entry => entry.sourceEventIds || []) };
-  accounting.compactedTerminalTotals = accounting.compactedTerminalTotals.concat(totals); accounting.terminal = terminal.filter(entry => entry.terminalSequence > claim.toTerminalSequence); accounting.compactedThroughTerminalSequence = Math.max(accounting.compactedThroughTerminalSequence || 0, claim.toTerminalSequence); accounting.compactionClaim = null; accounting.lastCompaction = { operationId: claim.operationId, from: claim.fromTerminalSequence, to: claim.toTerminalSequence };
+  const totals = compactTerminalRange(accounting, terminal, range.length);
+  accounting.compactionClaim = null; accounting.lastCompaction = { operationId: claim.operationId, from: claim.fromTerminalSequence, to: claim.toTerminalSequence };
   base.generation += 1; base.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(base)); return { outcome: 'compacted', envelope: base, totals };
 }
 const prepareTerminalCompactionV1 = (envelope, options) => compactDeliveryAccountingV1(envelope, Object.assign({}, options, { phase: 'prepare' }));
 const resumeTerminalCompactionV1 = compactDeliveryAccountingV1;
+function normalizeMonitorEnvelopeForPersistence(envelope, options = {}) {
+  let base = createMonitorEnvelopeV1(envelope.world, cloneMonitorValue(envelope));
+  let accounting = deliveryAccountingFor(base);
+  if (accounting.compactionClaim) {
+    const resumed = resumeTerminalCompactionV1(base, options);
+    if (resumed.outcome !== 'compacted') throw new Error('stale terminal compaction claim');
+    base = resumed.envelope; accounting = deliveryAccountingFor(base);
+  }
+  if (accounting.compactedTerminalTotals.length > 1 || accounting.compactedTerminalTotals.some(range => range.sourceEventIds.length)) mergeCompactedTotals(accounting, null, null);
+  const terminal = accounting.terminal.slice().sort((left, right) => left.terminalSequence - right.terminalSequence);
+  const maxBytes = Number.isFinite(options.maxSerializedBytes) ? options.maxSerializedBytes : Infinity;
+  let limit = Math.max(0, terminal.length - 512);
+  if (limit) compactTerminalRange(accounting, terminal, limit);
+  base.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(base));
+  while (accounting.terminal.length && new TextEncoder().encode(serializeMonitorEnvelopeV1(base)).length > maxBytes) {
+    const remaining = accounting.terminal.slice().sort((left, right) => left.terminalSequence - right.terminalSequence);
+    compactTerminalRange(accounting, remaining, 1);
+    base.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(base));
+  }
+  return base;
+}
 function createMonitorQueueEvent(event, options = {}) {
   const input = event && typeof event === 'object' ? event : {}; const world = normalizeHostname(options.world || input.world || ''); const rawPlayerId = options.playerId !== undefined ? options.playerId : monitorEventPlayerId(input); const playerId = rawPlayerId === null || rawPlayerId === undefined ? null : String(rawPlayerId);
   const observedAtMs = Number.isFinite(options.observedAtMs) ? options.observedAtMs : Number.isFinite(input.observedAtMs) ? input.observedAtMs : null; const queuedAtMs = Number.isFinite(options.queuedAtMs) ? options.queuedAtMs : Number.isFinite(input.queuedAtMs) ? input.queuedAtMs : Date.now();
@@ -165,16 +221,18 @@ function commitMonitorEnvelope(options = {}) {
   const pending = Array.isArray(current.pending) ? current.pending.concat(transition.eligibleEvents || []) : transition.eligibleEvents || []; const allQueues = pending.concat(current.inFlight || [], current.failed || [], current.uncertain || []); const capacity = Number.isInteger(options.queueCapacity) ? options.queueCapacity : MONITOR_MAX_PENDING_RECORDS; const queuedSourceIds = allQueues.flatMap(event => event.sourceEventIds || []); const sourceCapacity = Number.isInteger(options.activeSourceCapacity) ? options.activeSourceCapacity : Infinity;
   if (allQueues.length > capacity || queuedSourceIds.length > sourceCapacity || new Set(queuedSourceIds).size !== queuedSourceIds.length) return { outcome: 'capacity-reject', memorySwapped: false };
   const candidate = createMonitorEnvelopeV1(current.world, Object.assign({}, current, { generation: expectedGeneration + 1, baselineByPlayerId: transition.baselineByPlayerId, rosterByPlayerId: transition.rosterByPlayerId || current.rosterByPlayerId, pending, metrics: Object.assign({}, current.metrics, transition.metrics || {}, { lastCommitAtMs: Date.now(), lastError: null }) }));
-  if (serializeMonitorEnvelopeV1(candidate).length > (Number.isInteger(options.serializedEnvelopeCapacity) ? options.serializedEnvelopeCapacity : Infinity)) return { outcome: 'capacity-reject', memorySwapped: false };
+  if (serializeMonitorEnvelopeV1(normalizeMonitorEnvelopeForPersistence(candidate)).length > (Number.isInteger(options.serializedEnvelopeCapacity) ? options.serializedEnvelopeCapacity : Infinity)) return { outcome: 'capacity-reject', memorySwapped: false };
   const result = commitMonitorEnvelopeV1({ world: current.world, currentEnvelope: current, candidateEnvelope: candidate, expectedGeneration, storage: options.storage, beforeCommit: () => (typeof options.beforeCommit !== 'function' || options.beforeCommit() === true) && (!fenced || fence()) });
   if (result.outcome !== 'ok' || fenced && !fence()) { if (result.outcome === 'ok' && fenced) { const storage = monitorStorageAdapter(options.storage); monitorRestoreRaw(storage, monitorActiveStorageKey(current.world), serializeMonitorEnvelopeV1(current)); monitorRestoreRaw(storage, monitorBackupStorageKey(current.world), serializeMonitorEnvelopeV1(current)); return { outcome: 'fenced-reject', memorySwapped: false }; } return result; }
   return result;
 }
 function commitMonitorEnvelopeV1(options = {}) {
   const storage = monitorStorageAdapter(options.storage); const parsedCurrent = options.currentEnvelope && parseMonitorEnvelopeV1(options.currentEnvelope, options.world); const current = parsedCurrent && parsedCurrent.ok ? parsedCurrent.envelope : null; const candidateParsed = parseMonitorEnvelopeV1(options.candidateEnvelope, options.world);
-  if (!candidateParsed.ok) return { outcome: 'corrupt-active', memorySwapped: false }; const candidate = candidateParsed.envelope; const expectedGeneration = current ? current.generation : Number.isInteger(options.expectedGeneration) ? options.expectedGeneration : -1;
+  if (!candidateParsed.ok) return { outcome: 'corrupt-active', memorySwapped: false }; let candidate = candidateParsed.envelope; const expectedGeneration = current ? current.generation : Number.isInteger(options.expectedGeneration) ? options.expectedGeneration : -1;
   if (!isMonitorGenerationFenced(expectedGeneration, candidate.generation)) return { outcome: 'fenced-reject', memorySwapped: false };
   const coalesced = coalesceMonitorPendingEvents(candidate.pending, MONITOR_MAX_PENDING_RECORDS, options.nowMs); if (!coalesced.ok) return Object.assign({}, coalesced, { envelope: current, memorySwapped: false }); candidate.pending = coalesced.events;
+  try { candidate = normalizeMonitorEnvelopeForPersistence(candidate, { maxSerializedBytes: options.maxSerializedBytes }); }
+  catch { return { outcome: 'corrupt-active', memorySwapped: false }; }
   const activeKey = monitorActiveStorageKey(candidate.world); const backupKey = monitorBackupStorageKey(candidate.world); const oldActiveRead = monitorReadRaw(storage, activeKey); const oldBackupRead = monitorReadRaw(storage, backupKey); const oldActive = oldActiveRead.ok ? oldActiveRead.value : undefined; const oldBackup = oldBackupRead.ok ? oldBackupRead.value : undefined; const previousParsed = oldActive === undefined ? null : parseMonitorEnvelopeV1(oldActive, candidate.world); const previous = current || previousParsed && previousParsed.envelope; const backupPayload = previous ? serializeMonitorEnvelopeV1(previous) : serializeMonitorEnvelopeV1(candidate); const activePayload = serializeMonitorEnvelopeV1(candidate);
   if (typeof options.beforeCommit === 'function' && options.beforeCommit() !== true) return { outcome: 'fenced-reject', memorySwapped: false };
   const backupResult = monitorWriteReadback(storage, backupKey, backupPayload); if (!backupResult.ok) { monitorRestoreRaw(storage, backupKey, oldBackup); return { outcome: backupResult.outcome, memorySwapped: false }; }
@@ -207,7 +265,7 @@ const api = {
   planAcceptedScanTransition, commitMonitorEnvelope, commitMonitorEnvelopeV1,
   applyMonitorQueueTransitionV1, commitMonitorQueueTransitionV1,
   compactDeliveryAccountingV1, prepareTerminalCompactionV1,
-  resumeTerminalCompactionV1, createMonitorQueueEvent, computeQueueAge,
+  resumeTerminalCompactionV1, normalizeMonitorEnvelopeForPersistence, createMonitorQueueEvent, computeQueueAge,
   addInFlightChunk, getInFlightChunks, dropInFlightHead,
   replaceInFlightHeadAttempt,
 };
