@@ -52,6 +52,16 @@
       ]
     },
     {
+      "id": "suite:test/artifact/scan-latency.test.cjs",
+      "path": "test/artifact/scan-latency.test.cjs",
+      "classification": "dist-artifact",
+      "expectedExecutionCount": 2,
+      "coverage": [
+        "dist-runtime",
+        "scan-latency"
+      ]
+    },
+    {
       "id": "suite:test/artifact/settings-backup.test.cjs",
       "path": "test/artifact/settings-backup.test.cjs",
       "classification": "dist-artifact",
@@ -328,6 +338,16 @@
       "coverage": [
         "browser-runtime",
         "route-lease"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/scan-latency.spec.ts",
+      "path": "test/e2e/scan-latency.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 12,
+      "coverage": [
+        "browser-runtime",
+        "scan-latency"
       ]
     },
     {
@@ -632,16 +652,16 @@
     }
   ],
   "totals": {
-    "suiteCount": 61,
-    "expectedExecutionCount": 1328,
+    "suiteCount": 63,
+    "expectedExecutionCount": 1342,
     "byClassification": {
       "dist-artifact": {
-        "suiteCount": 5,
-        "expectedExecutionCount": 76
+        "suiteCount": 6,
+        "expectedExecutionCount": 78
       },
       "browser": {
-        "suiteCount": 13,
-        "expectedExecutionCount": 391
+        "suiteCount": 14,
+        "expectedExecutionCount": 403
       },
       "source-artifact": {
         "suiteCount": 18,

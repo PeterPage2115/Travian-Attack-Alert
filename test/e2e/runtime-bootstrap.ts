@@ -264,6 +264,11 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
       onReadinessRetry: (payload: Record<string, unknown>) => events.push({ kind: 'readiness-retry', attempt: payload.attempt, nextDelayMs: payload.nextDelayMs }),
       onReadinessExhausted: (payload: Record<string, unknown>) => events.push({ kind: 'readiness-exhausted', attempts: payload.attempts }),
       onReloadBlocked: (payload: Record<string, unknown>) => events.push({ kind: 'reload-blocked', attempts: payload.attempts }),
+      // Scan-to-dispatch latency evidence (task-5). Timestamps are numeric only;
+      // `durations` carries the bounded phase timings, never payload/storage
+      // content. Existing hooks above are unchanged.
+      onScanComplete: (payload: Record<string, unknown>) => events.push({ kind: 'scan-complete', atMs: payload.observedAtMs, generation: payload.generation, durations: payload.durations }),
+      onDiscordRequest: (payload: Record<string, unknown>) => events.push({ kind: 'discord-request', atMs: payload.requestStartedAtMs, status: payload.status, errorClass: payload.errorClass, scanToRequestMs: payload.scanToRequestMs }),
     };
     window.GM_xmlhttpRequest = (options: { readonly method: string; readonly url: string; readonly data?: string; readonly onload?: (response: { readonly status: number; readonly responseText: string }) => void; readonly onerror?: (error: unknown) => void }) => {
       const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook${nsQuery}` : options.url;

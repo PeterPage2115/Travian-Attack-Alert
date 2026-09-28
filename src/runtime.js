@@ -368,6 +368,13 @@ const RELEASE_ID = "taa-1.0.3";
   // does not wait for the 30-second watchdog. Declared outside the frozen
   // mutable-singleton contract block; deduplicated while pending.
   let immediateFlushTimerId = null;
+  // Scan-to-dispatch instrumentation (bounded, redacted numerics only; never a
+  // payload, URL, token, or storage content). Declared outside the frozen
+  // mutable-singleton contract block. `lastScanCompletedMono` is cleared after
+  // the first post-scan request starts so only that request carries the delta.
+  let lastScanCompletedMono = null;
+  let lastScanHostname = null;
+  let lastScanDurations = null;
   function monotonicNow() {
     if (typeof performance !== "undefined" && typeof performance.now === "function") {
       return performance.now();
@@ -5967,6 +5974,7 @@ const RELEASE_ID = "taa-1.0.3";
       expectedGeneration,
       storage: options.storage,
       maxSerializedBytes: serializedCapacity,
+      timings: options.timings,
       beforeCommit: () => (typeof options.beforeCommit !== "function" || options.beforeCommit() === true) && (!fenced || fence())
     });
     if (result.outcome !== "ok" || fenced && !fence()) {
@@ -6008,9 +6016,11 @@ const RELEASE_ID = "taa-1.0.3";
     }
     candidate2.pending = coalesced.events;
     const byteCapacity = Number.isInteger(options.maxSerializedBytes) ? Math.min(options.maxSerializedBytes, MONITOR_MAX_SERIALIZED_BYTES) : MONITOR_MAX_SERIALIZED_BYTES;
+    const normalizeStartedMono = monotonicNow();
     try { candidate2 = normalizeMonitorEnvelopeForPersistence(candidate2, { maxSerializedBytes: byteCapacity }); }
     catch (error) { return { outcome: "corrupt-active", memorySwapped: false }; }
     const candidateBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(candidate2)).length;
+    recordDuration(options.timings, "normalizeMs", normalizeStartedMono, monotonicNow());
     if (candidateBytes > byteCapacity) {
       if (!current || !options.transportTransitionType || !TRANSPORT_RECOVERY_TRANSITIONS.has(options.transportTransitionType)) return { outcome: "capacity-reject", memorySwapped: false, serializedBytes: candidateBytes, capacityBytes: byteCapacity, recoverableRecords: recoverableMonitorRecords(candidate2).length };
       let normalizedCurrent;
@@ -6031,7 +6041,9 @@ const RELEASE_ID = "taa-1.0.3";
     if (typeof options.beforeCommit === "function" && options.beforeCommit() !== true) {
       return { outcome: "fenced-reject", memorySwapped: false };
     }
+    const backupWriteStartedMono = monotonicNow();
     const backupResult = monitorWriteReadback(storage, backupKey, backupPayload);
+    recordDuration(options.timings, "backupWriteMs", backupWriteStartedMono, monotonicNow());
     if (!backupResult.ok) {
       monitorRestoreRaw(storage, backupKey, oldBackup);
       return { outcome: backupResult.outcome, memorySwapped: false };
@@ -6040,7 +6052,9 @@ const RELEASE_ID = "taa-1.0.3";
       monitorRestoreRaw(storage, backupKey, oldBackup);
       return { outcome: "fenced-reject", memorySwapped: false };
     }
+    const activeWriteStartedMono = monotonicNow();
     const activeResult = monitorWriteReadback(storage, activeKey, activePayload);
+    recordDuration(options.timings, "activeWriteMs", activeWriteStartedMono, monotonicNow());
     if (!activeResult.ok) {
       monitorRestoreRaw(storage, backupKey, oldBackup);
       monitorRestoreRaw(storage, activeKey, oldActive);
@@ -7344,6 +7358,14 @@ ${entry.line}`;
       return;
     }
     let settled = false;
+    const scanToRequestMs = monotonicDurationMs(lastScanCompletedMono, requestStartedMono);
+    if (scanToRequestMs !== null) {
+      recordDuration(lastScanDurations, "dispatchStartMs", lastScanCompletedMono, requestStartedMono);
+      if (lastScanDurations && lastScanHostname) {
+        mergeRuntimeDiagnostics(lastScanHostname, { timings: lastScanDurations });
+      }
+      lastScanCompletedMono = null;
+    }
     const settleOnce = (outcome) => {
       if (settled) {
         return;
@@ -7353,7 +7375,8 @@ ${entry.line}`;
       const enriched = Object.assign({}, outcome, {
         requestStartedAtMs,
         requestEndedAtMs: completedAtMs,
-        requestMs: monotonicDurationMs(requestStartedMono, monotonicNow())
+        requestMs: monotonicDurationMs(requestStartedMono, monotonicNow()),
+        scanToRequestMs
       });
       reportLifecycleHook("onDiscordRequest", enriched);
       if (typeof onComplete === "function") {
@@ -7960,6 +7983,7 @@ ${entry.line}`;
         ])
       );
       const currentHostname = normalizeHostname(location.hostname);
+      const envelopeLoadStartedMono = monotonicNow();
       const monitorLoaded = loadOrMigrateMonitorEnvelopeV1(
         currentHostname,
         snapshot,
@@ -7968,6 +7992,7 @@ ${entry.line}`;
           beforeCommit: isCurrentLeaseOwner
         }
       );
+      recordDuration(durations, "envelopeLoadMs", envelopeLoadStartedMono, monotonicNow());
       if (monitorLoaded.blocked || !monitorLoaded.envelope) {
         console.error(
           "[Alliance Discord] Monitor storage blocked:",
@@ -8193,7 +8218,8 @@ ${entry.line}`;
           ownerId: activeLeaseOwnerId,
           term: tabLeaseTerm,
           expectedGeneration: monitorLoaded.envelope.generation,
-          serializedEnvelopeCapacity: MONITOR_MAX_SERIALIZED_BYTES
+          serializedEnvelopeCapacity: MONITOR_MAX_SERIALIZED_BYTES,
+          timings: durations
         });
         recordDuration(durations, "persistMs", persistStartedMono, monotonicNow());
         if (commit.outcome !== "ok") {
@@ -8270,6 +8296,9 @@ ${entry.line}`;
         runtimePatch.lastScan = Object.assign({}, durations, { observedAtMs, generation, queueAge });
       }
       mergeRuntimeDiagnostics(currentHostname, runtimePatch);
+      lastScanCompletedMono = monotonicNow();
+      lastScanHostname = currentHostname;
+      lastScanDurations = durations;
       reportLifecycleHook("onScanComplete", {
         observedAtMs,
         generation,
