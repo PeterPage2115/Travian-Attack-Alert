@@ -175,3 +175,202 @@ test('conservation holds no independent logic: every symbol re-exports envelope 
   assert.match(source, /require\(['"]\.\/migration-impl\.js['"]\)/u);
   assert.doesNotMatch(source, /require\(['"]\.\/runtime(-api)?\.js['"]\)/u);
 });
+
+// ---------------------------------------------------------------------------
+// Task 1 (scan-webhook-latency) — bounded terminal-accounting characterization.
+//
+// v1.0.3 keeps the newest 512 detailed terminal records but copies EVERY
+// historical sourceEventId into compactedTerminalTotals, so the persisted
+// envelope grows with acknowledged history rather than staying bounded. These
+// tests pin the DESIRED canonical result on the untouched v1.0.3 kernel: one
+// cumulative bounded summary, the empty sourceEventIds compatibility sentinel,
+// conserved totals, a deterministic lineage digest, idempotent re-normalization,
+// and byte-identical active queues. They are intentionally red until Tasks 2-4
+// implement the bounded normalization; the failure messages name the defect.
+// ---------------------------------------------------------------------------
+
+function canonicalTerminalId(sequence) {
+  return migrationImpl.sourceEventIdFromTuple({
+    world: 'dispatch.test', playerId: String((sequence % 977) + 1),
+    eventType: sequence % 3 === 0 ? 'raid' : 'attack', acceptedGeneration: 1,
+    scanSequence: sequence, attackDelta: sequence % 3 === 0 ? 0 : 1,
+    raidDelta: sequence % 3 === 0 ? 1 : 0,
+  });
+}
+
+function terminalRange(fromSequence, toSequence) {
+  const terminal = [];
+  for (let sequence = fromSequence; sequence <= toSequence; sequence += 1) {
+    const raid = sequence % 3 === 0;
+    terminal.push({
+      eventId: `terminal-${sequence}`, terminalSequence: sequence,
+      stage: 'acknowledged', terminalStatus: 'acknowledged',
+      addedAttackCount: raid ? 0 : 1, addedRaidCount: raid ? 1 : 0,
+      sourceEventIds: [canonicalTerminalId(sequence)],
+    });
+  }
+  return terminal;
+}
+
+function rangeTotals(fromSequence, toSequence) {
+  let count = 0; let attackDelta = 0; let raidDelta = 0;
+  for (let sequence = fromSequence; sequence <= toSequence; sequence += 1) {
+    count += 1;
+    if (sequence % 3 === 0) raidDelta += 1; else attackDelta += 1;
+  }
+  return { count, attackDelta, raidDelta };
+}
+
+function activeQueueRecords(count, lineagePerRecord) {
+  const names = ['pending', 'inFlight', 'failed', 'uncertain'];
+  const queues = { pending: [], inFlight: [], failed: [], uncertain: [] };
+  for (let index = 0; index < count; index += 1) {
+    const ids = [];
+    for (let offset = 0; offset < lineagePerRecord; offset += 1) ids.push(canonicalTerminalId(20000 + index * lineagePerRecord + offset));
+    queues[names[index % names.length]].push({
+      eventId: `queue-${index}`, playerId: String(index + 1), eventType: 'attack',
+      addedAttackCount: 1, addedRaidCount: 0, sourceEventIds: ids,
+      sourceEventTuples: ids.map((id) => migrationImpl.sourceEventTuple(migrationImpl.decodeSourceEventId(id))),
+    });
+  }
+  return queues;
+}
+
+const ACCOUNTING_DEFAULTS = {
+  recoverable: [], terminal: [], compactedTerminalTotals: [], dispatchPlans: [],
+  compactedThroughTerminalSequence: 0, nextTerminalSequence: 1,
+  compactionClaim: null, lastCompaction: null,
+};
+
+function monitorEnvelope(accounting, queues) {
+  const envelope = runtime.createMonitorEnvelopeV1('dispatch.test', {
+    nowMs: 1000,
+    pending: (queues && queues.pending) || [], inFlight: (queues && queues.inFlight) || [],
+    failed: (queues && queues.failed) || [], uncertain: (queues && queues.uncertain) || [],
+  });
+  if (!accounting) return envelope;
+  envelope.metrics.deliveryAccounting = Object.assign({}, ACCOUNTING_DEFAULTS, accounting);
+  const roundTripped = runtime.parseMonitorEnvelopeV1(runtime.serializeMonitorEnvelopeV1(envelope), 'dispatch.test');
+  assert.equal(roundTripped.ok, true, `fixture envelope must be parseable: ${JSON.stringify(roundTripped)}`);
+  return roundTripped.envelope;
+}
+
+function compactOnce(envelope, options) {
+  const prepared = runtime.prepareTerminalCompactionV1(envelope, options);
+  assert.equal(prepared.outcome, 'prepared', 'fixture must prepare a compaction claim');
+  const resumed = runtime.resumeTerminalCompactionV1(prepared.envelope, options);
+  assert.equal(resumed.outcome, 'compacted', 'fixture must settle the prepared claim');
+  return resumed;
+}
+
+function digestOf(summary) {
+  const keys = Object.keys(summary).filter((key) => /digest/iu.test(key) && typeof summary[key] === 'string' && summary[key] !== '');
+  assert.ok(keys.length >= 1, `compacted summary must expose a deterministic lineage digest; got keys ${JSON.stringify(Object.keys(summary))}`);
+  return summary[keys[0]];
+}
+
+function assertBoundedSummary(summary, expected, label) {
+  const retained = Array.isArray(summary.sourceEventIds) ? summary.sourceEventIds.length : `${typeof summary.sourceEventIds} (not an array)`;
+  assert.ok(Array.isArray(summary.sourceEventIds) && summary.sourceEventIds.length === 0,
+    `${label}: compacted summary must use the empty sourceEventIds compatibility sentinel, never historical full-ID arrays (retained ${retained})`);
+  assert.equal(summary.count, expected.count, `${label}: terminal record count must be conserved`);
+  assert.equal(summary.attackDelta, expected.attackDelta, `${label}: attack delta must be conserved`);
+  assert.equal(summary.raidDelta, expected.raidDelta, `${label}: raid delta must be conserved`);
+  assert.equal(summary.sourceEventCount, expected.count,
+    `${label}: bounded summary must expose sourceEventCount instead of enumerating every historical ID`);
+  assert.equal(typeof digestOf(summary), 'string', `${label}: deterministic lineage digest required`);
+}
+
+function queueSnapshot(envelope) {
+  return {
+    pending: JSON.parse(JSON.stringify(envelope.pending)),
+    inFlight: JSON.parse(JSON.stringify(envelope.inFlight)),
+    failed: JSON.parse(JSON.stringify(envelope.failed)),
+    uncertain: JSON.parse(JSON.stringify(envelope.uncertain)),
+  };
+}
+
+function normalizeForPersistence(envelope, options) {
+  const kernel = envelopeImpl.normalizeMonitorEnvelopeForPersistence || runtime.normalizeMonitorEnvelopeForPersistence;
+  assert.equal(typeof kernel, 'function',
+    'missing canonical persistence normalization: normalizeMonitorEnvelopeForPersistence() must replace historical compacted sourceEventIds with a bounded digest summary');
+  const result = kernel(envelope, options);
+  const normalized = result && result.envelope ? result.envelope : result;
+  assert.ok(normalized && normalized.metrics && normalized.metrics.deliveryAccounting,
+    'normalizeMonitorEnvelopeForPersistence must return the normalized envelope (or { envelope })');
+  return normalized;
+}
+
+test('terminal compaction bounds 10,000 acknowledged records to 512 plus one summary', () => {
+  const envelope = monitorEnvelope({ terminal: terminalRange(1, 10000) });
+  const result = compactOnce(envelope, { operationId: 'bound-10k', ownerId: 'owner-1' });
+  const accounting = result.envelope.metrics.deliveryAccounting;
+  assert.ok(accounting.terminal.length <= 512,
+    `at most 512 detailed terminal records may remain, got ${accounting.terminal.length}`);
+  assert.equal(accounting.compactedTerminalTotals.length, 1,
+    `compactedTerminalTotals must be exactly one cumulative summary, got ${accounting.compactedTerminalTotals.length}`);
+  assertBoundedSummary(accounting.compactedTerminalTotals[0], rangeTotals(1, 9488), '10k terminal');
+  assert.equal(accounting.terminal.length + accounting.compactedTerminalTotals[0].count, 10000,
+    'terminal record count must be conserved across detail and summary');
+});
+
+test('repeated compaction cycles canonicalize into one bounded summary', () => {
+  const first = compactOnce(monitorEnvelope({ terminal: terminalRange(1, 600) }), { operationId: 'cycle-1', ownerId: 'owner-1' });
+  const afterFirst = first.envelope.metrics.deliveryAccounting;
+  const second = compactOnce(monitorEnvelope({
+    terminal: afterFirst.terminal.concat(terminalRange(601, 1200)),
+    compactedTerminalTotals: afterFirst.compactedTerminalTotals,
+    compactedThroughTerminalSequence: afterFirst.compactedThroughTerminalSequence,
+    nextTerminalSequence: 1201,
+  }), { operationId: 'cycle-2', ownerId: 'owner-1' });
+  const accounting = second.envelope.metrics.deliveryAccounting;
+  assert.equal(accounting.compactedTerminalTotals.length, 1,
+    `compactedTerminalTotals must not grow once per compaction cycle, got ${accounting.compactedTerminalTotals.length}`);
+  assertBoundedSummary(accounting.compactedTerminalTotals[0], rangeTotals(1, 688), 'two cycles');
+  assert.equal(accounting.terminal.length + accounting.compactedTerminalTotals[0].count, 1200,
+    'terminal record count must be conserved across repeated cycles');
+});
+
+test('legacy summaries with thousands of historical IDs migrate to the empty sentinel idempotently', () => {
+  const legacyIds = [];
+  for (let sequence = 1; sequence <= 5000; sequence += 1) legacyIds.push(canonicalTerminalId(sequence));
+  const legacy = monitorEnvelope({
+    terminal: terminalRange(5001, 5512),
+    compactedTerminalTotals: [Object.assign({ from: 1, to: 5000, sourceEventIds: legacyIds }, rangeTotals(1, 5000))],
+    compactedThroughTerminalSequence: 5000, nextTerminalSequence: 5513,
+  }, activeQueueRecords(512, 1));
+  const before = queueSnapshot(legacy);
+  const migrated = normalizeForPersistence(legacy, { operationId: 'legacy-1', ownerId: 'owner-1' });
+  const summary = migrated.metrics.deliveryAccounting.compactedTerminalTotals[0];
+  assertBoundedSummary(summary, rangeTotals(1, 5000), 'legacy 5k summary');
+  const again = normalizeForPersistence(legacy, { operationId: 'legacy-2', ownerId: 'owner-1' });
+  assert.equal(digestOf(again.metrics.deliveryAccounting.compactedTerminalTotals[0]), digestOf(summary),
+    'lineage digest must be deterministic for identical legacy input');
+  const repeated = normalizeForPersistence(migrated, { operationId: 'legacy-3', ownerId: 'owner-1' });
+  assert.deepEqual(repeated.metrics.deliveryAccounting.compactedTerminalTotals, migrated.metrics.deliveryAccounting.compactedTerminalTotals,
+    'second normalization must be idempotent');
+  assert.deepEqual(queueSnapshot(repeated), before, 'active queues must be byte-identical after normalization');
+});
+
+test('an interrupted prepared compaction claim replays into the bounded summary', () => {
+  const prepared = runtime.prepareTerminalCompactionV1(monitorEnvelope({ terminal: terminalRange(1, 10000) }), { operationId: 'interrupted', ownerId: 'owner-1' });
+  assert.equal(prepared.outcome, 'prepared');
+  const roundTripped = runtime.parseMonitorEnvelopeV1(runtime.serializeMonitorEnvelopeV1(prepared.envelope), 'dispatch.test');
+  assert.equal(roundTripped.ok, true, `prepared envelope must survive a reload round-trip, got ${JSON.stringify(roundTripped)}`);
+  const resumed = runtime.resumeTerminalCompactionV1(roundTripped.envelope, { operationId: 'interrupted', ownerId: 'owner-1' });
+  assert.equal(resumed.outcome, 'compacted');
+  const accounting = resumed.envelope.metrics.deliveryAccounting;
+  assert.equal(accounting.compactionClaim, null, 'a resolved compaction claim must be cleared');
+  assertBoundedSummary(accounting.compactedTerminalTotals[0], rangeTotals(1, 9488), 'interrupted replay');
+});
+
+test('terminal compaction preserves active queues carrying expanded lineage', () => {
+  const envelope = monitorEnvelope({ terminal: terminalRange(1, 600) }, activeQueueRecords(512, 20));
+  const before = queueSnapshot(envelope);
+  const result = compactOnce(envelope, { operationId: 'expanded', ownerId: 'owner-1' });
+  assert.deepEqual(queueSnapshot(result.envelope), before,
+    'active queue records with expanded lineage must be byte-identical after terminal compaction');
+  const retainedLineage = result.envelope.metrics.deliveryAccounting.compactedTerminalTotals[0].sourceEventIds;
+  assert.ok(Array.isArray(retainedLineage) && retainedLineage.length === 0,
+    `historical terminal lineage must not be retained in the compacted summary (retained ${Array.isArray(retainedLineage) ? retainedLineage.length : typeof retainedLineage})`);
+});

@@ -122,7 +122,7 @@
       "id": "suite:test/characterization/dispatch-conservation.test.cjs",
       "path": "test/characterization/dispatch-conservation.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 1,
+      "expectedExecutionCount": 12,
       "coverage": [
         "test-characterization-dispatch-conservation"
       ]
@@ -156,6 +156,16 @@
         "parser-contract",
         "parser-rejection-table",
         "utf16-signature"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/post-commit-flush.test.cjs",
+      "path": "test/characterization/post-commit-flush.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 6,
+      "coverage": [
+        "post-commit-flush",
+        "immediate-dispatch"
       ]
     },
     {
@@ -611,8 +621,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 59,
-    "expectedExecutionCount": 1300,
+    "suiteCount": 60,
+    "expectedExecutionCount": 1317,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -623,8 +633,8 @@
         "expectedExecutionCount": 391
       },
       "source-artifact": {
-        "suiteCount": 16,
-        "expectedExecutionCount": 440
+        "suiteCount": 17,
+        "expectedExecutionCount": 457
       },
       "tool": {
         "suiteCount": 25,
