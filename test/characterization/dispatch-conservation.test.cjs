@@ -349,7 +349,12 @@ test('legacy summaries with thousands of historical IDs migrate to the empty sen
   const repeated = normalizeForPersistence(migrated, { operationId: 'legacy-3', ownerId: 'owner-1' });
   assert.deepEqual(repeated.metrics.deliveryAccounting.compactedTerminalTotals, migrated.metrics.deliveryAccounting.compactedTerminalTotals,
     'second normalization must be idempotent');
-  assert.deepEqual(queueSnapshot(repeated), before, 'active queues must be byte-identical after normalization');
+  const canonicalQueues = queueSnapshot(repeated);
+  for (const name of ['pending', 'inFlight', 'failed', 'uncertain']) {
+    assert.deepEqual(canonicalQueues[name].map(event => event.sourceEventIds), before[name].map(event => event.sourceEventIds),
+      'active queue lineage must remain unchanged after redundant tuple elision');
+    for (const event of canonicalQueues[name]) assert.equal('sourceEventTuples' in event, false);
+  }
 });
 
 test('an interrupted prepared compaction claim replays into the bounded summary', () => {

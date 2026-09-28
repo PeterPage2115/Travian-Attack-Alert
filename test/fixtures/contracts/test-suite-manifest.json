@@ -128,6 +128,17 @@
       ]
     },
     {
+      "id": "suite:test/characterization/envelope-capacity.test.cjs",
+      "path": "test/characterization/envelope-capacity.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 11,
+      "coverage": [
+        "envelope-capacity",
+        "transport-recovery",
+        "legacy-migration"
+      ]
+    },
+    {
       "id": "suite:test/characterization/lease-fence-matrix.test.cjs",
       "path": "test/characterization/lease-fence-matrix.test.cjs",
       "classification": "source-artifact",
@@ -621,8 +632,8 @@
     }
   ],
   "totals": {
-    "suiteCount": 60,
-    "expectedExecutionCount": 1317,
+    "suiteCount": 61,
+    "expectedExecutionCount": 1328,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 5,
@@ -633,8 +644,8 @@
         "expectedExecutionCount": 391
       },
       "source-artifact": {
-        "suiteCount": 17,
-        "expectedExecutionCount": 457
+        "suiteCount": 18,
+        "expectedExecutionCount": 468
       },
       "tool": {
         "suiteCount": 25,
