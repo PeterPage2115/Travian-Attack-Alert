@@ -141,7 +141,7 @@
       "id": "suite:test/characterization/envelope-capacity.test.cjs",
       "path": "test/characterization/envelope-capacity.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 11,
+      "expectedExecutionCount": 13,
       "coverage": [
         "envelope-capacity",
         "transport-recovery",
@@ -183,7 +183,7 @@
       "id": "suite:test/characterization/post-commit-flush.test.cjs",
       "path": "test/characterization/post-commit-flush.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 6,
+      "expectedExecutionCount": 8,
       "coverage": [
         "post-commit-flush",
         "immediate-dispatch"
@@ -653,7 +653,7 @@
   ],
   "totals": {
     "suiteCount": 63,
-    "expectedExecutionCount": 1342,
+    "expectedExecutionCount": 1346,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 6,
@@ -665,7 +665,7 @@
       },
       "source-artifact": {
         "suiteCount": 18,
-        "expectedExecutionCount": 468
+        "expectedExecutionCount": 472
       },
       "tool": {
         "suiteCount": 25,

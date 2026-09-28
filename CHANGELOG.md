@@ -4,6 +4,36 @@ All notable changes to the public release line are documented here.
 This file starts at 1.0.0. The earlier internal 6.x history is not
 rewritten here; it is noted as lineage only.
 
+## 1.0.4 — bounded scan and immediate dispatch (release candidate)
+
+Patch candidate built off the published `v1.0.3` tag; **not published**. The
+update channel keeps serving the published `1.0.3` artifact until the owner
+approves a separate publication. `docs/release-state.json` records the `1.0.4`
+candidate with the owner gates carried forward (`stable: true`) and
+`publication.tagAndRelease: false`. Semver patch: fixes only, no new feature and
+no schema break.
+
+- A no-delta authoritative scan no longer reserializes and read-backs an
+  unbounded accumulated monitor envelope: terminal delivery accounting is
+  compacted into one bounded count/delta/digest summary, so persisted state
+  stops scaling with acknowledged-history length (a 10,000-terminal legacy
+  ledger migrated from ~3,564,733 B to ~196,837 B, and the next scan dropped
+  from ~4,787 ms to ~264 ms).
+- The monitor envelope now enforces a finite 512 KiB serialized ceiling.
+  Scan/enqueue commits fail closed without overwriting active/backup storage
+  when recoverable active lineage cannot fit, while transport-recovery commits
+  may persist only whitelisted progress metadata within a bounded allowance
+  (16 KiB + 256 B per recoverable record) and never grow recoverable work.
+- A durably queued alert is dispatched on the next event-loop turn after a
+  successful durable commit instead of waiting for the 30-second watchdog,
+  which remains in place for restart/recovery. The immediate flush is
+  deduplicated, lease-revalidated, and never extends the scan or commit
+  critical section.
+- Version identity moved to `1.0.4` / `taa-1.0.4` across `package.json`,
+  `package-lock.json`, the runtime, the generated artifact, sidecar, metadata,
+  and module manifest, the `tools/*` fallbacks, `docs/release-state.json`, the
+  README/docs identity claims, and the current-version test assertions.
+
 ## Repository cleanup — `src/` runtime authority (historical; merged into the 1.0.2 line)
 
 - Owner release runbook and readiness verifier: `docs/RELEASE-RUNBOOK.md`

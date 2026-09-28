@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Travian Attack Alert
 // @namespace    travian-attack-alert-public
-// @version      1.0.3
+// @version      1.0.4
 // @description  Notifies on Discord about new attacks on alliance members
 // @match        https://*.travian.com/alliance*
 // @grant        GM_xmlhttpRequest
@@ -30,8 +30,8 @@ var require_runtime = __commonJS({
   "src/runtime.js"(exports2, module2) {
     (function() {
       "use strict";
-      const RELEASE_VERSION = "1.0.3";
-      const RELEASE_ID = "taa-1.0.3";
+      const RELEASE_VERSION = "1.0.4";
+      const RELEASE_ID = "taa-1.0.4";
       const CONFIG = {
         // Losowe odświeżanie strony co 1–2 minuty.
         reloadMinSeconds: 60,
@@ -373,6 +373,10 @@ var require_runtime = __commonJS({
       let readinessLoadListener = null;
       let readinessPageHideListener = null;
       let visibilityDriftState = null;
+      let immediateFlushTimerId = null;
+      let lastScanCompletedMono = null;
+      let lastScanHostname = null;
+      let lastScanDurations = null;
       function monotonicNow() {
         if (typeof performance !== "undefined" && typeof performance.now === "function") {
           return performance.now();
@@ -510,6 +514,10 @@ var require_runtime = __commonJS({
         if (flushTimerId !== null) {
           clearTimeout(flushTimerId);
           flushTimerId = null;
+        }
+        if (immediateFlushTimerId !== null) {
+          clearTimeout(immediateFlushTimerId);
+          immediateFlushTimerId = null;
         }
       }
       function requestPanelExit(reason, continuation) {
@@ -4439,6 +4447,11 @@ var require_runtime = __commonJS({
       const MONITOR_QUARANTINE_STORAGE_KEY_PREFIX = "travianAllianceMonitorQuarantine_v1:";
       const MONITOR_QUARANTINE_INDEX_SUFFIX = ":index";
       const MONITOR_MAX_PENDING_RECORDS = 512;
+      const MONITOR_MAX_SERIALIZED_BYTES = 512 * 1024;
+      const TRANSPORT_METADATA_ALLOWANCE_BASE_BYTES = 16 * 1024;
+      const TRANSPORT_METADATA_ALLOWANCE_PER_RECORD_BYTES = 256;
+      const TRANSPORT_RECOVERY_TRANSITIONS = /* @__PURE__ */ new Set(["pending-to-inFlight", "dispatch-start", "retry-attempt", "retry", "acknowledge", "acknowledge-uncertain", "failed", "uncertain", "requeue-failed"]);
+      const TRANSPORT_PROGRESS_FIELDS = ["dispatchedAtMs", "attemptCount", "deliveryState", "responseClass", "status", "reason"];
       const MONITOR_QUARANTINE_MAX_ENTRIES = 3;
       const MONITOR_QUARANTINE_MAX_BYTES = 128 * 1024;
       function cloneMonitorValue(value) {
@@ -4545,6 +4558,11 @@ var require_runtime = __commonJS({
           value && typeof value === "object" && !Array.isArray(value)
         );
       }
+      function validCompactedSummary(range, canonicalId) {
+        if (!isPlainMonitorObject(range) || !Array.isArray(range.sourceEventIds) || !Number.isSafeInteger(range.from) || range.from < 0 || !Number.isSafeInteger(range.to) || range.to < range.from || !Number.isSafeInteger(range.count) || range.count < 1 || !Number.isFinite(range.attackDelta) || !Number.isFinite(range.raidDelta)) return false;
+        if (range.sourceEventIds.length) return range.sourceEventIds.every(canonicalId) && range.sourceEventCount === void 0 && range.lineageDigest === void 0;
+        return Number.isSafeInteger(range.sourceEventCount) && range.sourceEventCount >= 0 && typeof range.lineageDigest === "string" && /^[0-9a-f]{8}$/.test(range.lineageDigest);
+      }
       function parseMonitorEnvelopeV1(raw, expectedWorld) {
         let value = raw;
         if (typeof raw === "string") {
@@ -4591,7 +4609,7 @@ var require_runtime = __commonJS({
           }
         }));
         const compactedLineageValid = (value.metrics.deliveryAccounting?.compactedTerminalTotals || []).every(
-          (range) => Array.isArray(range.sourceEventIds) && range.sourceEventIds.every((id) => {
+          (range) => validCompactedSummary(range, (id) => {
             try {
               return sourceEventTuple(decodeSourceEventId(String(id))).sourceEventId === id;
             } catch (error) {
@@ -5168,6 +5186,43 @@ var require_runtime = __commonJS({
           addedRaidCount: entry.addedRaidCount || 0
         })));
       }
+      function mergeCompactedTotals(accounting, range, rangeDigest) {
+        let previousDigest = "";
+        let from = range ? range.from : null;
+        let to = range ? range.to : null;
+        let count = 0;
+        let attackDelta = 0;
+        let raidDelta = 0;
+        let sourceEventCount = 0;
+        for (const old of accounting.compactedTerminalTotals) {
+          const digest = old.sourceEventIds.length ? checksumMonitorCanonicalValue({ from: old.from, to: old.to, count: old.count, attackDelta: old.attackDelta, raidDelta: old.raidDelta, sourceEventIds: old.sourceEventIds }) : old.lineageDigest;
+          previousDigest = !previousDigest && !old.sourceEventIds.length ? digest : checksumMonitorCanonicalValue({ previousDigest, rangeDigest: digest });
+          from = from === null ? old.from : Math.min(from, old.from);
+          to = to === null ? old.to : Math.max(to, old.to);
+          count += old.count;
+          attackDelta += old.attackDelta;
+          raidDelta += old.raidDelta;
+          sourceEventCount += old.sourceEventIds.length ? old.sourceEventIds.length : old.sourceEventCount;
+        }
+        if (range) {
+          previousDigest = checksumMonitorCanonicalValue({ previousDigest, rangeDigest });
+          to = Math.max(to, range.to);
+          count += range.count;
+          attackDelta += range.attackDelta;
+          raidDelta += range.raidDelta;
+          sourceEventCount += range.sourceEventCount;
+        }
+        accounting.compactedTerminalTotals = count ? [{ from, to, count, attackDelta, raidDelta, sourceEventCount, lineageDigest: previousDigest, sourceEventIds: [] }] : [];
+        return accounting.compactedTerminalTotals[0];
+      }
+      function compactTerminalRange(accounting, terminal, limit) {
+        const range = terminal.slice(0, limit);
+        const totals = { from: range[0].terminalSequence, to: range[range.length - 1].terminalSequence, count: range.length, attackDelta: range.reduce((sum, entry) => sum + (Number(entry.addedAttackCount) || 0), 0), raidDelta: range.reduce((sum, entry) => sum + (Number(entry.addedRaidCount) || 0), 0), sourceEventCount: range.reduce((sum, entry) => sum + (entry.sourceEventIds || []).length, 0) };
+        const summary = mergeCompactedTotals(accounting, totals, deliveryRangeDigest(range));
+        accounting.terminal = terminal.filter((entry) => entry.terminalSequence > totals.to);
+        accounting.compactedThroughTerminalSequence = Math.max(accounting.compactedThroughTerminalSequence || 0, totals.to);
+        return summary;
+      }
       function compactDeliveryAccountingV1(envelope, options = {}) {
         const base = createMonitorEnvelopeV1(envelope && envelope.world, envelope || {});
         const accounting = syncDeliveryAccounting(base);
@@ -5195,17 +5250,7 @@ var require_runtime = __commonJS({
         if (claim.expectedGeneration !== base.generation - 1 || claim.status !== "prepared") return { outcome: "stale-claim", envelope: base };
         const range = terminal.filter((entry) => entry.terminalSequence >= claim.fromTerminalSequence && entry.terminalSequence <= claim.toTerminalSequence);
         if (deliveryRangeDigest(range) !== claim.rangeDigest || range.length === 0) return { outcome: "stale-claim", envelope: base };
-        const totals = {
-          from: claim.fromTerminalSequence,
-          to: claim.toTerminalSequence,
-          count: range.length,
-          attackDelta: range.reduce((sum, entry) => sum + (Number(entry.addedAttackCount) || 0), 0),
-          raidDelta: range.reduce((sum, entry) => sum + (Number(entry.addedRaidCount) || 0), 0),
-          sourceEventIds: range.flatMap((entry) => entry.sourceEventIds || [])
-        };
-        accounting.compactedTerminalTotals = accounting.compactedTerminalTotals.concat(totals);
-        accounting.terminal = terminal.filter((entry) => entry.terminalSequence > claim.toTerminalSequence);
-        accounting.compactedThroughTerminalSequence = Math.max(accounting.compactedThroughTerminalSequence || 0, claim.toTerminalSequence);
+        const totals = compactTerminalRange(accounting, terminal, range.length);
         accounting.compactionClaim = null;
         accounting.lastCompaction = { operationId: claim.operationId, from: claim.fromTerminalSequence, to: claim.toTerminalSequence };
         base.generation += 1;
@@ -5214,6 +5259,91 @@ var require_runtime = __commonJS({
       }
       const prepareTerminalCompactionV1 = (envelope, options) => compactDeliveryAccountingV1(envelope, Object.assign({}, options, { phase: "prepare" }));
       const resumeTerminalCompactionV1 = compactDeliveryAccountingV1;
+      function normalizeMonitorEnvelopeForPersistence(envelope, options = {}) {
+        let base = createMonitorEnvelopeV1(envelope.world, cloneMonitorValue(envelope));
+        let accounting = deliveryAccountingFor(base);
+        if (accounting.compactionClaim) {
+          const resumed = resumeTerminalCompactionV1(base, options);
+          if (resumed.outcome !== "compacted") throw new Error("stale terminal compaction claim");
+          base = resumed.envelope;
+          accounting = deliveryAccountingFor(base);
+        }
+        if (accounting.compactedTerminalTotals.length > 1 || accounting.compactedTerminalTotals.some((range) => range.sourceEventIds.length)) mergeCompactedTotals(accounting, null, null);
+        for (const events of [base.pending, base.inFlight, base.failed, base.uncertain, accounting.recoverable, accounting.terminal]) {
+          for (const event of events) {
+            if (!Array.isArray(event.sourceEventIds) || !Array.isArray(event.sourceEventTuples)) continue;
+            if (event.sourceEventTuples.length === event.sourceEventIds.length && event.sourceEventIds.every((id, index) => canonicalSerializeMonitorValue(event.sourceEventTuples[index]) === canonicalSerializeMonitorValue(sourceEventTuple(decodeSourceEventId(id))))) delete event.sourceEventTuples;
+          }
+        }
+        const terminal = accounting.terminal.slice().sort((left, right) => left.terminalSequence - right.terminalSequence);
+        const maxBytes = Number.isFinite(options.maxSerializedBytes) ? options.maxSerializedBytes : Infinity;
+        if (new TextEncoder().encode(canonicalSerializeMonitorValue(base)).length > maxBytes && canonicalSerializeMonitorValue(accounting.recoverable) === canonicalSerializeMonitorValue([].concat(base.pending, base.inFlight, base.failed, base.uncertain))) accounting.recoverable = [];
+        const limit = Math.max(0, terminal.length - 512);
+        if (limit) compactTerminalRange(accounting, terminal, limit);
+        while (accounting.terminal.length && new TextEncoder().encode(canonicalSerializeMonitorValue(base)).length > maxBytes) {
+          const remaining = accounting.terminal.slice().sort((left, right) => left.terminalSequence - right.terminalSequence);
+          compactTerminalRange(accounting, remaining, 1);
+        }
+        base.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(base));
+        return base;
+      }
+      function recoverableMonitorRecords(envelope) {
+        return [].concat(envelope.pending, envelope.inFlight, envelope.failed, envelope.uncertain);
+      }
+      function transportRecoveryPermitted(current, nextEnvelope, type, currentBytes, candidateBytes) {
+        if (!TRANSPORT_RECOVERY_TRANSITIONS.has(type)) return false;
+        const settlement = type === "acknowledge" || type === "acknowledge-uncertain";
+        const before = recoverableMonitorRecords(current);
+        const after = recoverableMonitorRecords(nextEnvelope);
+        if (after.length > before.length || !settlement && after.length !== before.length) return false;
+        const lineage = /* @__PURE__ */ new Map();
+        for (const event of before) for (const id of event.sourceEventIds || []) lineage.set(id, (lineage.get(id) || 0) + 1);
+        for (const event of after) for (const id of event.sourceEventIds || []) {
+          const remaining = lineage.get(id) || 0;
+          if (!remaining) return false;
+          lineage.set(id, remaining - 1);
+        }
+        if (!settlement && [...lineage.values()].some((remaining) => remaining !== 0)) return false;
+        const stable = (event) => {
+          const copy = Object.assign({}, event);
+          for (const field of TRANSPORT_PROGRESS_FIELDS) delete copy[field];
+          return canonicalSerializeMonitorValue(copy);
+        };
+        const originals = /* @__PURE__ */ new Map();
+        for (const event of before) {
+          const key = stable(event);
+          originals.set(key, (originals.get(key) || 0) + 1);
+        }
+        for (const event of after) {
+          const key = stable(event);
+          const remaining = originals.get(key) || 0;
+          if (!remaining) return false;
+          originals.set(key, remaining - 1);
+        }
+        if (!settlement && [...originals.values()].some((remaining) => remaining !== 0)) return false;
+        if (candidateBytes > currentBytes + TRANSPORT_METADATA_ALLOWANCE_BASE_BYTES + TRANSPORT_METADATA_ALLOWANCE_PER_RECORD_BYTES * before.length) return false;
+        const terminalCount = (envelope) => {
+          const accounting = envelope.metrics.deliveryAccounting;
+          return accounting.terminal.length + accounting.compactedTerminalTotals.reduce((count, range) => count + range.count, 0);
+        };
+        if (terminalCount(nextEnvelope) - terminalCount(current) !== (settlement ? before.length - after.length : 0)) return false;
+        const outsideQueues = (envelope) => {
+          const copy = cloneMonitorValue(envelope);
+          delete copy.integrity;
+          delete copy.generation;
+          for (const key of ["pending", "inFlight", "failed", "uncertain"]) delete copy[key];
+          delete copy.metrics.deliveryAccounting.recoverable;
+          if (settlement) {
+            delete copy.metrics.deliveryAccounting.terminal;
+            delete copy.metrics.deliveryAccounting.compactedTerminalTotals;
+            delete copy.metrics.deliveryAccounting.compactedThroughTerminalSequence;
+            delete copy.metrics.deliveryAccounting.nextTerminalSequence;
+            delete copy.metrics.deliveryAccounting.lastCompaction;
+          }
+          return canonicalSerializeMonitorValue(copy);
+        };
+        return outsideQueues(current) === outsideQueues(nextEnvelope);
+      }
       function monitorWorldLegacyValue(legacy, name, world) {
         if (!legacy || typeof legacy !== "object") {
           return void 0;
@@ -5898,15 +6028,23 @@ var require_runtime = __commonJS({
           pending,
           metrics: Object.assign({}, current.metrics, transition.metrics || {}, { lastCommitAtMs: Date.now(), lastError: null })
         }));
-        const serializedCandidate = serializeMonitorEnvelopeV1(candidate2);
-        const serializedCapacity = Number.isInteger(options.serializedEnvelopeCapacity) ? options.serializedEnvelopeCapacity : Number.POSITIVE_INFINITY;
-        if (serializedCandidate.length > serializedCapacity) return { outcome: "capacity-reject", memorySwapped: false };
+        const serializedCapacity = Number.isInteger(options.serializedEnvelopeCapacity) ? Math.min(options.serializedEnvelopeCapacity, MONITOR_MAX_SERIALIZED_BYTES) : MONITOR_MAX_SERIALIZED_BYTES;
+        let normalized;
+        try {
+          normalized = normalizeMonitorEnvelopeForPersistence(candidate2, { maxSerializedBytes: serializedCapacity });
+        } catch (error) {
+          return { outcome: "corrupt-active", memorySwapped: false };
+        }
+        const serializedBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(normalized)).length;
+        if (serializedBytes > serializedCapacity) return { outcome: "capacity-reject", memorySwapped: false, serializedBytes, capacityBytes: serializedCapacity, recoverableRecords: allQueues.length };
         const result = commitMonitorEnvelopeV1({
           world: current.world,
           currentEnvelope: current,
           candidateEnvelope: candidate2,
           expectedGeneration,
           storage: options.storage,
+          maxSerializedBytes: serializedCapacity,
+          timings: options.timings,
           beforeCommit: () => (typeof options.beforeCommit !== "function" || options.beforeCommit() === true) && (!fenced || fence())
         });
         if (result.outcome !== "ok" || fenced && !fence()) {
@@ -5930,7 +6068,7 @@ var require_runtime = __commonJS({
         if (!candidateParsed.ok) {
           return { outcome: "corrupt-active", memorySwapped: false };
         }
-        const candidate2 = candidateParsed.envelope;
+        let candidate2 = candidateParsed.envelope;
         const expectedGeneration = current ? current.generation : Number.isInteger(options.expectedGeneration) ? options.expectedGeneration : -1;
         if (!isMonitorGenerationFenced(expectedGeneration, candidate2.generation)) {
           return { outcome: "fenced-reject", memorySwapped: false };
@@ -5947,6 +6085,26 @@ var require_runtime = __commonJS({
           });
         }
         candidate2.pending = coalesced.events;
+        const byteCapacity = Number.isInteger(options.maxSerializedBytes) ? Math.min(options.maxSerializedBytes, MONITOR_MAX_SERIALIZED_BYTES) : MONITOR_MAX_SERIALIZED_BYTES;
+        const normalizeStartedMono = monotonicNow();
+        try {
+          candidate2 = normalizeMonitorEnvelopeForPersistence(candidate2, { maxSerializedBytes: byteCapacity });
+        } catch (error) {
+          return { outcome: "corrupt-active", memorySwapped: false };
+        }
+        const candidateBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(candidate2)).length;
+        recordDuration(options.timings, "normalizeMs", normalizeStartedMono, monotonicNow());
+        if (candidateBytes > byteCapacity) {
+          if (!current || !options.transportTransitionType || !TRANSPORT_RECOVERY_TRANSITIONS.has(options.transportTransitionType)) return { outcome: "capacity-reject", memorySwapped: false, serializedBytes: candidateBytes, capacityBytes: byteCapacity, recoverableRecords: recoverableMonitorRecords(candidate2).length };
+          let normalizedCurrent;
+          try {
+            normalizedCurrent = normalizeMonitorEnvelopeForPersistence(current, { maxSerializedBytes: byteCapacity });
+          } catch (error) {
+            return { outcome: "corrupt-active", memorySwapped: false };
+          }
+          const currentBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(current)).length;
+          if (currentBytes <= byteCapacity || !transportRecoveryPermitted(normalizedCurrent, candidate2, options.transportTransitionType, currentBytes, candidateBytes)) return { outcome: "capacity-reject", memorySwapped: false };
+        }
         const activeKey = monitorActiveStorageKey(candidate2.world);
         const backupKey = monitorBackupStorageKey(candidate2.world);
         const oldActiveRead = monitorReadRaw(storage, activeKey);
@@ -5959,7 +6117,9 @@ var require_runtime = __commonJS({
         if (typeof options.beforeCommit === "function" && options.beforeCommit() !== true) {
           return { outcome: "fenced-reject", memorySwapped: false };
         }
+        const backupWriteStartedMono = monotonicNow();
         const backupResult = monitorWriteReadback(storage, backupKey, backupPayload);
+        recordDuration(options.timings, "backupWriteMs", backupWriteStartedMono, monotonicNow());
         if (!backupResult.ok) {
           monitorRestoreRaw(storage, backupKey, oldBackup);
           return { outcome: backupResult.outcome, memorySwapped: false };
@@ -5968,7 +6128,9 @@ var require_runtime = __commonJS({
           monitorRestoreRaw(storage, backupKey, oldBackup);
           return { outcome: "fenced-reject", memorySwapped: false };
         }
+        const activeWriteStartedMono = monotonicNow();
         const activeResult = monitorWriteReadback(storage, activeKey, activePayload);
+        recordDuration(options.timings, "activeWriteMs", activeWriteStartedMono, monotonicNow());
         if (!activeResult.ok) {
           monitorRestoreRaw(storage, backupKey, oldBackup);
           monitorRestoreRaw(storage, activeKey, oldActive);
@@ -5995,6 +6157,7 @@ var require_runtime = __commonJS({
         const type = input.type;
         const ids = new Set(Array.isArray(input.eventIds) ? input.eventIds : []);
         const copyEvents = (value) => Array.isArray(value) ? value.slice() : [];
+        base.metrics.deliveryAccounting = cloneMonitorValue(base.metrics.deliveryAccounting);
         if (type === "enqueue") {
           const coalesced = coalesceMonitorPendingEvents(
             base.pending.concat(Array.isArray(input.events) ? input.events : []),
@@ -6100,7 +6263,8 @@ var require_runtime = __commonJS({
           expectedGeneration: options.expectedGeneration,
           storage: options.storage,
           nowMs: options.nowMs,
-          beforeCommit: options.beforeCommit
+          beforeCommit: options.beforeCommit,
+          transportTransitionType: options.transition.type
         });
       }
       function getTooltipSources(icon) {
@@ -7270,6 +7434,14 @@ ${entry.line}`;
           return;
         }
         let settled = false;
+        const scanToRequestMs = monotonicDurationMs(lastScanCompletedMono, requestStartedMono);
+        if (scanToRequestMs !== null) {
+          recordDuration(lastScanDurations, "dispatchStartMs", lastScanCompletedMono, requestStartedMono);
+          if (lastScanDurations && lastScanHostname) {
+            mergeRuntimeDiagnostics(lastScanHostname, { timings: lastScanDurations });
+          }
+          lastScanCompletedMono = null;
+        }
         const settleOnce = (outcome) => {
           if (settled) {
             return;
@@ -7279,7 +7451,8 @@ ${entry.line}`;
           const enriched = Object.assign({}, outcome, {
             requestStartedAtMs,
             requestEndedAtMs: completedAtMs,
-            requestMs: monotonicDurationMs(requestStartedMono, monotonicNow())
+            requestMs: monotonicDurationMs(requestStartedMono, monotonicNow()),
+            scanToRequestMs
           });
           reportLifecycleHook("onDiscordRequest", enriched);
           if (typeof onComplete === "function") {
@@ -7882,6 +8055,7 @@ ${entry.line}`;
             ])
           );
           const currentHostname = normalizeHostname(location.hostname);
+          const envelopeLoadStartedMono = monotonicNow();
           const monitorLoaded = loadOrMigrateMonitorEnvelopeV1(
             currentHostname,
             snapshot,
@@ -7890,6 +8064,7 @@ ${entry.line}`;
               beforeCommit: isCurrentLeaseOwner
             }
           );
+          recordDuration(durations, "envelopeLoadMs", envelopeLoadStartedMono, monotonicNow());
           if (monitorLoaded.blocked || !monitorLoaded.envelope) {
             console.error(
               "[Alliance Discord] Monitor storage blocked:",
@@ -8114,10 +8289,13 @@ ${entry.line}`;
               beforeCommit: isCurrentLeaseOwner,
               ownerId: activeLeaseOwnerId,
               term: tabLeaseTerm,
-              expectedGeneration: monitorLoaded.envelope.generation
+              expectedGeneration: monitorLoaded.envelope.generation,
+              serializedEnvelopeCapacity: MONITOR_MAX_SERIALIZED_BYTES,
+              timings: durations
             });
             recordDuration(durations, "persistMs", persistStartedMono, monotonicNow());
             if (commit.outcome !== "ok") {
+              if (commit.outcome === "capacity-reject") console.warn("[Alliance Discord] Monitor capacity:", { serializedBytes: commit.serializedBytes, capacityBytes: commit.capacityBytes, recoverableRecords: commit.recoverableRecords });
               console.error(
                 "[Alliance Discord] Monitor commit blocked:",
                 commit.outcome
@@ -8132,11 +8310,14 @@ ${entry.line}`;
               return;
             }
             lastScanAtMs = observedAtMs;
-            const nextPending = commit.envelope.pending;
+            const committedPending = commit.envelope.pending;
             reportLifecycleHook("onMonitorCommit", {
               observedAtMs,
               generation: commit.generation
             });
+            if (Array.isArray(committedPending) && committedPending.length > 0) {
+              requestImmediateBatchFlush();
+            }
             if (nextRoster !== null) {
               saveRoster(nextRoster);
             }
@@ -8185,6 +8366,9 @@ ${entry.line}`;
             runtimePatch.lastScan = Object.assign({}, durations, { observedAtMs, generation, queueAge });
           }
           mergeRuntimeDiagnostics(currentHostname, runtimePatch);
+          lastScanCompletedMono = monotonicNow();
+          lastScanHostname = currentHostname;
+          lastScanDurations = durations;
           reportLifecycleHook("onScanComplete", {
             observedAtMs,
             generation,
@@ -8596,6 +8780,9 @@ ${entry.line}`;
         if (!isCurrentLeaseOwner()) {
           return;
         }
+        if (!loadWebhookUrl()) {
+          return;
+        }
         reportLifecycleHook("onFlushStart", { atMs: Date.now() });
         const hostname = normalizeHostname(location.hostname);
         const monitor = ensureMonitorEnvelopeForTransport(hostname);
@@ -8639,6 +8826,18 @@ ${entry.line}`;
           flushPendingBatch();
           scheduleBatchFlush();
         }, BATCH_FLUSH_MS);
+      }
+      function requestImmediateBatchFlush() {
+        if (immediateFlushTimerId !== null || !loadWebhookUrl()) {
+          return;
+        }
+        immediateFlushTimerId = scheduleLifecycleTimeout(() => {
+          immediateFlushTimerId = null;
+          if (!tabLeaseActive || !isCurrentLeaseOwner()) {
+            return;
+          }
+          flushPendingBatch();
+        }, 0);
       }
       function initAdminPanel() {
         if (isNodeEnvironment || typeof document === "undefined") {
@@ -9389,6 +9588,9 @@ ${entry.line}`;
             setFeedback("Could not retry failed delivery.", true);
             return result;
           }
+          if (Array.isArray(result.envelope.pending) && result.envelope.pending.length > 0) {
+            requestImmediateBatchFlush();
+          }
           setFeedback("Failed delivery requeued; retry may duplicate.", false);
           renderPanel();
           return result;
@@ -9405,6 +9607,9 @@ ${entry.line}`;
           if (result.outcome !== "ok") {
             setFeedback("Could not retry uncertain delivery.", true);
             return result;
+          }
+          if (Array.isArray(result.envelope.pending) && result.envelope.pending.length > 0) {
+            requestImmediateBatchFlush();
           }
           setFeedback("Uncertain delivery requeued; retry may duplicate.", false);
           renderPanel();

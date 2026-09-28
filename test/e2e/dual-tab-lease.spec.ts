@@ -294,6 +294,7 @@ async function reloadCycle(page: Page, prep: PrepConfig, gm: string, webhook: bo
   await useLoopbackTransport(page, ns);
   await restoreGM(page, gm);
   if (webhook) await setWebhook(page);
+  else await page.evaluate(() => window.GM_deleteValue('travianAllianceWebhookUrl_v1'));
   await useMenuCapture(page);
   await injectDist(page);
   await waitAuthoritativeSnapshot(page);
@@ -316,13 +317,15 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       await waitAuthoritativeSnapshot(owner);
       expect(await serverRequestCount(owner, ns)).toBe(0);
 
-      // Burn the sink's first-attempt 429 (flagged, never product traffic),
-      // then queue a synthetic +1 attack on the owner WITHOUT delivering it
-      // (the startup flush already ran pre-scan).
+      // Queue a synthetic +1 attack on the owner WITHOUT delivering it: with no
+      // webhook configured the immediate post-commit flush is skipped and the
+      // record stays pending. The webhook is configured only afterwards, so the
+      // delivery below still travels the product's own 30 s batch-flush cadence.
       const seedGM = await snapshotGM(owner);
-      await reloadCycle(owner, { rename101: true, attackIcon101: true }, seedGM, true, ns);
+      await reloadCycle(owner, { rename101: true, attackIcon101: true }, seedGM, false, ns);
       await expect.poll(async () => (await monitorEnvelope(owner)).pending.length, { timeout: 10_000 }).toBe(1);
       expect(await serverRequestCount(owner, ns)).toBe(0); // queued, not sent
+      await setWebhook(owner);
 
       // Standby boots while the owner HOLDS the exclusive lock: its lock
       // callback queues behind the owner and cannot run yet. The owner is
@@ -447,7 +450,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       await waitAuthoritativeSnapshot(owner);
 
       let gm = await snapshotGM(owner);
-      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true }, gm, true, ns);
+      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true }, gm, false, ns);
       await expect.poll(async () => (await monitorEnvelope(owner)).pending.length, { timeout: 10_000 }).toBe(1);
       gm = await snapshotGM(owner);
       await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true }, gm, true, ns);
@@ -455,7 +458,7 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       await expect.poll(async () => (await monitorEnvelope(owner)).terminal.filter((t) => t.terminalStatus === 'acknowledged' && t.playerId === '101').length, { timeout: 10_000 }).toBe(1);
 
       gm = await snapshotGM(owner);
-      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true, raidIcon102: true }, gm, true, ns);
+      await reloadCycle(owner, { rename101: true, rename102: true, attackIcon101: true, raidIcon102: true }, gm, false, ns);
       await expect.poll(async () => (await monitorEnvelope(owner)).pending.length, { timeout: 10_000 }).toBe(1);
       expect(await serverRequestCount(owner, ns)).toBe(2); // 102 queued, not sent
       const queued = await monitorEnvelope(owner);
@@ -542,11 +545,13 @@ test.describe('dual-tab lease — single-browser sender authority', () => {
       await waitAuthoritativeSnapshot(page);
       await warmupLoopbackTransport(page, (p) => serverRequestCount(p, ns), ns);
 
-      // Queue one synthetic record (startup flush already ran pre-scan).
+      // Queue one synthetic record with no webhook (the immediate post-commit
+      // flush is skipped); the webhook is configured below for the manual flush.
       const gm = await snapshotGM(page);
-      await reloadCycle(page, { rename101: true, attackIcon101: true }, gm, true, ns);
+      await reloadCycle(page, { rename101: true, attackIcon101: true }, gm, false, ns);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);
       expect(await serverRequestCount(page, ns)).toBe(1);
+      await setWebhook(page);
 
       // Hold the loopback response, start the flush, wait until the request is
       // on the wire (logged), THEN revoke the lease mid-flight.

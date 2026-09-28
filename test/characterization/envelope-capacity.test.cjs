@@ -30,6 +30,14 @@ function event(id = 'e-1', length = 0) {
     sourceEventIds: [sourceEventId], sourceEventTuples: [migration.sourceEventTuple(migration.decodeSourceEventId(sourceEventId))], name: '界'.repeat(length) };
 }
 
+function oversizedRecords() {
+  return [7, 8, 9].map((playerId, index) => {
+    const record = event(`e-${index + 1}`, 180000);
+    const id = migration.sourceEventIdFromTuple({ world, playerId: String(playerId), eventType: 'attack', acceptedGeneration: 1, scanSequence: index + 1, attackDelta: 1, raidDelta: 0 });
+    return { ...record, playerId: String(playerId), sourceEventIds: [id], sourceEventTuples: [migration.sourceEventTuple(migration.decodeSourceEventId(id))] };
+  });
+}
+
 function envelope(overrides = {}) { return kernel.createMonitorEnvelopeV1(world, { nowMs: 1000, ...overrides }); }
 function commit(api, storage, candidate, current = null, options = {}) {
   return api.commitMonitorEnvelopeV1({ world, storage, currentEnvelope: current, candidateEnvelope: candidate,
@@ -191,6 +199,46 @@ test('oversized enqueue and unrecognized recovery mode cannot inject new lineage
     const result = commit(api, storage, candidate, current, { transportTransitionType: 'dispatch-start' });
     // Then a transition label cannot authorize new lineage.
     assert.equal(result.outcome, 'capacity-reject'); assert.equal(storage.data.size, 0);
+  }
+});
+
+test('oversized dispatch-start cannot remove a pending record without settlement', () => {
+  for (const api of [kernel, runtime]) {
+    // Given three oversized pending records and byte-identical active/backup storage.
+    const storage = store();
+    const current = envelope({ generation: 1, pending: oversizedRecords() });
+    const active = api.monitorActiveStorageKey(world), backup = api.monitorBackupStorageKey(world);
+    const original = api.serializeMonitorEnvelopeV1(current);
+    assert.ok(bytes(original) > ceiling);
+    storage.set(active, original); storage.set(backup, original);
+    let writes = 0;
+    const originalSet = storage.set;
+    storage.set = (key, value) => { writes += 1; originalSet(key, value); };
+    const candidate = envelope({ ...JSON.parse(JSON.stringify(current)), generation: 2, pending: current.pending.slice(1) });
+    // When a direct caller falsely labels a removal as dispatch-start.
+    const result = commit(api, storage, candidate, current, { transportTransitionType: 'dispatch-start' });
+    // Then recovery rejects before writing either storage key.
+    assert.equal(result.outcome, 'capacity-reject');
+    assert.equal(result.memorySwapped, false);
+    assert.equal(storage.get(active), original); assert.equal(storage.get(backup), original);
+    assert.equal(writes, 0);
+  }
+});
+
+test('oversized dispatch-start permits a progress-only update', () => {
+  for (const api of [kernel, runtime]) {
+    // Given the same oversized three-record pending queue already in storage.
+    const storage = store();
+    const current = envelope({ generation: 1, pending: oversizedRecords() });
+    storage.set(api.monitorActiveStorageKey(world), api.serializeMonitorEnvelopeV1(current));
+    // When only an allowlisted transport progress field changes.
+    const candidate = envelope({ ...JSON.parse(JSON.stringify(current)), generation: 2,
+      pending: current.pending.map((record, index) => index === 0 ? { ...record, dispatchedAtMs: 1234 } : record) });
+    const result = commit(api, storage, candidate, current, { transportTransitionType: 'dispatch-start' });
+    // Then every recoverable identity survives the permitted commit.
+    assert.equal(result.outcome, 'ok');
+    assert.equal(result.envelope.pending.length, 3);
+    assert.equal(result.envelope.pending[0].dispatchedAtMs, 1234);
   }
 });
 

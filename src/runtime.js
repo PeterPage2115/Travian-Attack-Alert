@@ -1,7 +1,7 @@
 (function() {
   "use strict";
-const RELEASE_VERSION = "1.0.3";
-const RELEASE_ID = "taa-1.0.3";
+const RELEASE_VERSION = "1.0.4";
+const RELEASE_ID = "taa-1.0.4";
   const CONFIG = {
     // Losowe odświeżanie strony co 1–2 minuty.
     reloadMinSeconds: 60,
@@ -5243,17 +5243,19 @@ const RELEASE_ID = "taa-1.0.3";
   function recoverableMonitorRecords(envelope) { return [].concat(envelope.pending, envelope.inFlight, envelope.failed, envelope.uncertain); }
   function transportRecoveryPermitted(current, nextEnvelope, type, currentBytes, candidateBytes) {
     if (!TRANSPORT_RECOVERY_TRANSITIONS.has(type)) return false;
+    const settlement = type === "acknowledge" || type === "acknowledge-uncertain";
     const before = recoverableMonitorRecords(current); const after = recoverableMonitorRecords(nextEnvelope);
-    if (after.length > before.length) return false;
+    if (after.length > before.length || !settlement && after.length !== before.length) return false;
     const lineage = new Map();
     for (const event of before) for (const id of event.sourceEventIds || []) lineage.set(id, (lineage.get(id) || 0) + 1);
     for (const event of after) for (const id of event.sourceEventIds || []) { const remaining = lineage.get(id) || 0; if (!remaining) return false; lineage.set(id, remaining - 1); }
+    if (!settlement && [...lineage.values()].some(remaining => remaining !== 0)) return false;
     const stable = event => { const copy = Object.assign({}, event); for (const field of TRANSPORT_PROGRESS_FIELDS) delete copy[field]; return canonicalSerializeMonitorValue(copy); };
     const originals = new Map();
     for (const event of before) { const key = stable(event); originals.set(key, (originals.get(key) || 0) + 1); }
     for (const event of after) { const key = stable(event); const remaining = originals.get(key) || 0; if (!remaining) return false; originals.set(key, remaining - 1); }
+    if (!settlement && [...originals.values()].some(remaining => remaining !== 0)) return false;
     if (candidateBytes > currentBytes + TRANSPORT_METADATA_ALLOWANCE_BASE_BYTES + TRANSPORT_METADATA_ALLOWANCE_PER_RECORD_BYTES * before.length) return false;
-    const settlement = type === "acknowledge" || type === "acknowledge-uncertain";
     const terminalCount = envelope => { const accounting = envelope.metrics.deliveryAccounting; return accounting.terminal.length + accounting.compactedTerminalTotals.reduce((count, range) => count + range.count, 0); };
     if (terminalCount(nextEnvelope) - terminalCount(current) !== (settlement ? before.length - after.length : 0)) return false;
     const outsideQueues = envelope => { const copy = cloneMonitorValue(envelope); delete copy.integrity; delete copy.generation; for (const key of ["pending", "inFlight", "failed", "uncertain"]) delete copy[key]; delete copy.metrics.deliveryAccounting.recoverable; if (settlement) { delete copy.metrics.deliveryAccounting.terminal; delete copy.metrics.deliveryAccounting.compactedTerminalTotals; delete copy.metrics.deliveryAccounting.compactedThroughTerminalSequence; delete copy.metrics.deliveryAccounting.nextTerminalSequence; delete copy.metrics.deliveryAccounting.lastCompaction; } return canonicalSerializeMonitorValue(copy); };
@@ -8710,6 +8712,9 @@ ${entry.line}`;
     if (!isCurrentLeaseOwner()) {
       return;
     }
+    if (!loadWebhookUrl()) {
+      return;
+    }
     reportLifecycleHook("onFlushStart", { atMs: Date.now() });
     const hostname = normalizeHostname(location.hostname);
     const monitor = ensureMonitorEnvelopeForTransport(hostname);
@@ -8755,7 +8760,10 @@ ${entry.line}`;
     }, BATCH_FLUSH_MS);
   }
   function requestImmediateBatchFlush() {
-    if (immediateFlushTimerId !== null) {
+    // An install with no webhook cannot drain: the immediate path must leave
+    // pending work recoverable in `pending` instead of promoting it to
+    // `inFlight` without a send. The watchdog remains scheduled for later delivery.
+    if (immediateFlushTimerId !== null || !loadWebhookUrl()) {
       return;
     }
     immediateFlushTimerId = scheduleLifecycleTimeout(() => {

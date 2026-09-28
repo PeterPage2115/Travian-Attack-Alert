@@ -103,7 +103,7 @@ function createRuntimeBootShim() {
   const alerts = [];
   const timers = [];
   const requests = [];
-  const hooks = { extraction: 0 };
+  const hooks = { extraction: 0, flush: 0 };
   const realClear = globalThis.clearTimeout;
   let capturing = false;
   let writeFault = null;
@@ -132,7 +132,8 @@ function createRuntimeBootShim() {
   const win = {
     addEventListener() {},
     __TAA_TEST_HOOK__: {
-      onExtractionStart: () => { hooks.extraction += 1; },
+       onExtractionStart: () => { hooks.extraction += 1; },
+       onFlushStart: () => { hooks.flush += 1; },
       onLeaseAcquired() {}, onStandby() {},
     },
   };
@@ -228,9 +229,11 @@ function seedBaselineEnvelope(env, options = {}) {
 // table), so scanAttemptedForDocument stays false and a later same-document
 // `Scan now` scan can still commit. The startup jitter timer is invoked
 // synchronously.
-function bootLeaderWithoutScan() {
+function bootLeaderWithoutScan(options = {}) {
   const env = createRuntimeBootShim();
-  env.gm.set(WEBHOOK_KEY, WEBHOOK);
+  if (options.webhook !== false) {
+    env.gm.set(WEBHOOK_KEY, WEBHOOK);
+  }
   const booted = freshRuntime();
   env.run(() => booted.startBrowserRuntime());
   const jitter = env.findTimer((timer) => timer.delayMs < 1000);
@@ -277,6 +280,56 @@ test('a successful durable commit with pending work schedules exactly one zero-d
     assert.deepEqual(dispatchedPlayerIds(env).sort(), ['101', '303'], 'the single request must carry both the fresh delta and the pre-existing pending work');
     assert.equal(env.zeroDelayTimers().length, 0, 'the immediate timer id must be cleared before flushing');
     assert.ok(env.findTimer((timer) => timer.delayMs === WATCHDOG_MS), 'the immediate flush must not cancel or replace the 30-second watchdog');
+  } finally { env.restore(); }
+});
+
+test('a successful durable commit with pending work but no webhook schedules no immediate flush and keeps the queue pending', () => {
+  const { env } = bootLeaderWithoutScan({ webhook: false });
+  try {
+    seedBaselineEnvelope(env);
+    env.setTable([shimRow('101', 'Player 101', 3)]);
+    runDocumentScan(env);
+
+    assert.equal(env.hooks.extraction, 1, 'the real scan path must run exactly once');
+    assert.equal(env.zeroDelayTimers().length, 0, 'an install with no webhook must not schedule a zero-delay flush');
+    assert.equal(env.requests.length, 0, 'an install with no webhook must never send');
+    const persisted = JSON.parse(env.gm.get(ACTIVE_KEY));
+    assert.equal(persisted.pending.length, 1, 'the detected attack must stay pending (recoverable) when no webhook is configured');
+    assert.equal(persisted.inFlight.length, 0, 'the immediate path must not promote pending work to inFlight without a send');
+    assert.equal(persisted.failed.length, 0, 'no record may be misclassified as failed');
+    assert.ok(env.findTimer((timer) => timer.delayMs === WATCHDOG_MS), 'the 30-second watchdog must remain scheduled');
+  } finally { env.restore(); }
+});
+
+test('watchdog leaves unwired detections pending until a webhook is configured', () => {
+  const { env } = bootLeaderWithoutScan({ webhook: false });
+  try {
+    // Given one detected attack committed without a webhook.
+    seedBaselineEnvelope(env);
+    env.setTable([shimRow('101', 'Player 101', 3)]);
+    runDocumentScan(env);
+    const pendingBefore = JSON.parse(env.gm.get(ACTIVE_KEY)).pending;
+    const watchdog = env.findTimer((timer) => timer.delayMs === WATCHDOG_MS);
+    // When the 30-second watchdog fires without a configured webhook.
+    env.run(() => env.invoke(watchdog));
+    const queued = JSON.parse(env.gm.get(ACTIVE_KEY));
+    // Then the work stays pending, no request occurs, and the watchdog reschedules.
+    assert.equal(env.hooks.flush, 0, 'the lease-owning watchdog must stop before transport without a webhook');
+    assert.deepEqual(queued.pending, pendingBefore);
+    assert.equal(queued.inFlight.length, 0);
+    assert.equal(env.requests.length, 0);
+    assert.ok(env.findTimer((timer) => timer.delayMs === WATCHDOG_MS));
+
+    // Given a valid webhook configured after the watchdog tick.
+    env.gm.set(WEBHOOK_KEY, WEBHOOK);
+    // When the subsequent scheduled watchdog flushes.
+    env.run(() => env.invoke(env.findTimer((timer) => timer.delayMs === WATCHDOG_MS)));
+    // Then one request delivers and acknowledges the record once.
+    const delivered = JSON.parse(env.gm.get(ACTIVE_KEY));
+    assert.equal(env.requests.length, 1);
+    assert.equal(delivered.pending.length, 0);
+    assert.equal(delivered.inFlight.length, 0);
+    assert.equal(delivered.metrics.deliveryAccounting.terminal.length, 1);
   } finally { env.restore(); }
 });
 
