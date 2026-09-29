@@ -299,6 +299,36 @@ test('oversized settlement rejects an unrelated terminal lineage before any stor
   }
 });
 
+test('oversized settlement rejects an empty-lineage removal with an unrelated terminal before any write', () => {
+  for (const api of [kernel, runtime]) {
+    // Given an oversized queue whose last recoverable record has no source identity.
+    const storage = store();
+    const records = oversizedRecords();
+    records[2].sourceEventIds = []; records[2].sourceEventTuples = [];
+    const current = envelope({ generation: 3, pending: records });
+    const active = api.monitorActiveStorageKey(world), backup = api.monitorBackupStorageKey(world);
+    const original = api.serializeMonitorEnvelopeV1(current);
+    assert.ok(bytes(original) > ceiling);
+    storage.set(active, original); storage.set(backup, 'backup-sentinel');
+    let writes = 0;
+    const originalSet = storage.set;
+    storage.set = (key, value) => { writes += 1; originalSet(key, value); };
+    const clone = JSON.parse(JSON.stringify(current));
+    clone.generation = 4; clone.pending = clone.pending.slice(0, 2);
+    const candidate = envelope(clone);
+    const unrelated = migration.sourceEventIdFromTuple({ world, playerId: '9', eventType: 'attack', acceptedGeneration: 1, scanSequence: 9, attackDelta: 1, raidDelta: 0 });
+    candidate.metrics.deliveryAccounting.terminal = [{ ...event('forged'), sourceEventIds: [unrelated], terminalSequence: 1, stage: 'acknowledged', terminalStatus: 'acknowledged' }];
+    candidate.metrics.deliveryAccounting.nextTerminalSequence = 2;
+    const parsed = api.parseMonitorEnvelopeV1(api.serializeMonitorEnvelopeV1(candidate), world);
+    assert.equal(parsed.ok, true);
+    // When a forged acknowledgment claims to settle the identity-less record.
+    const result = commit(api, storage, parsed.envelope, current, { transportTransitionType: 'acknowledge' });
+    // Then the oversized recovery path fails closed without touching either key.
+    assert.equal(result.outcome, 'capacity-reject'); assert.equal(result.memorySwapped, false);
+    assert.equal(writes, 0); assert.equal(storage.get(active), original); assert.equal(storage.get(backup), 'backup-sentinel');
+  }
+});
+
 test('oversized settlement accepts the removed record’s own terminal lineage', () => {
   for (const api of [kernel, runtime]) {
     // Given an oversized in-flight queue eligible for a real acknowledgment.

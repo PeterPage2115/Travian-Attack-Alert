@@ -5338,7 +5338,10 @@ var require_runtime = __commonJS({
             const key = stable(record);
             const count = remainingRecords.get(key) || 0;
             if (count) remainingRecords.set(key, count - 1);
-            else removedIds.push(...record.sourceEventIds || []);
+            else {
+              if (!Array.isArray(record.sourceEventIds) || record.sourceEventIds.length === 0) return false;
+              removedIds.push(...record.sourceEventIds);
+            }
           }
           const terminalIds = /* @__PURE__ */ new Map();
           for (const entry of preCandidate.metrics.deliveryAccounting.terminal) for (const id of entry.sourceEventIds || []) terminalIds.set(id, (terminalIds.get(id) || 0) + 1);

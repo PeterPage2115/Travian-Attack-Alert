@@ -141,7 +141,7 @@
       "id": "suite:test/characterization/envelope-capacity.test.cjs",
       "path": "test/characterization/envelope-capacity.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 15,
+      "expectedExecutionCount": 16,
       "coverage": [
         "envelope-capacity",
         "transport-recovery",
@@ -653,7 +653,7 @@
   ],
   "totals": {
     "suiteCount": 63,
-    "expectedExecutionCount": 1348,
+    "expectedExecutionCount": 1349,
     "byClassification": {
       "dist-artifact": {
         "suiteCount": 6,
@@ -665,7 +665,7 @@
       },
       "source-artifact": {
         "suiteCount": 18,
-        "expectedExecutionCount": 474
+        "expectedExecutionCount": 475
       },
       "tool": {
         "suiteCount": 25,

@@ -5262,7 +5262,9 @@ const RELEASE_ID = "taa-1.0.4";
       const remainingRecords = new Map();
       for (const record of recoverableMonitorRecords(preCandidate)) { const key = stable(record); remainingRecords.set(key, (remainingRecords.get(key) || 0) + 1); }
       const removedIds = [];
-      for (const record of recoverableMonitorRecords(preCurrent)) { const key = stable(record); const count = remainingRecords.get(key) || 0; if (count) remainingRecords.set(key, count - 1); else removedIds.push(...(record.sourceEventIds || [])); }
+      for (const record of recoverableMonitorRecords(preCurrent)) { const key = stable(record); const count = remainingRecords.get(key) || 0; if (count) remainingRecords.set(key, count - 1); else {
+        if (!Array.isArray(record.sourceEventIds) || record.sourceEventIds.length === 0) return false; removedIds.push(...record.sourceEventIds);
+      } }
       const terminalIds = new Map();
       for (const entry of preCandidate.metrics.deliveryAccounting.terminal) for (const id of entry.sourceEventIds || []) terminalIds.set(id, (terminalIds.get(id) || 0) + 1);
       for (const entry of preCurrent.metrics.deliveryAccounting.terminal) for (const id of entry.sourceEventIds || []) terminalIds.set(id, (terminalIds.get(id) || 0) - 1);
