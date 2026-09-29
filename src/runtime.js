@@ -5241,7 +5241,7 @@ const RELEASE_ID = "taa-1.0.4";
     return base;
   }
   function recoverableMonitorRecords(envelope) { return [].concat(envelope.pending, envelope.inFlight, envelope.failed, envelope.uncertain); }
-  function transportRecoveryPermitted(current, nextEnvelope, type, currentBytes, candidateBytes) {
+  function transportRecoveryPermitted(current, nextEnvelope, type, currentBytes, candidateBytes, preCurrent = current, preCandidate = nextEnvelope) {
     if (!TRANSPORT_RECOVERY_TRANSITIONS.has(type)) return false;
     const settlement = type === "acknowledge" || type === "acknowledge-uncertain";
     const before = recoverableMonitorRecords(current); const after = recoverableMonitorRecords(nextEnvelope);
@@ -5258,6 +5258,16 @@ const RELEASE_ID = "taa-1.0.4";
     if (candidateBytes > currentBytes + TRANSPORT_METADATA_ALLOWANCE_BASE_BYTES + TRANSPORT_METADATA_ALLOWANCE_PER_RECORD_BYTES * before.length) return false;
     const terminalCount = envelope => { const accounting = envelope.metrics.deliveryAccounting; return accounting.terminal.length + accounting.compactedTerminalTotals.reduce((count, range) => count + range.count, 0); };
     if (terminalCount(nextEnvelope) - terminalCount(current) !== (settlement ? before.length - after.length : 0)) return false;
+    if (settlement) {
+      const remainingRecords = new Map();
+      for (const record of recoverableMonitorRecords(preCandidate)) { const key = stable(record); remainingRecords.set(key, (remainingRecords.get(key) || 0) + 1); }
+      const removedIds = [];
+      for (const record of recoverableMonitorRecords(preCurrent)) { const key = stable(record); const count = remainingRecords.get(key) || 0; if (count) remainingRecords.set(key, count - 1); else removedIds.push(...(record.sourceEventIds || [])); }
+      const terminalIds = new Map();
+      for (const entry of preCandidate.metrics.deliveryAccounting.terminal) for (const id of entry.sourceEventIds || []) terminalIds.set(id, (terminalIds.get(id) || 0) + 1);
+      for (const entry of preCurrent.metrics.deliveryAccounting.terminal) for (const id of entry.sourceEventIds || []) terminalIds.set(id, (terminalIds.get(id) || 0) - 1);
+      for (const id of removedIds) { const count = terminalIds.get(id) || 0; if (count < 1) return false; terminalIds.set(id, count - 1); }
+    }
     const outsideQueues = envelope => { const copy = cloneMonitorValue(envelope); delete copy.integrity; delete copy.generation; for (const key of ["pending", "inFlight", "failed", "uncertain"]) delete copy[key]; delete copy.metrics.deliveryAccounting.recoverable; if (settlement) { delete copy.metrics.deliveryAccounting.terminal; delete copy.metrics.deliveryAccounting.compactedTerminalTotals; delete copy.metrics.deliveryAccounting.compactedThroughTerminalSequence; delete copy.metrics.deliveryAccounting.nextTerminalSequence; delete copy.metrics.deliveryAccounting.lastCompaction; } return canonicalSerializeMonitorValue(copy); };
     return outsideQueues(current) === outsideQueues(nextEnvelope);
   }
@@ -6017,6 +6027,8 @@ const RELEASE_ID = "taa-1.0.4";
       });
     }
     candidate2.pending = coalesced.events;
+    const preCandidate = candidate2;
+    const preCurrent = current;
     const byteCapacity = Number.isInteger(options.maxSerializedBytes) ? Math.min(options.maxSerializedBytes, MONITOR_MAX_SERIALIZED_BYTES) : MONITOR_MAX_SERIALIZED_BYTES;
     const normalizeStartedMono = monotonicNow();
     try { candidate2 = normalizeMonitorEnvelopeForPersistence(candidate2, { maxSerializedBytes: byteCapacity }); }
@@ -6029,7 +6041,7 @@ const RELEASE_ID = "taa-1.0.4";
       try { normalizedCurrent = normalizeMonitorEnvelopeForPersistence(current, { maxSerializedBytes: byteCapacity }); }
       catch (error) { return { outcome: "corrupt-active", memorySwapped: false }; }
       const currentBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(current)).length;
-      if (currentBytes <= byteCapacity || !transportRecoveryPermitted(normalizedCurrent, candidate2, options.transportTransitionType, currentBytes, candidateBytes)) return { outcome: "capacity-reject", memorySwapped: false };
+      if (currentBytes <= byteCapacity || !transportRecoveryPermitted(normalizedCurrent, candidate2, options.transportTransitionType, currentBytes, candidateBytes, preCurrent, preCandidate)) return { outcome: "capacity-reject", memorySwapped: false };
     }
     const activeKey = monitorActiveStorageKey(candidate2.world);
     const backupKey = monitorBackupStorageKey(candidate2.world);

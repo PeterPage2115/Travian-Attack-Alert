@@ -5290,7 +5290,7 @@ var require_runtime = __commonJS({
       function recoverableMonitorRecords(envelope) {
         return [].concat(envelope.pending, envelope.inFlight, envelope.failed, envelope.uncertain);
       }
-      function transportRecoveryPermitted(current, nextEnvelope, type, currentBytes, candidateBytes) {
+      function transportRecoveryPermitted(current, nextEnvelope, type, currentBytes, candidateBytes, preCurrent = current, preCandidate = nextEnvelope) {
         if (!TRANSPORT_RECOVERY_TRANSITIONS.has(type)) return false;
         const settlement = type === "acknowledge" || type === "acknowledge-uncertain";
         const before = recoverableMonitorRecords(current);
@@ -5327,6 +5327,28 @@ var require_runtime = __commonJS({
           return accounting.terminal.length + accounting.compactedTerminalTotals.reduce((count, range) => count + range.count, 0);
         };
         if (terminalCount(nextEnvelope) - terminalCount(current) !== (settlement ? before.length - after.length : 0)) return false;
+        if (settlement) {
+          const remainingRecords = /* @__PURE__ */ new Map();
+          for (const record of recoverableMonitorRecords(preCandidate)) {
+            const key = stable(record);
+            remainingRecords.set(key, (remainingRecords.get(key) || 0) + 1);
+          }
+          const removedIds = [];
+          for (const record of recoverableMonitorRecords(preCurrent)) {
+            const key = stable(record);
+            const count = remainingRecords.get(key) || 0;
+            if (count) remainingRecords.set(key, count - 1);
+            else removedIds.push(...record.sourceEventIds || []);
+          }
+          const terminalIds = /* @__PURE__ */ new Map();
+          for (const entry of preCandidate.metrics.deliveryAccounting.terminal) for (const id of entry.sourceEventIds || []) terminalIds.set(id, (terminalIds.get(id) || 0) + 1);
+          for (const entry of preCurrent.metrics.deliveryAccounting.terminal) for (const id of entry.sourceEventIds || []) terminalIds.set(id, (terminalIds.get(id) || 0) - 1);
+          for (const id of removedIds) {
+            const count = terminalIds.get(id) || 0;
+            if (count < 1) return false;
+            terminalIds.set(id, count - 1);
+          }
+        }
         const outsideQueues = (envelope) => {
           const copy = cloneMonitorValue(envelope);
           delete copy.integrity;
@@ -6085,6 +6107,8 @@ var require_runtime = __commonJS({
           });
         }
         candidate2.pending = coalesced.events;
+        const preCandidate = candidate2;
+        const preCurrent = current;
         const byteCapacity = Number.isInteger(options.maxSerializedBytes) ? Math.min(options.maxSerializedBytes, MONITOR_MAX_SERIALIZED_BYTES) : MONITOR_MAX_SERIALIZED_BYTES;
         const normalizeStartedMono = monotonicNow();
         try {
@@ -6103,7 +6127,7 @@ var require_runtime = __commonJS({
             return { outcome: "corrupt-active", memorySwapped: false };
           }
           const currentBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(current)).length;
-          if (currentBytes <= byteCapacity || !transportRecoveryPermitted(normalizedCurrent, candidate2, options.transportTransitionType, currentBytes, candidateBytes)) return { outcome: "capacity-reject", memorySwapped: false };
+          if (currentBytes <= byteCapacity || !transportRecoveryPermitted(normalizedCurrent, candidate2, options.transportTransitionType, currentBytes, candidateBytes, preCurrent, preCandidate)) return { outcome: "capacity-reject", memorySwapped: false };
         }
         const activeKey = monitorActiveStorageKey(candidate2.world);
         const backupKey = monitorBackupStorageKey(candidate2.world);

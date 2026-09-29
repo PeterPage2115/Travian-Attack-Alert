@@ -186,6 +186,7 @@ function commitMonitorEnvelopeV1(options = {}) {
   if (!candidateParsed.ok) return { outcome: 'corrupt-active', memorySwapped: false }; let candidate = candidateParsed.envelope; const expectedGeneration = current ? current.generation : Number.isInteger(options.expectedGeneration) ? options.expectedGeneration : -1;
   if (!isMonitorGenerationFenced(expectedGeneration, candidate.generation)) return { outcome: 'fenced-reject', memorySwapped: false };
   const coalesced = coalesceMonitorPendingEvents(candidate.pending, MONITOR_MAX_PENDING_RECORDS, options.nowMs); if (!coalesced.ok) return Object.assign({}, coalesced, { envelope: current, memorySwapped: false }); candidate.pending = coalesced.events;
+  const preCandidate = candidate; const preCurrent = current;
   const byteCapacity = serializedEnvelopeCapacity(options.maxSerializedBytes);
   try { candidate = normalizeMonitorEnvelopeForPersistence(candidate, { maxSerializedBytes: byteCapacity }); }
   catch { return { outcome: 'corrupt-active', memorySwapped: false }; }
@@ -196,7 +197,7 @@ function commitMonitorEnvelopeV1(options = {}) {
     try { normalizedCurrent = normalizeMonitorEnvelopeForPersistence(current, { maxSerializedBytes: byteCapacity }); }
     catch { return { outcome: 'corrupt-active', memorySwapped: false }; }
     const currentBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(current)).length;
-    if (currentBytes <= byteCapacity || !transportRecoveryPermitted(normalizedCurrent, candidate, options.transportTransitionType, currentBytes, candidateBytes)) return { outcome: 'capacity-reject', memorySwapped: false };
+    if (currentBytes <= byteCapacity || !transportRecoveryPermitted(normalizedCurrent, candidate, options.transportTransitionType, currentBytes, candidateBytes, preCurrent, preCandidate)) return { outcome: 'capacity-reject', memorySwapped: false };
   }
   const activeKey = monitorActiveStorageKey(candidate.world); const backupKey = monitorBackupStorageKey(candidate.world); const oldActiveRead = monitorReadRaw(storage, activeKey); const oldBackupRead = monitorReadRaw(storage, backupKey); const oldActive = oldActiveRead.ok ? oldActiveRead.value : undefined; const oldBackup = oldBackupRead.ok ? oldBackupRead.value : undefined; const previousParsed = oldActive === undefined ? null : parseMonitorEnvelopeV1(oldActive, candidate.world); const previous = current || previousParsed && previousParsed.envelope; const backupPayload = previous ? serializeMonitorEnvelopeV1(previous) : serializeMonitorEnvelopeV1(candidate); const activePayload = serializeMonitorEnvelopeV1(candidate);
   if (typeof options.beforeCommit === 'function' && options.beforeCommit() !== true) return { outcome: 'fenced-reject', memorySwapped: false };

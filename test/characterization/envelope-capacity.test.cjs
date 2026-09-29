@@ -275,6 +275,46 @@ test('oversized settlement cannot invent acknowledged accounting without reducin
   }
 });
 
+test('oversized settlement rejects an unrelated terminal lineage before any storage write', () => {
+  for (const api of [kernel, runtime]) {
+    // Given three oversized records and a forged terminal entry for another source.
+    const storage = store(); const records = oversizedRecords();
+    const current = envelope({ generation: 3, pending: records });
+    const active = api.monitorActiveStorageKey(world), backup = api.monitorBackupStorageKey(world);
+    const original = api.serializeMonitorEnvelopeV1(current);
+    storage.set(active, original); storage.set(backup, original);
+    let writes = 0;
+    const originalSet = storage.set;
+    storage.set = (key, value) => { writes += 1; originalSet(key, value); };
+    const candidate = envelope({ ...JSON.parse(JSON.stringify(current)), generation: 4, pending: records.slice(0, 2) });
+    const unrelated = migration.sourceEventIdFromTuple({ world, playerId: '9', eventType: 'attack', acceptedGeneration: 1, scanSequence: 9, attackDelta: 1, raidDelta: 0 });
+    candidate.metrics.deliveryAccounting.terminal = [{ ...event('forged'), sourceEventIds: [unrelated], terminalSequence: 1, stage: 'acknowledged', terminalStatus: 'acknowledged' }];
+    candidate.metrics.deliveryAccounting.nextTerminalSequence = 2;
+    // When the candidate claims an acknowledgment for the dropped third record.
+    const parsed = api.parseMonitorEnvelopeV1(api.serializeMonitorEnvelopeV1(candidate), world).envelope;
+    const result = commit(api, storage, parsed, current, { transportTransitionType: 'acknowledge' });
+    // Then it fails closed without changing either stored byte string.
+    assert.equal(result.outcome, 'capacity-reject'); assert.equal(result.memorySwapped, false);
+    assert.equal(writes, 0); assert.equal(storage.get(active), original); assert.equal(storage.get(backup), original);
+  }
+});
+
+test('oversized settlement accepts the removed record’s own terminal lineage', () => {
+  for (const api of [kernel, runtime]) {
+    // Given an oversized in-flight queue eligible for a real acknowledgment.
+    const storage = store(); const current = envelope({ generation: 3, inFlight: oversizedRecords() });
+    const removedId = current.inFlight[2].sourceEventIds[0];
+    const transition = api.applyMonitorQueueTransitionV1(current, { type: 'acknowledge', eventIds: ['e-3'] });
+    assert.equal(transition.outcome, 'ok');
+    // When the real transition is committed while the remaining records still exceed capacity.
+    const result = commit(api, storage, transition.envelope, current, { transportTransitionType: 'acknowledge' });
+    // Then the matching terminal identity permits progress, even if normalization compacts its detail.
+    assert.equal(result.outcome, 'ok'); assert.equal(result.memorySwapped, true);
+    assert.deepEqual(result.envelope.inFlight.map(record => record.eventId), ['e-1', 'e-2']);
+    assert.equal(transition.envelope.metrics.deliveryAccounting.terminal[0].sourceEventIds[0], removedId);
+  }
+});
+
 test('legacy backup recovery migrates on next commit and stale claim/corrupt pair fail closed', () => {
   for (const api of [kernel, runtime]) {
     // Given a corrupt active and a valid legacy backup containing redundant tuples.
