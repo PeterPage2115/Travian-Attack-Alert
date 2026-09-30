@@ -4,6 +4,23 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// Round every finite number in an evidence value to 3 decimals, recursing
+// through arrays and plain objects. Raw `performance.now()` diffs serialize as
+// 17-digit fractions (e.g. 0.10000000149011612); the public-tree evidence
+// scanner treats any 17-20 digit run as a Discord snowflake, so unrounded float
+// noise produced false positives in the sealed evidence. Strings, booleans and
+// null pass through untouched - redaction and keys are unchanged.
+export function roundEvidenceNumbers(input: unknown): unknown {
+  if (typeof input === 'number') return Number.isFinite(input) ? Number(input.toFixed(3)) : input;
+  if (Array.isArray(input)) return input.map((entry) => roundEvidenceNumbers(entry));
+  if (input !== null && typeof input === 'object') {
+    const rounded: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(input)) rounded[key] = roundEvidenceNumbers(entry);
+    return rounded;
+  }
+  return input;
+}
+
 // Worker-safe evidence writer. Parallel workers all append phases to the SAME
 // per-spec evidence file, so a naive read-modify-write loses updates. Each
 // worker writes its own fragment under os.tmpdir() (never inside test-results/,
@@ -23,7 +40,7 @@ export function writeEvidencePhase(
   const fragmentPath = path.join(fragmentDir, fragmentKey);
   const fragment = fs.existsSync(fragmentPath) ? JSON.parse(fs.readFileSync(fragmentPath, 'utf8')) : {};
   fragment[phase] = value;
-  fs.writeFileSync(fragmentPath, `${JSON.stringify(fragment, null, 2)}\n`);
+  fs.writeFileSync(fragmentPath, `${JSON.stringify(roundEvidenceNumbers(fragment), null, 2)}\n`);
 
   const merged: Record<string, unknown> = {};
   const prefix = fragmentKey.replace(/\.worker-\d+\.json$/u, '.worker-');
@@ -35,7 +52,7 @@ export function writeEvidencePhase(
       // A fragment being written concurrently is retried on the next phase.
     }
   }
-  fs.writeFileSync(evidencePath, `${JSON.stringify(redact(merged), null, 2)}\n`);
+  fs.writeFileSync(evidencePath, `${JSON.stringify(roundEvidenceNumbers(redact(merged)), null, 2)}\n`);
 }
 
 declare global {
