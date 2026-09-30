@@ -276,6 +276,19 @@ jobs:
         timeout-minutes: 20
         run: npm run test:e2e
 
+      # TEMPORARY diagnostic upload (removed before merge): captures the e2e
+      # report and latency evidence JSON so failures can be diagnosed.
+      - name: Upload e2e diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-diagnostics
+          path: |
+            test-results/release-1.0.0/e2e-report-*.json
+            test-results/release-1.0.4/scan-latency-evidence.json
+          if-no-files-found: ignore
+          retention-days: 3
+
       # Evidence pipeline: seal the complete test-results/ tree into ONE
       # deterministic ZIP outside the mutable directory, scan that exact
       # archive with the ZIP-recursive evidence scanner (while the pinned
