@@ -1,8 +1,15 @@
 'use strict';
+// allow: SIZE_OK — the legacy envelope kernel's extraction boundary is frozen by module-architecture contracts.
 
 const { isLeaseFenceValid } = require('./lease-impl.js');
 const migration = require('./migration-impl.js');
 const { sourceEventTuple, decodeSourceEventId } = migration;
+const accounting = require('./envelope-accounting-impl.js');
+const {
+  serializedEnvelopeCapacity, validCompactedSummary, deliveryRangeDigest,
+  compactTerminalRange, normalizeMonitorEnvelopeForPersistence,
+  recoverableMonitorRecords, transportRecoveryPermitted, TRANSPORT_RECOVERY_TRANSITIONS,
+} = accounting;
 
 const MONITOR_ENVELOPE_SCHEMA_VERSION = 1;
 const MONITOR_ACTIVE_STORAGE_KEY_PREFIX = 'travianAllianceMonitor_v1:';
@@ -50,7 +57,7 @@ function parseMonitorEnvelopeV1(raw, expectedWorld) {
   }
   const canonicalId = id => { try { return sourceEventTuple(decodeSourceEventId(String(id))).sourceEventId === id; } catch { return false; } };
   const lineageValid = [value.pending, value.inFlight, value.failed, value.uncertain, value.metrics.deliveryAccounting?.recoverable || [], value.metrics.deliveryAccounting?.terminal || []].flat().every(event => !Array.isArray(event.sourceEventIds) || event.sourceEventIds.every(canonicalId));
-  const compactedLineageValid = (value.metrics.deliveryAccounting?.compactedTerminalTotals || []).every(range => Array.isArray(range.sourceEventIds) && range.sourceEventIds.every(canonicalId));
+  const compactedLineageValid = (value.metrics.deliveryAccounting?.compactedTerminalTotals || []).every(range => validCompactedSummary(range, canonicalId));
   if (!lineageValid || !compactedLineageValid) return { ok: false, outcome: 'corrupt', reason: 'invalid-source-lineage' };
   if (checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(value)) !== value.integrity) return { ok: false, outcome: 'corrupt', reason: 'integrity-mismatch' };
   return { ok: true, envelope: cloneMonitorValue(value) };
@@ -115,7 +122,6 @@ function coalesceMonitorPendingEvents(events, maxRecords = MONITOR_MAX_PENDING_R
 function deliveryAccountingFor(envelope) { const accounting = (envelope.metrics || {}).deliveryAccounting; return isPlainMonitorObject(accounting) ? accounting : monitorEnvelopeDefaults(envelope.world).metrics.deliveryAccounting; }
 function syncDeliveryAccounting(envelope) { const accounting = deliveryAccountingFor(envelope); accounting.recoverable = [].concat(envelope.pending || [], envelope.inFlight || [], envelope.failed || [], envelope.uncertain || []).map(event => cloneMonitorValue(event)); envelope.metrics = Object.assign({}, envelope.metrics, { deliveryAccounting: accounting }); return accounting; }
 function terminalDeliveryEntry(event, sequence, status) { return Object.assign({}, cloneMonitorValue(event), { stage: 'acknowledged', terminalStatus: status, terminalSequence: sequence, sourceEventIds: [...new Set((event.sourceEventIds || []).map(String))] }); }
-function deliveryRangeDigest(entries) { return checksumMonitorCanonicalValue(entries.map(entry => ({ terminalSequence: entry.terminalSequence, sourceEventIds: entry.sourceEventIds || [], addedAttackCount: entry.addedAttackCount || 0, addedRaidCount: entry.addedRaidCount || 0 }))); }
 function compactDeliveryAccountingV1(envelope, options = {}) {
   const base = createMonitorEnvelopeV1(envelope && envelope.world, envelope || {}); const accounting = syncDeliveryAccounting(base); const terminal = accounting.terminal.slice().sort((left, right) => left.terminalSequence - right.terminalSequence); const limit = Math.max(0, terminal.length - 512);
   if (limit === 0 && !accounting.compactionClaim) return { outcome: 'nothing-to-compact', envelope: base };
@@ -124,8 +130,8 @@ function compactDeliveryAccountingV1(envelope, options = {}) {
   if (claim.expectedGeneration !== base.generation - 1 || claim.status !== 'prepared') return { outcome: 'stale-claim', envelope: base };
   const range = terminal.filter(entry => entry.terminalSequence >= claim.fromTerminalSequence && entry.terminalSequence <= claim.toTerminalSequence);
   if (deliveryRangeDigest(range) !== claim.rangeDigest || range.length === 0) return { outcome: 'stale-claim', envelope: base };
-  const totals = { from: claim.fromTerminalSequence, to: claim.toTerminalSequence, count: range.length, attackDelta: range.reduce((sum, entry) => sum + (Number(entry.addedAttackCount) || 0), 0), raidDelta: range.reduce((sum, entry) => sum + (Number(entry.addedRaidCount) || 0), 0), sourceEventIds: range.flatMap(entry => entry.sourceEventIds || []) };
-  accounting.compactedTerminalTotals = accounting.compactedTerminalTotals.concat(totals); accounting.terminal = terminal.filter(entry => entry.terminalSequence > claim.toTerminalSequence); accounting.compactedThroughTerminalSequence = Math.max(accounting.compactedThroughTerminalSequence || 0, claim.toTerminalSequence); accounting.compactionClaim = null; accounting.lastCompaction = { operationId: claim.operationId, from: claim.fromTerminalSequence, to: claim.toTerminalSequence };
+  const totals = compactTerminalRange(accounting, terminal, range.length);
+  accounting.compactionClaim = null; accounting.lastCompaction = { operationId: claim.operationId, from: claim.fromTerminalSequence, to: claim.toTerminalSequence };
   base.generation += 1; base.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(base)); return { outcome: 'compacted', envelope: base, totals };
 }
 const prepareTerminalCompactionV1 = (envelope, options) => compactDeliveryAccountingV1(envelope, Object.assign({}, options, { phase: 'prepare' }));
@@ -165,16 +171,41 @@ function commitMonitorEnvelope(options = {}) {
   const pending = Array.isArray(current.pending) ? current.pending.concat(transition.eligibleEvents || []) : transition.eligibleEvents || []; const allQueues = pending.concat(current.inFlight || [], current.failed || [], current.uncertain || []); const capacity = Number.isInteger(options.queueCapacity) ? options.queueCapacity : MONITOR_MAX_PENDING_RECORDS; const queuedSourceIds = allQueues.flatMap(event => event.sourceEventIds || []); const sourceCapacity = Number.isInteger(options.activeSourceCapacity) ? options.activeSourceCapacity : Infinity;
   if (allQueues.length > capacity || queuedSourceIds.length > sourceCapacity || new Set(queuedSourceIds).size !== queuedSourceIds.length) return { outcome: 'capacity-reject', memorySwapped: false };
   const candidate = createMonitorEnvelopeV1(current.world, Object.assign({}, current, { generation: expectedGeneration + 1, baselineByPlayerId: transition.baselineByPlayerId, rosterByPlayerId: transition.rosterByPlayerId || current.rosterByPlayerId, pending, metrics: Object.assign({}, current.metrics, transition.metrics || {}, { lastCommitAtMs: Date.now(), lastError: null }) }));
-  if (serializeMonitorEnvelopeV1(candidate).length > (Number.isInteger(options.serializedEnvelopeCapacity) ? options.serializedEnvelopeCapacity : Infinity)) return { outcome: 'capacity-reject', memorySwapped: false };
-  const result = commitMonitorEnvelopeV1({ world: current.world, currentEnvelope: current, candidateEnvelope: candidate, expectedGeneration, storage: options.storage, beforeCommit: () => (typeof options.beforeCommit !== 'function' || options.beforeCommit() === true) && (!fenced || fence()) });
+  const byteCapacity = serializedEnvelopeCapacity(options.serializedEnvelopeCapacity);
+  let normalized;
+  try { normalized = normalizeMonitorEnvelopeForPersistence(candidate, { maxSerializedBytes: byteCapacity }); }
+  catch { return { outcome: 'corrupt-active', memorySwapped: false }; }
+  const serializedBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(normalized)).length;
+  if (serializedBytes > byteCapacity) return { outcome: 'capacity-reject', memorySwapped: false, serializedBytes, capacityBytes: byteCapacity, recoverableRecords: allQueues.length };
+  const result = commitMonitorEnvelopeV1({ world: current.world, currentEnvelope: current, candidateEnvelope: candidate, expectedGeneration, storage: options.storage, maxSerializedBytes: byteCapacity, beforeCommit: () => (typeof options.beforeCommit !== 'function' || options.beforeCommit() === true) && (!fenced || fence()) });
   if (result.outcome !== 'ok' || fenced && !fence()) { if (result.outcome === 'ok' && fenced) { const storage = monitorStorageAdapter(options.storage); monitorRestoreRaw(storage, monitorActiveStorageKey(current.world), serializeMonitorEnvelopeV1(current)); monitorRestoreRaw(storage, monitorBackupStorageKey(current.world), serializeMonitorEnvelopeV1(current)); return { outcome: 'fenced-reject', memorySwapped: false }; } return result; }
   return result;
 }
 function commitMonitorEnvelopeV1(options = {}) {
   const storage = monitorStorageAdapter(options.storage); const parsedCurrent = options.currentEnvelope && parseMonitorEnvelopeV1(options.currentEnvelope, options.world); const current = parsedCurrent && parsedCurrent.ok ? parsedCurrent.envelope : null; const candidateParsed = parseMonitorEnvelopeV1(options.candidateEnvelope, options.world);
-  if (!candidateParsed.ok) return { outcome: 'corrupt-active', memorySwapped: false }; const candidate = candidateParsed.envelope; const expectedGeneration = current ? current.generation : Number.isInteger(options.expectedGeneration) ? options.expectedGeneration : -1;
+  if (!candidateParsed.ok) return { outcome: 'corrupt-active', memorySwapped: false }; let candidate = candidateParsed.envelope; const expectedGeneration = current ? current.generation : Number.isInteger(options.expectedGeneration) ? options.expectedGeneration : -1;
   if (!isMonitorGenerationFenced(expectedGeneration, candidate.generation)) return { outcome: 'fenced-reject', memorySwapped: false };
   const coalesced = coalesceMonitorPendingEvents(candidate.pending, MONITOR_MAX_PENDING_RECORDS, options.nowMs); if (!coalesced.ok) return Object.assign({}, coalesced, { envelope: current, memorySwapped: false }); candidate.pending = coalesced.events;
+  const preCandidate = candidate; const preCurrent = current;
+  const byteCapacity = serializedEnvelopeCapacity(options.maxSerializedBytes);
+  try { candidate = normalizeMonitorEnvelopeForPersistence(candidate, { maxSerializedBytes: byteCapacity }); }
+  catch { return { outcome: 'corrupt-active', memorySwapped: false }; }
+  const candidateBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(candidate)).length;
+  if (candidateBytes > byteCapacity) {
+    if (!current || !options.transportTransitionType || !TRANSPORT_RECOVERY_TRANSITIONS.has(options.transportTransitionType)) return { outcome: 'capacity-reject', memorySwapped: false, serializedBytes: candidateBytes, capacityBytes: byteCapacity, recoverableRecords: recoverableMonitorRecords(candidate).length };
+    if (!options.transportTransition || typeof options.transportTransition !== 'object') return { outcome: 'capacity-reject', memorySwapped: false };
+    const canonical = applyMonitorQueueTransitionV1(current, options.transportTransition);
+    if (canonical.outcome !== 'ok') return { outcome: 'capacity-reject', memorySwapped: false };
+    const canonicalCoalesced = coalesceMonitorPendingEvents(canonical.envelope.pending, MONITOR_MAX_PENDING_RECORDS, options.nowMs);
+    if (!canonicalCoalesced.ok) return { outcome: 'capacity-reject', memorySwapped: false };
+    const canonicalCandidate = Object.assign({}, canonical.envelope, { pending: canonicalCoalesced.events });
+    if (canonicalSerializeMonitorValue(canonicalCandidate) !== canonicalSerializeMonitorValue(preCandidate)) return { outcome: 'capacity-reject', memorySwapped: false };
+    let normalizedCurrent;
+    try { normalizedCurrent = normalizeMonitorEnvelopeForPersistence(current, { maxSerializedBytes: byteCapacity }); }
+    catch { return { outcome: 'corrupt-active', memorySwapped: false }; }
+    const currentBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(current)).length;
+    if (currentBytes <= byteCapacity || !transportRecoveryPermitted(normalizedCurrent, candidate, options.transportTransitionType, currentBytes, candidateBytes, preCurrent, preCandidate)) return { outcome: 'capacity-reject', memorySwapped: false };
+  }
   const activeKey = monitorActiveStorageKey(candidate.world); const backupKey = monitorBackupStorageKey(candidate.world); const oldActiveRead = monitorReadRaw(storage, activeKey); const oldBackupRead = monitorReadRaw(storage, backupKey); const oldActive = oldActiveRead.ok ? oldActiveRead.value : undefined; const oldBackup = oldBackupRead.ok ? oldBackupRead.value : undefined; const previousParsed = oldActive === undefined ? null : parseMonitorEnvelopeV1(oldActive, candidate.world); const previous = current || previousParsed && previousParsed.envelope; const backupPayload = previous ? serializeMonitorEnvelopeV1(previous) : serializeMonitorEnvelopeV1(candidate); const activePayload = serializeMonitorEnvelopeV1(candidate);
   if (typeof options.beforeCommit === 'function' && options.beforeCommit() !== true) return { outcome: 'fenced-reject', memorySwapped: false };
   const backupResult = monitorWriteReadback(storage, backupKey, backupPayload); if (!backupResult.ok) { monitorRestoreRaw(storage, backupKey, oldBackup); return { outcome: backupResult.outcome, memorySwapped: false }; }
@@ -184,6 +215,7 @@ function commitMonitorEnvelopeV1(options = {}) {
 }
 function applyMonitorQueueTransitionV1(envelope, transition) {
   const base = createMonitorEnvelopeV1(envelope && envelope.world, envelope || {}); const input = transition && typeof transition === 'object' ? transition : {}; const type = input.type; const ids = new Set(Array.isArray(input.eventIds) ? input.eventIds : []); const copyEvents = value => Array.isArray(value) ? value.slice() : [];
+  base.metrics.deliveryAccounting = cloneMonitorValue(base.metrics.deliveryAccounting);
   if (type === 'enqueue') { const coalesced = coalesceMonitorPendingEvents(base.pending.concat(Array.isArray(input.events) ? input.events : []), MONITOR_MAX_PENDING_RECORDS, input.atMs); if (!coalesced.ok) return Object.assign({}, coalesced, { envelope: base }); base.pending = coalesced.events; }
   else if (type === 'pending-to-inFlight') { const inFlight = copyEvents(base.inFlight); if (inFlight.length + base.pending.length > MONITOR_MAX_PENDING_RECORDS) return { outcome: 'bound-exceeded', envelope: base }; base.inFlight = inFlight.concat(base.pending); base.pending = []; }
   else if (type === 'dispatch-start') { const dispatchedAtMs = Number.isFinite(input.atMs) ? input.atMs : Date.now(); base.inFlight = base.inFlight.map(event => ids.size === 0 || ids.has(event.eventId) ? Object.assign({}, event, { dispatchedAtMs }) : event); }
@@ -196,7 +228,7 @@ function applyMonitorQueueTransitionV1(envelope, transition) {
   else return { outcome: 'invalid-transition', envelope };
   syncDeliveryAccounting(base); base.generation += 1; base.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(base)); return { outcome: 'ok', envelope: base };
 }
-function commitMonitorQueueTransitionV1(options = {}) { const transition = applyMonitorQueueTransitionV1(options.currentEnvelope, options.transition); if (transition.outcome !== 'ok') return Object.assign({}, transition, { memorySwapped: false }); return commitMonitorEnvelopeV1({ world: options.world || transition.envelope.world, currentEnvelope: options.currentEnvelope, candidateEnvelope: transition.envelope, expectedGeneration: options.expectedGeneration, storage: options.storage, nowMs: options.nowMs, beforeCommit: options.beforeCommit }); }
+function commitMonitorQueueTransitionV1(options = {}) { const transition = applyMonitorQueueTransitionV1(options.currentEnvelope, options.transition); if (transition.outcome !== 'ok') return Object.assign({}, transition, { memorySwapped: false }); return commitMonitorEnvelopeV1({ world: options.world || transition.envelope.world, currentEnvelope: options.currentEnvelope, candidateEnvelope: transition.envelope, expectedGeneration: options.expectedGeneration, storage: options.storage, nowMs: options.nowMs, beforeCommit: options.beforeCommit, transportTransitionType: options.transition.type, transportTransition: options.transition }); }
 
 const api = {
   canonicalSerializeMonitorValue, checksumMonitorCanonicalValue,
@@ -207,9 +239,12 @@ const api = {
   planAcceptedScanTransition, commitMonitorEnvelope, commitMonitorEnvelopeV1,
   applyMonitorQueueTransitionV1, commitMonitorQueueTransitionV1,
   compactDeliveryAccountingV1, prepareTerminalCompactionV1,
-  resumeTerminalCompactionV1, createMonitorQueueEvent, computeQueueAge,
+  resumeTerminalCompactionV1, normalizeMonitorEnvelopeForPersistence, createMonitorQueueEvent, computeQueueAge,
   addInFlightChunk, getInFlightChunks, dropInFlightHead,
   replaceInFlightHeadAttempt,
 };
 migration.configureMigrationAdapters({ envelope: api });
+accounting.configureEnvelopeAccountingAdapters({
+  envelope: { canonicalSerializeMonitorValue, checksumMonitorCanonicalValue, createMonitorEnvelopeV1, cloneMonitorValue, deliveryAccountingFor, syncDeliveryAccounting, monitorEnvelopeWithoutIntegrity, resumeTerminalCompactionV1 },
+});
 module.exports = api;

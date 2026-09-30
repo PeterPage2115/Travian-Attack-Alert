@@ -204,13 +204,13 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       await waitSnapshot(page);
       expect(await wireCount(page, ns)).toBe(0);
 
-      // Cycle 2: the +1 delta queues (startup flush already ran before the scan).
+      // Cycle 2: with no webhook configured the +1 delta queues recoverably (the
+      // immediate post-commit flush is skipped and nothing is sent).
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
-      await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);
@@ -265,14 +265,13 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       await useLoopbackTransport(page, ns);
       await waitSnapshot(page);
 
-      // Queue the delta (webhook configured, but the startup flush for this
-      // cycle already ran before the scan committed the record).
+      // Queue the delta with no webhook: the immediate flush is skipped, so the
+      // record stays pending and recoverable until a webhook is configured.
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
-      await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);
@@ -332,7 +331,6 @@ test.describe('artifact dispatch — durable delivery and recovery', () => {
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
-      await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);

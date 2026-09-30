@@ -4,6 +4,23 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+// Round every finite number in an evidence value to 3 decimals, recursing
+// through arrays and plain objects. Raw `performance.now()` diffs serialize as
+// 17-digit fractions (e.g. 0.10000000149011612); the public-tree evidence
+// scanner treats any 17-20 digit run as a Discord snowflake, so unrounded float
+// noise produced false positives in the sealed evidence. Strings, booleans and
+// null pass through untouched - redaction and keys are unchanged.
+export function roundEvidenceNumbers(input: unknown): unknown {
+  if (typeof input === 'number') return Number.isFinite(input) ? Number(input.toFixed(3)) : input;
+  if (Array.isArray(input)) return input.map((entry) => roundEvidenceNumbers(entry));
+  if (input !== null && typeof input === 'object') {
+    const rounded: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(input)) rounded[key] = roundEvidenceNumbers(entry);
+    return rounded;
+  }
+  return input;
+}
+
 // Worker-safe evidence writer. Parallel workers all append phases to the SAME
 // per-spec evidence file, so a naive read-modify-write loses updates. Each
 // worker writes its own fragment under os.tmpdir() (never inside test-results/,
@@ -23,7 +40,7 @@ export function writeEvidencePhase(
   const fragmentPath = path.join(fragmentDir, fragmentKey);
   const fragment = fs.existsSync(fragmentPath) ? JSON.parse(fs.readFileSync(fragmentPath, 'utf8')) : {};
   fragment[phase] = value;
-  fs.writeFileSync(fragmentPath, `${JSON.stringify(fragment, null, 2)}\n`);
+  fs.writeFileSync(fragmentPath, `${JSON.stringify(roundEvidenceNumbers(fragment), null, 2)}\n`);
 
   const merged: Record<string, unknown> = {};
   const prefix = fragmentKey.replace(/\.worker-\d+\.json$/u, '.worker-');
@@ -35,7 +52,7 @@ export function writeEvidencePhase(
       // A fragment being written concurrently is retried on the next phase.
     }
   }
-  fs.writeFileSync(evidencePath, `${JSON.stringify(redact(merged), null, 2)}\n`);
+  fs.writeFileSync(evidencePath, `${JSON.stringify(roundEvidenceNumbers(redact(merged)), null, 2)}\n`);
 }
 
 declare global {
@@ -264,6 +281,11 @@ export async function installArtifactRuntime(page: Page, scenario: RuntimeScenar
       onReadinessRetry: (payload: Record<string, unknown>) => events.push({ kind: 'readiness-retry', attempt: payload.attempt, nextDelayMs: payload.nextDelayMs }),
       onReadinessExhausted: (payload: Record<string, unknown>) => events.push({ kind: 'readiness-exhausted', attempts: payload.attempts }),
       onReloadBlocked: (payload: Record<string, unknown>) => events.push({ kind: 'reload-blocked', attempts: payload.attempts }),
+      // Scan-to-dispatch latency evidence (task-5). Timestamps are numeric only;
+      // `durations` carries the bounded phase timings, never payload/storage
+      // content. Existing hooks above are unchanged.
+      onScanComplete: (payload: Record<string, unknown>) => events.push({ kind: 'scan-complete', atMs: payload.observedAtMs, generation: payload.generation, durations: payload.durations }),
+      onDiscordRequest: (payload: Record<string, unknown>) => events.push({ kind: 'discord-request', atMs: payload.requestStartedAtMs, status: payload.status, errorClass: payload.errorClass, scanToRequestMs: payload.scanToRequestMs }),
     };
     window.GM_xmlhttpRequest = (options: { readonly method: string; readonly url: string; readonly data?: string; readonly onload?: (response: { readonly status: number; readonly responseText: string }) => void; readonly onerror?: (error: unknown) => void }) => {
       const target = options.url.includes('/api/webhooks/') ? `${fixture}/discord-webhook${nsQuery}` : options.url;

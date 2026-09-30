@@ -72,7 +72,7 @@ const SRC_ALLOWLIST = [
   'src/acquisition.js', 'src/acquisition-impl.js', 'src/adapters.js', 'src/boot.js',
   'src/browser-entry.js',   'src/conservation-impl.js', 'src/conservation.js', 'src/constants.js',
   'src/diagnostics-impl.js', 'src/diagnostics.js', 'src/discord-impl.js', 'src/discord.js', 'src/dispatch-impl.js', 'src/dispatch.js',
-  'src/envelope-impl.js', 'src/envelope.js', 'src/lease-impl.js', 'src/lease.js', 'src/lifecycle.js',
+  'src/envelope-accounting-impl.js', 'src/envelope-impl.js', 'src/envelope.js', 'src/lease-impl.js', 'src/lease.js', 'src/lifecycle.js',
   'src/migration-impl.js', 'src/migration.js', 'src/panel-impl.js', 'src/panel.js', 'src/parser-impl.js', 'src/parser.js', 'src/route.js',
   'src/runtime-api.js', 'src/runtime.js', 'src/snapshot-impl.js', 'src/snapshot.js',
   'src/storage-diagnostics.js', 'src/storage-failed.js',
@@ -100,7 +100,8 @@ const ALLOWED_DEPS = {
   'src/discord.js': ['src/discord-impl.js'],
   'src/dispatch.js': ['src/dispatch-impl.js'],
   'src/dispatch-impl.js': ['src/constants.js', 'src/envelope-impl.js'],
-  'src/envelope-impl.js': ['src/lease-impl.js', 'src/migration-impl.js'],
+  'src/envelope-accounting-impl.js': ['src/migration-impl.js'],
+  'src/envelope-impl.js': ['src/envelope-accounting-impl.js', 'src/lease-impl.js', 'src/migration-impl.js'],
   'src/envelope.js': ['src/envelope-impl.js'],
   'src/lease-impl.js': ['src/adapters.js', 'src/route.js'],
   'src/lease.js': ['src/lease-impl.js'],
@@ -395,7 +396,7 @@ test('dist: bundle is generated output, never hand-edited', () => {
   const dist = path.join(ROOT, 'dist', 'travian-attack-alert.user.js');
   const body = fs.readFileSync(dist, 'utf8');
   assert.ok(body.startsWith('// ==UserScript=='), 'dist bundle must start with the generated metadata block');
-  assert.ok(body.includes('taa-1.0.3'), 'dist bundle must carry the release ID of the current artifact');
+  assert.ok(body.includes('taa-1.0.4'), 'dist bundle must carry the release ID of the current artifact');
   assert.ok(!body.includes('__taaModuleProbe'), 'dist bundle must not contain a hand-edit probe');
 });
 

@@ -52,6 +52,16 @@
       ]
     },
     {
+      "id": "suite:test/artifact/scan-latency.test.cjs",
+      "path": "test/artifact/scan-latency.test.cjs",
+      "classification": "dist-artifact",
+      "expectedExecutionCount": 2,
+      "coverage": [
+        "dist-runtime",
+        "scan-latency"
+      ]
+    },
+    {
       "id": "suite:test/artifact/settings-backup.test.cjs",
       "path": "test/artifact/settings-backup.test.cjs",
       "classification": "dist-artifact",
@@ -122,9 +132,20 @@
       "id": "suite:test/characterization/dispatch-conservation.test.cjs",
       "path": "test/characterization/dispatch-conservation.test.cjs",
       "classification": "source-artifact",
-      "expectedExecutionCount": 1,
+      "expectedExecutionCount": 12,
       "coverage": [
         "test-characterization-dispatch-conservation"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/envelope-capacity.test.cjs",
+      "path": "test/characterization/envelope-capacity.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 16,
+      "coverage": [
+        "envelope-capacity",
+        "transport-recovery",
+        "legacy-migration"
       ]
     },
     {
@@ -156,6 +177,16 @@
         "parser-contract",
         "parser-rejection-table",
         "utf16-signature"
+      ]
+    },
+    {
+      "id": "suite:test/characterization/post-commit-flush.test.cjs",
+      "path": "test/characterization/post-commit-flush.test.cjs",
+      "classification": "source-artifact",
+      "expectedExecutionCount": 8,
+      "coverage": [
+        "post-commit-flush",
+        "immediate-dispatch"
       ]
     },
     {
@@ -307,6 +338,16 @@
       "coverage": [
         "browser-runtime",
         "route-lease"
+      ]
+    },
+    {
+      "id": "suite:test/e2e/scan-latency.spec.ts",
+      "path": "test/e2e/scan-latency.spec.ts",
+      "classification": "browser",
+      "expectedExecutionCount": 12,
+      "coverage": [
+        "browser-runtime",
+        "scan-latency"
       ]
     },
     {
@@ -611,20 +652,20 @@
     }
   ],
   "totals": {
-    "suiteCount": 59,
-    "expectedExecutionCount": 1300,
+    "suiteCount": 63,
+    "expectedExecutionCount": 1349,
     "byClassification": {
       "dist-artifact": {
-        "suiteCount": 5,
-        "expectedExecutionCount": 76
+        "suiteCount": 6,
+        "expectedExecutionCount": 78
       },
       "browser": {
-        "suiteCount": 13,
-        "expectedExecutionCount": 391
+        "suiteCount": 14,
+        "expectedExecutionCount": 403
       },
       "source-artifact": {
-        "suiteCount": 16,
-        "expectedExecutionCount": 440
+        "suiteCount": 18,
+        "expectedExecutionCount": 475
       },
       "tool": {
         "suiteCount": 25,

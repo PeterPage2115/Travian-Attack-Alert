@@ -2,18 +2,20 @@
 
 ## Supported versions
 
-`docs/release-state.json` tracks the published `1.0.3` stable release: the six
-pre-publication owner gates are recorded (`stable: true`), and
-`publication.tagAndRelease` records the immutable `v1.0.3` tag and GitHub
-Release published on 2026-09-26, so `1.0.3` is the live stable channel and the
-release we support. The previous published release is `1.0.2` (`stable: true`,
-tag `v1.0.2`, immutable GitHub Release, published 2026-09-25), and the earlier
-published release is `1.0.1` (`stable: true`, tag `v1.0.1`, immutable GitHub
-Release, published 2026-09-25), both kept as history. Security fixes are
+`docs/release-state.json` tracks the `1.0.4` release candidate: the six
+pre-publication owner gates are recorded (`stable: true`), while
+`publication.tagAndRelease` is `false` because no `v1.0.4` tag or GitHub
+Release exists yet. The live stable channel and the release we support is the
+published `1.0.3` (`stable: true`, tag `v1.0.3`, immutable GitHub Release,
+published 2026-09-26). The previous published release is `1.0.2` (`stable:
+true`, tag `v1.0.2`, immutable GitHub Release, published 2026-09-25), and the
+earlier published release is `1.0.1` (`stable: true`, tag `v1.0.1`, immutable
+GitHub Release, published 2026-09-25), both kept as history. Security fixes are
 best-effort, and no response-time promise is made.
 
 | Version | Supported |
 | --- | --- |
+| 1.0.4 (staged release candidate; owner gates recorded, no `v1.0.4` tag or Release yet) | Best-effort security fixes |
 | 1.0.3 (published stable; `docs/release-state.json` `stable: true`, immutable `v1.0.3` tag and Release) | Best-effort security fixes |
 | 1.0.2 (previous published stable; `docs/release-state.json` `stable: true`) | Best-effort security fixes |
 | 1.0.1 (earlier published stable; `docs/release-state.json` `stable: true`) | Best-effort security fixes |

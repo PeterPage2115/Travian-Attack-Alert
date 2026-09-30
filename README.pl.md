@@ -4,7 +4,7 @@ Alerty o atakach, rajdach i odejściach sojuszników z Traviana prosto na Twój 
 
 [English](README.md) | **Polski**
 
-> **Wydanie:** [v1.0.3](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.3) (stabilne) · **Na kanale:** `1.0.3` · **Licencja:** MIT · **[Instalacja ↓](#instalacja)** · **[Dokumentacja](docs/README.md)**
+> **Opublikowane (historyczne):** [v1.0.3](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.3) (stabilne) · **Kandydat:** `1.0.4` · **Licencja:** MIT · **[Instalacja ↓](#instalacja)** · **[Dokumentacja](docs/README.md)**
 
 ![Syntetyczny zrzut ekranu panelu operacyjnego Travian Attack Alert: okno monitora alertów sojuszu z kartami Overview, Players, Alerts i Diagnostics, statusem lidera, liniami zaakceptowanego skanu i ustaloną linią bazową.](docs/assets/panel-overview.png)
 
@@ -12,7 +12,7 @@ Alerty o atakach, rajdach i odejściach sojuszników z Traviana prosto na Twój 
 
 ## Co to robi
 
-Skrypt obserwuje tabelę członków sojuszu na Twoim świecie Traviana i wysyła powiadomienie na Discorda, gdy pojawią się nowe ataki, rajdy lub odejścia. Utrzymuje deltę względem linii bazowej, więc pierwszy zaakceptowany skan jest cichy, a alerty dotyczą tylko zmian od poprzedniego skanu. Wszystko działa lokalnie w karcie przeglądarki: sesja Traviana nie opuszcza Twojej maszyny, a webhook Discorda trafia wyłącznie do menedżera skryptów. Bieżąca kompilacja to `1.0.3` (`taa-1.0.3`), bieżące opublikowane stabilne wydanie, bez bundlera, frameworka ani zależności runtime w przeglądarce.
+Skrypt obserwuje tabelę członków sojuszu na Twoim świecie Traviana i wysyła powiadomienie na Discorda, gdy pojawią się nowe ataki, rajdy lub odejścia. Utrzymuje deltę względem linii bazowej, więc pierwszy zaakceptowany skan jest cichy, a alerty dotyczą tylko zmian od poprzedniego skanu. Wszystko działa lokalnie w karcie przeglądarki: sesja Traviana nie opuszcza Twojej maszyny, a webhook Discorda trafia wyłącznie do menedżera skryptów. Bieżąca kompilacja to `1.0.4` (`taa-1.0.4`), etapowany kandydat na poprawkę. Opublikowany stabilny kanał nadal serwuje historyczne wydanie `1.0.3`, bez bundlera, frameworka ani zależności runtime w przeglądarce.
 
 ## Instalacja
 
@@ -21,7 +21,7 @@ Instalacja to cztery kroki.
 1. Zainstaluj menedżera skryptów: [Tampermonkey dla Chrome](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo) lub [Tampermonkey dla Firefoksa](https://addons.mozilla.org/firefox/addon/tampermonkey/).
 2. Otwórz instalator z [najnowszego wydania GitHub](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest) i potwierdź monit Tampermonkey. Plik do instalacji jednym kliknięciem to [`travian-attack-alert.user.js`](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/latest/download/travian-attack-alert.user.js).
 3. W Chrome 138+ z Tampermonkey 5.3+ włącz **Allow User Scripts** (albo Tryb dewelopera). Bez tego przeglądarka nie uruchomi żadnego userscriptu: brak panelu, menu, skanu i alertu. To FAQ Q209 Tampermonkey.
-4. Potwierdź, że zainstalowany skrypt pokazuje nazwę `Travian Attack Alert`, przestrzeń nazw `travian-attack-alert-public` i wersję `1.0.3`.
+4. Potwierdź, że zainstalowany skrypt pokazuje nazwę `Travian Attack Alert`, przestrzeń nazw `travian-attack-alert-public` i wersję `1.0.4`.
 
 Aktualizacje przychodzą automatycznie kanałem `@updateURL` na gałęzi `release/public-1.0.0`, więc menedżer, który go respektuje, pobiera bieżący plik bez ręcznej pracy. Ponowna instalacja z najnowszego wydania również wgra nową wersję. Nigdy nie włączaj dwóch nadawców jednocześnie w trakcie aktualizacji.
 
@@ -129,11 +129,11 @@ Timestamp: 2026-08-23T09:46:01.000Z
 - [Architektura](docs/architecture.md): graf modułów i tokeny designu.
 - [Runbook wydania właściciela](docs/RELEASE-RUNBOOK.md): uporządkowana procedura publikacji bramkowana przez właściciela.
 - [Historia zmian](CHANGELOG.md), [Współtworzenie](CONTRIBUTING.md), [Polityka bezpieczeństwa](SECURITY.md).
-- Migrujesz z wewnętrznej linii 6.2.1 (historycznej)? Wyeksportuj kopię ustawień ze starego nadawcy, wyłącz go, zachowaj dane strony i zainstaluj 1.0.3. Zobacz [docs/MIGRATION-6X.md](docs/MIGRATION-6X.md).
+- Migrujesz z wewnętrznej linii 6.2.1 (historycznej)? Wyeksportuj kopię ustawień ze starego nadawcy, wyłącz go, zachowaj dane strony i zainstaluj 1.0.4. Zobacz [docs/MIGRATION-6X.md](docs/MIGRATION-6X.md).
 
 ## Wsparcie
 
-Zgłaszając problem, podaj wersję skryptu (`1.0.3`), wersje przeglądarki i menedżera skryptów, numerowane kroki reprodukcji, oczekiwany i faktyczny wynik. Dołącz zredagowany pakiet incydentu. NIGDY nie dołączaj adresu webhooka ani tokenu, cookies, haseł, surowego HTML strony, ani danych graczy wykraczających poza to, co pakiet już zawiera w formie zredagowanej.
+Zgłaszając problem, podaj wersję skryptu (`1.0.4`), wersje przeglądarki i menedżera skryptów, numerowane kroki reprodukcji, oczekiwany i faktyczny wynik. Dołącz zredagowany pakiet incydentu. NIGDY nie dołączaj adresu webhooka ani tokenu, cookies, haseł, surowego HTML strony, ani danych graczy wykraczających poza to, co pakiet już zawiera w formie zredagowanej.
 
 - [Zgłoszenie błędu](.github/ISSUE_TEMPLATE/bug_report.yml)
 - [Propozycja funkcji](.github/ISSUE_TEMPLATE/feature_request.yml)
@@ -159,4 +159,4 @@ Travian Attack Alert to nieoficjalne narzędzie fanowskie. Nie jest powiązane z
 
 ---
 
-Ta strona opisuje userscript Tampermonkey **1.0.3**, identyfikowany przez ID wydania `taa-1.0.3`. Bieżące opublikowane wydanie to [v1.0.3](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.3).
+Ta strona opisuje userscript Tampermonkey **1.0.4**, identyfikowany przez ID wydania `taa-1.0.4`. Historyczne opublikowane wydanie to [v1.0.3](https://github.com/PeterPage2115/Travian-Attack-Alert/releases/tag/v1.0.3).

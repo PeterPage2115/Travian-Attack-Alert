@@ -283,14 +283,14 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       await warmupTransport(page, ns);
 
       // Cycle 2: reload (GM restored = persistent Tampermonkey GM), same rename plus
-      // the synthetic attack icon, webhook configured. The scan must QUEUE the delta
-      // without sending yet (startup flush already ran before the scan).
+      // the synthetic attack icon, webhook NOT configured yet. With no webhook the
+      // scan must QUEUE the delta without sending (the immediate post-commit flush
+      // is skipped), so the record stays pending and recoverable.
       let gm = await snapshotGM(page);
       await stagePrep(page, { rename101: true, attackIcon: true });
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
-      await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       const cycle2events = await waitSnapshot(page);
       expect(cycle2events.filter((e) => e.kind === 'snapshot' && e.status === 'authoritative')).toHaveLength(1);
@@ -371,7 +371,6 @@ test.describe('clean install — first scan commits baseline, sends nothing', ()
       await page.goto('/alliance/profile/members', { waitUntil: 'domcontentloaded' });
       await useLoopbackTransport(page, ns);
       await restoreGM(page, gm);
-      await page.evaluate((url: string) => window.GM_setValue('travianAllianceWebhookUrl_v1', url), WEBHOOK);
       await injectDist(page);
       await waitSnapshot(page);
       await expect.poll(async () => (await monitorEnvelope(page)).pending.length, { timeout: 10_000 }).toBe(1);
