@@ -227,18 +227,17 @@ test('oversized dispatch-start cannot remove a pending record without settlement
 
 test('oversized dispatch-start permits a progress-only update', () => {
   for (const api of [kernel, runtime]) {
-    // Given the same oversized three-record pending queue already in storage.
+    // Given the same oversized three-record queue already in storage, in flight.
     const storage = store();
-    const current = envelope({ generation: 1, pending: oversizedRecords() });
+    const current = envelope({ generation: 1, inFlight: oversizedRecords() });
     storage.set(api.monitorActiveStorageKey(world), api.serializeMonitorEnvelopeV1(current));
-    // When only an allowlisted transport progress field changes.
-    const candidate = envelope({ ...JSON.parse(JSON.stringify(current)), generation: 2,
-      pending: current.pending.map((record, index) => index === 0 ? { ...record, dispatchedAtMs: 1234 } : record) });
-    const result = commit(api, storage, candidate, current, { transportTransitionType: 'dispatch-start' });
+    // When only an allowlisted transport progress field changes through the real transition path.
+    const transition = { type: 'dispatch-start', eventIds: [current.inFlight[0].eventId], atMs: 1234 };
+    const result = api.commitMonitorQueueTransitionV1({ world, storage, currentEnvelope: current, transition });
     // Then every recoverable identity survives the permitted commit.
     assert.equal(result.outcome, 'ok');
-    assert.equal(result.envelope.pending.length, 3);
-    assert.equal(result.envelope.pending[0].dispatchedAtMs, 1234);
+    assert.equal(result.envelope.inFlight.length, 3);
+    assert.equal(result.envelope.inFlight[0].dispatchedAtMs, 1234);
   }
 });
 
@@ -334,14 +333,15 @@ test('oversized settlement accepts the removed record’s own terminal lineage',
     // Given an oversized in-flight queue eligible for a real acknowledgment.
     const storage = store(); const current = envelope({ generation: 3, inFlight: oversizedRecords() });
     const removedId = current.inFlight[2].sourceEventIds[0];
-    const transition = api.applyMonitorQueueTransitionV1(current, { type: 'acknowledge', eventIds: ['e-3'] });
-    assert.equal(transition.outcome, 'ok');
+    const transition = { type: 'acknowledge', eventIds: ['e-3'] };
+    const canonical = api.applyMonitorQueueTransitionV1(current, transition);
+    assert.equal(canonical.outcome, 'ok');
     // When the real transition is committed while the remaining records still exceed capacity.
-    const result = commit(api, storage, transition.envelope, current, { transportTransitionType: 'acknowledge' });
+    const result = api.commitMonitorQueueTransitionV1({ world, storage, currentEnvelope: current, transition });
     // Then the matching terminal identity permits progress, even if normalization compacts its detail.
     assert.equal(result.outcome, 'ok'); assert.equal(result.memorySwapped, true);
     assert.deepEqual(result.envelope.inFlight.map(record => record.eventId), ['e-1', 'e-2']);
-    assert.equal(transition.envelope.metrics.deliveryAccounting.terminal[0].sourceEventIds[0], removedId);
+    assert.equal(canonical.envelope.metrics.deliveryAccounting.terminal[0].sourceEventIds[0], removedId);
   }
 });
 

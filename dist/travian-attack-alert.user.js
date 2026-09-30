@@ -6123,6 +6123,13 @@ var require_runtime = __commonJS({
         recordDuration(options.timings, "normalizeMs", normalizeStartedMono, monotonicNow());
         if (candidateBytes > byteCapacity) {
           if (!current || !options.transportTransitionType || !TRANSPORT_RECOVERY_TRANSITIONS.has(options.transportTransitionType)) return { outcome: "capacity-reject", memorySwapped: false, serializedBytes: candidateBytes, capacityBytes: byteCapacity, recoverableRecords: recoverableMonitorRecords(candidate2).length };
+          if (!options.transportTransition || typeof options.transportTransition !== "object") return { outcome: "capacity-reject", memorySwapped: false };
+          const canonical = applyMonitorQueueTransitionV1(current, options.transportTransition);
+          if (canonical.outcome !== "ok") return { outcome: "capacity-reject", memorySwapped: false };
+          const canonicalCoalesced = coalesceMonitorPendingEvents(canonical.envelope.pending, MONITOR_MAX_PENDING_RECORDS, options.nowMs);
+          if (!canonicalCoalesced.ok) return { outcome: "capacity-reject", memorySwapped: false };
+          const canonicalCandidate = Object.assign({}, canonical.envelope, { pending: canonicalCoalesced.events });
+          if (canonicalSerializeMonitorValue(canonicalCandidate) !== canonicalSerializeMonitorValue(preCandidate)) return { outcome: "capacity-reject", memorySwapped: false };
           let normalizedCurrent;
           try {
             normalizedCurrent = normalizeMonitorEnvelopeForPersistence(current, { maxSerializedBytes: byteCapacity });
@@ -6291,7 +6298,8 @@ var require_runtime = __commonJS({
           storage: options.storage,
           nowMs: options.nowMs,
           beforeCommit: options.beforeCommit,
-          transportTransitionType: options.transition.type
+          transportTransitionType: options.transition.type,
+          transportTransition: options.transition
         });
       }
       function getTooltipSources(icon) {

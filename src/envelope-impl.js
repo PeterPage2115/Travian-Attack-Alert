@@ -193,6 +193,13 @@ function commitMonitorEnvelopeV1(options = {}) {
   const candidateBytes = new TextEncoder().encode(serializeMonitorEnvelopeV1(candidate)).length;
   if (candidateBytes > byteCapacity) {
     if (!current || !options.transportTransitionType || !TRANSPORT_RECOVERY_TRANSITIONS.has(options.transportTransitionType)) return { outcome: 'capacity-reject', memorySwapped: false, serializedBytes: candidateBytes, capacityBytes: byteCapacity, recoverableRecords: recoverableMonitorRecords(candidate).length };
+    if (!options.transportTransition || typeof options.transportTransition !== 'object') return { outcome: 'capacity-reject', memorySwapped: false };
+    const canonical = applyMonitorQueueTransitionV1(current, options.transportTransition);
+    if (canonical.outcome !== 'ok') return { outcome: 'capacity-reject', memorySwapped: false };
+    const canonicalCoalesced = coalesceMonitorPendingEvents(canonical.envelope.pending, MONITOR_MAX_PENDING_RECORDS, options.nowMs);
+    if (!canonicalCoalesced.ok) return { outcome: 'capacity-reject', memorySwapped: false };
+    const canonicalCandidate = Object.assign({}, canonical.envelope, { pending: canonicalCoalesced.events });
+    if (canonicalSerializeMonitorValue(canonicalCandidate) !== canonicalSerializeMonitorValue(preCandidate)) return { outcome: 'capacity-reject', memorySwapped: false };
     let normalizedCurrent;
     try { normalizedCurrent = normalizeMonitorEnvelopeForPersistence(current, { maxSerializedBytes: byteCapacity }); }
     catch { return { outcome: 'corrupt-active', memorySwapped: false }; }
@@ -221,7 +228,7 @@ function applyMonitorQueueTransitionV1(envelope, transition) {
   else return { outcome: 'invalid-transition', envelope };
   syncDeliveryAccounting(base); base.generation += 1; base.integrity = checksumMonitorCanonicalValue(monitorEnvelopeWithoutIntegrity(base)); return { outcome: 'ok', envelope: base };
 }
-function commitMonitorQueueTransitionV1(options = {}) { const transition = applyMonitorQueueTransitionV1(options.currentEnvelope, options.transition); if (transition.outcome !== 'ok') return Object.assign({}, transition, { memorySwapped: false }); return commitMonitorEnvelopeV1({ world: options.world || transition.envelope.world, currentEnvelope: options.currentEnvelope, candidateEnvelope: transition.envelope, expectedGeneration: options.expectedGeneration, storage: options.storage, nowMs: options.nowMs, beforeCommit: options.beforeCommit, transportTransitionType: options.transition.type }); }
+function commitMonitorQueueTransitionV1(options = {}) { const transition = applyMonitorQueueTransitionV1(options.currentEnvelope, options.transition); if (transition.outcome !== 'ok') return Object.assign({}, transition, { memorySwapped: false }); return commitMonitorEnvelopeV1({ world: options.world || transition.envelope.world, currentEnvelope: options.currentEnvelope, candidateEnvelope: transition.envelope, expectedGeneration: options.expectedGeneration, storage: options.storage, nowMs: options.nowMs, beforeCommit: options.beforeCommit, transportTransitionType: options.transition.type, transportTransition: options.transition }); }
 
 const api = {
   canonicalSerializeMonitorValue, checksumMonitorCanonicalValue,
