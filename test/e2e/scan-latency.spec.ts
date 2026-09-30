@@ -200,12 +200,14 @@ test('migrated 10,000-terminal state stays bounded after the first commit and on
   try {
     await install(first.page, ns, legacyRaw);
     const firstScan = await waitForEvent(first.page, 'scan-complete');
-    // Same-run synthetic legacy baseline: the first scan of the 10k-terminal
-    // envelope runs on this machine under this load, so it is a noise-robust
-    // relative reference (per plan Task 5) instead of a hard-coded constant.
-    const legacyBaselineMs = firstScan.durations?.scanMs as number;
-    expect(Number.isFinite(legacyBaselineMs)).toBeTruthy();
-    expect(legacyBaselineMs).toBeGreaterThan(0);
+    // Same-run synthetic legacy baseline: scanning the 10k-terminal envelope on
+    // this machine under this load is a noise-robust relative reference (per
+    // plan Task 5) instead of a hard-coded constant. A single sample still
+    // tracks CI bursts, so take best-of-2 (L1 here, L2 below) over two
+    // independent fresh installs of the same legacy state.
+    const firstLegacyMs = firstScan.durations?.scanMs as number;
+    expect(Number.isFinite(firstLegacyMs)).toBeTruthy();
+    expect(firstLegacyMs).toBeGreaterThan(0);
     const firstRaw = await readMonitorRaw(first.page);
     const firstBytes = Buffer.byteLength(firstRaw ?? '', 'utf8');
     const firstAccounting = accountingOf(firstRaw);
@@ -214,6 +216,24 @@ test('migrated 10,000-terminal state stays bounded after the first commit and on
     expect(firstAccounting.summaryCount).toBe(1);
     expect(firstBytes).toBeLessThan(512 * 1024);
     expect(firstBytes * 10).toBeLessThan(legacyBytes);
+
+    // L2: a second, independent legacy sample measured in the same run on a
+    // fresh page/context installed with the same legacy-envelope state.
+    const legacySecond = await newHttpsPage(browser);
+    let secondLegacyMs: number | undefined;
+    try {
+      await install(legacySecond.page, ns, legacyRaw);
+      const secondLegacyScan = await waitForEvent(legacySecond.page, 'scan-complete');
+      secondLegacyMs = secondLegacyScan.durations?.scanMs;
+    } finally {
+      await legacySecond.context.close();
+    }
+
+    const legacyBaselineSamples = [firstLegacyMs, secondLegacyMs].filter(
+      (v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0,
+    );
+    expect(legacyBaselineSamples.length).toBe(2);
+    const legacyBaselineMs = Math.min(...legacyBaselineSamples);
 
     const second = await newHttpsPage(browser);
     let secondScanMs: number | undefined;
@@ -266,7 +286,7 @@ test('migrated 10,000-terminal state stays bounded after the first commit and on
     expect(scanSamples.length).toBe(3);
     const nextScanMs = Math.min(...scanSamples);
     expect(nextScanMs).toBeLessThan(SCAN_CAP_MS);
-    expect(nextScanMs * 10).toBeLessThan(legacyBaselineMs);
+    expect(nextScanMs * 10).toBeLessThanOrEqual(legacyBaselineMs);
 
     writeEvidence('migrated-10k-terminal', {
       artifact: { path: ARTIFACT_URL, sha256: sha256File(DIST_FILE) },
@@ -283,6 +303,7 @@ test('migrated 10,000-terminal state stays bounded after the first commit and on
       nextScanMsSamples: scanSamples,
       nextPhaseTimings: phaseTimings(secondDurations),
       nextStateBytes: secondBytes,
+      legacyBaselineSamples,
       legacyBaselineMs,
       documentedLegacyBaselineMs: LEGACY_V103_BASELINE_MS,
     }, ns);
