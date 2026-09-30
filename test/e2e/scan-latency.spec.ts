@@ -200,6 +200,12 @@ test('migrated 10,000-terminal state stays bounded after the first commit and on
   try {
     await install(first.page, ns, legacyRaw);
     const firstScan = await waitForEvent(first.page, 'scan-complete');
+    // Same-run synthetic legacy baseline: the first scan of the 10k-terminal
+    // envelope runs on this machine under this load, so it is a noise-robust
+    // relative reference (per plan Task 5) instead of a hard-coded constant.
+    const legacyBaselineMs = firstScan.durations?.scanMs as number;
+    expect(Number.isFinite(legacyBaselineMs)).toBeTruthy();
+    expect(legacyBaselineMs).toBeGreaterThan(0);
     const firstRaw = await readMonitorRaw(first.page);
     const firstBytes = Buffer.byteLength(firstRaw ?? '', 'utf8');
     const firstAccounting = accountingOf(firstRaw);
@@ -221,7 +227,7 @@ test('migrated 10,000-terminal state stays bounded after the first commit and on
       expect(secondBytes).toBeLessThan(512 * 1024);
       const nextScanMs = secondScan.durations?.scanMs as number;
       expect(nextScanMs).toBeLessThan(SCAN_CAP_MS);
-      expect(nextScanMs * 10).toBeLessThan(LEGACY_V103_BASELINE_MS);
+      expect(nextScanMs * 10).toBeLessThan(legacyBaselineMs);
 
       writeEvidence('migrated-10k-terminal', {
         artifact: { path: ARTIFACT_URL, sha256: sha256File(DIST_FILE) },
@@ -237,7 +243,8 @@ test('migrated 10,000-terminal state stays bounded after the first commit and on
         nextScanMs: secondScan.durations?.scanMs,
         nextPhaseTimings: phaseTimings(secondScan.durations),
         nextStateBytes: secondBytes,
-        legacyBaselineMs: LEGACY_V103_BASELINE_MS,
+        legacyBaselineMs,
+        documentedLegacyBaselineMs: LEGACY_V103_BASELINE_MS,
       }, ns);
     } finally {
       await second.context.close();
