@@ -8,10 +8,10 @@
 // additionally requires publication.tagAndRelease.
 //
 // Automated steps cannot flip owner fields: the live state records the
-// owner-attested 1.0.4 release candidate (stable:true because every
+// owner-attested, published 1.0.4 release (stable:true because every
 // pre-publication owner field is populated with owner-written evidence;
-// publication.tagAndRelease is false because no v1.0.4 tag or GitHub Release
-// exists yet), while the published 1.0.3 and 1.0.2 releases are described in
+// publication.tagAndRelease is true because the v1.0.4 tag and GitHub Release
+// now exist), while the published 1.0.3 and 1.0.2 releases are described in
 // the docs and the completed, published 1.0.1 record remains archived at
 // docs/release-history/1.0.1/release-state.json. The flip rule this test
 // enforces still requires an owner edit of BOTH docs/release-state.json AND
@@ -205,8 +205,8 @@ describe('release gate (stable-1.0, schema v2)', () => {
   });
 
   it('separates post-publication evidence: PUBLISHED_VERIFIED additionally requires publication.tagAndRelease', () => {
-    assert.equal(publishedVerified(state), false, 'the unpublished 1.0.4 candidate carries no verified tag or GitHub Release yet');
-    assert.equal(state.publication.tagAndRelease, false, 'no v1.0.4 tag or GitHub Release may be recorded before publication');
+    assert.equal(publishedVerified(state), true, 'the published 1.0.4 records the verified tag and GitHub Release');
+    assert.equal(state.publication.tagAndRelease, true, 'the published v1.0.4 tag and GitHub Release are recorded after publication');
     assert.equal(publishedVerified(archive), true, 'the archived 1.0.1 records the published, verified immutable Release');
     assert.equal(archive.publication.tagAndRelease, true, 'the archived 1.0.1 recorded the published v1.0.1 GitHub Release');
     const tagged = syntheticPrePublicationState({ publication: { tagAndRelease: 'v1.0.0 + GitHub Release' } });

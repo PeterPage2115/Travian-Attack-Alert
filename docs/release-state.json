@@ -25,7 +25,7 @@
     "immutableReleases": "immutable releases enabled 2026-09-25; API digest f4b2b8919d556de186d7b4afe009126b30c99e3edefb005e4e56ab17069b52dd"
   },
   "publication": {
-    "tagAndRelease": false
+    "tagAndRelease": true
   },
   "flipRule": "stable may become true only through an owner edit that populates every ownerManual pre-publication field with owner-written evidence, together with the matching edit to test/tools/release-state.test.cjs. The six pre-publication gates are pilotInstallBySecondPerson, evidenceRecord, branchProtection, devArchival, releaseEnvironment, and immutableReleases; none of them requires a tag or Release that cannot exist before tagging. publication.tagAndRelease is separate post-publication evidence and is required only for PUBLISHED_VERIFIED, never for stable:true. No npm script, test, build step, or CI job may set stable:true or publication.tagAndRelease. The ordered owner procedure that records these gates and the post-publication evidence is docs/RELEASE-RUNBOOK.md; the readiness verifier tools/check-release-readiness.cjs reports BLOCKED until every prerequisite is recorded."
 }
